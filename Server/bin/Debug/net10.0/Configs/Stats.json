@@ -1,0 +1,17 @@
+[
+  "maxHp", 
+  "hpRegen", 
+  "lifeSteal", 
+  "damagePercent", 
+  "meleeDamage", 
+  "rangedDamage",
+  "elementalDamage", 
+  "speed", 
+  "speedPercent", 
+  "range", 
+  "engineering", 
+  "armor",
+  "dodge", 
+  "luck", 
+  "harvesting"
+]

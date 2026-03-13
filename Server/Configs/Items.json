@@ -1,0 +1,202 @@
+{
+  "ugly_tooth": {
+    "id": "ugly_tooth",
+    "name": "Ugly Tooth",
+    "price": 25,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 0,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [
+      {
+        "conditionType": "MissingHealthPercent",
+        "conditionThreshold": 0.20,
+        "targetStat": "meleeDamage",
+        "bonusFlat": 5,
+        "bonusPercent": 0
+      }
+    ]
+  },
+  "magical_leaf": {
+    "id": "magical_leaf",
+    "name": "Grind's Leaf",
+    "price": 45,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 1,
+    "traits": [
+      "CannotHeal"
+    ],
+    "effectsAtWaveEnd": [
+      {
+        "statName": "maxHp",
+        "flatAmount": 3,
+        "percentAmount": 0
+      },
+      {
+        "statName": "hpRegen",
+        "flatAmount": 1,
+        "percentAmount": 0
+      }
+    ],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": []
+  },
+  "mirror": {
+    "id": "mirror",
+    "name": "Mirror",
+    "price": 30,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 2,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [
+      "DuplicateNextItem"
+    ],
+    "dynamicModifiers": []
+  },
+  "alien_tongue": {
+    "id": "alien_tongue",
+    "name": "Alien Tongue",
+    "price": 35,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 3,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [
+      {
+        "conditionType": "MissingHealthPercent",
+        "conditionThreshold": 0.10,
+        "targetStat": "speedPercent",
+        "bonusFlat": 0,
+        "bonusPercent": 0.02
+      }
+    ]
+  },
+  "blood_leech": {
+    "id": "blood_leech",
+    "name": "Blood Leech",
+    "price": 50,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 4,
+    "traits": [],
+    "effectsAtWaveEnd": [
+      {
+        "statName": "lifeSteal",
+        "flatAmount": 0,
+        "percentAmount": 0.01
+      }
+    ],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": []
+  },
+  "heavy_boots": {
+    "id": "heavy_boots",
+    "name": "Heavy Boots",
+    "price": 20,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 5,
+    "traits": [
+      "SlowStart"
+    ],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [
+      {
+        "conditionType": "MissingHealthPercent",
+        "conditionThreshold": 0.50,
+        "targetStat": "armor",
+        "bonusFlat": 5,
+        "bonusPercent": 0
+      }
+    ]
+  },
+  "lucky_coin": {
+    "id": "lucky_coin",
+    "name": "Lucky Coin",
+    "price": 60,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 6,
+    "traits": [],
+    "effectsAtWaveEnd": [
+      {
+        "statName": "engineering",
+        "flatAmount": 2,
+        "percentAmount": 0
+      }
+    ],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": []
+  },
+  "cursed_skull": {
+    "id": "cursed_skull",
+    "name": "Cursed Skull",
+    "price": 15,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 7,
+    "traits": [
+      "MoreEnemies"
+    ],
+    "effectsAtWaveEnd": [
+      {
+        "statName": "maxHp",
+        "flatAmount": -2,
+        "percentAmount": 0
+      },
+      {
+        "statName": "meleeDamage",
+        "flatAmount": 8,
+        "percentAmount": 0
+      }
+    ],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": []
+  },
+  "battery": {
+    "id": "battery",
+    "name": "Battery",
+    "price": 40,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 8,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [
+      {
+        "conditionType": "MissingHealthPercent",
+        "conditionThreshold": 0.25,
+        "targetStat": "elementalDamage",
+        "bonusFlat": 3,
+        "bonusPercent": 0
+      }
+    ]
+  },
+  "coffee": {
+    "id": "coffee",
+    "name": "Coffee",
+    "price": 25,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 9,
+    "traits": [],
+    "effectsAtWaveEnd": [
+      {
+        "statName": "speedPercent",
+        "flatAmount": 0,
+        "percentAmount": 0.05
+      }
+    ],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": []
+  }
+}

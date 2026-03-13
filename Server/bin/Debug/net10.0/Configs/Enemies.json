@@ -1,0 +1,60 @@
+{
+  "goblin_basic": {
+    "id": "goblin_basic",
+    "name": "Goblin Scrapper",
+    "tier": 1,
+    "isBoss": false,
+    "textureKey": "enemies_sheet",
+    "scale": 1.0,
+    "iconFrame": 0,
+    "animIdle": [
+      0,
+      5
+    ],
+    "animAttack": [
+      6,
+      10
+    ],
+    "attackDuration": 0.5,
+    "baseStats": {
+      "maxHp": 30,
+      "speed": 90,
+      "meleeDamage": 5,
+      "dodge": 0.05
+    },
+    "dynamicModifiers": []
+  },
+  "boss_demon_king": {
+    "id": "boss_demon_king",
+    "name": "Demon King",
+    "tier": 1,
+    "isBoss": true,
+    "textureKey": "enemies_sheet",
+    "scale": 2.5,
+    "iconFrame": 5,
+    "animIdle": [
+      20,
+      25
+    ],
+    "animAttack": [
+      26,
+      32
+    ],
+    "attackDuration": 1.2,
+    "baseStats": {
+      "maxHp": 5000,
+      "speed": 60,
+      "meleeDamage": 50,
+      "armor": 15,
+      "lifeSteal": 0.05
+    },
+    "dynamicModifiers": [
+      {
+        "conditionType": "MissingHealthPercent",
+        "conditionThreshold": 0.50,
+        "targetStat": "speedPercent",
+        "bonusPercent": 0.50
+      }
+    ]
+  }
+}

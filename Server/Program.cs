@@ -4,7 +4,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add SignalR
 builder.Services.AddSignalR();
-
+builder.Services.AddSingleton<Server.Core.GameState>();
+builder.Services.AddSingleton<Server.Configs.ConfigManager>();
+builder.Services.AddHostedService<Server.Core.GameLoop>();
 // Allow the Phaser client to connect during local development
 builder.Services.AddCors(options =>
 {

@@ -1,0 +1,183 @@
+{
+  "pistol": {
+    "id": "pistol",
+    "name": "Pistol",
+    "tier": 1,
+    "cooldownSeconds": 0.5,
+    "damage": 50,
+    "projectileSpeed": 600,
+    "range": 500,
+    "textureKey": "weapons_sheet",
+    "scale": 1.0,
+    "iconFrame": 0,
+    "statBonuses": {
+      "speedPercent": 0.05
+    },
+    "damageScaling": {
+      "rangedDamage": 0.5
+    }
+  },
+  "smg": {
+    "id": "smg",
+    "name": "SMG",
+    "tier": 2,
+    "cooldownSeconds": 0.15,
+    "damage": 5,
+    "projectileSpeed": 700,
+    "range": 400,
+    "textureKey": "weapons_sheet",
+    "scale": 1.0,
+    "iconFrame": 1,
+    "statBonuses": {},
+    "damageScaling": {
+      "rangedDamage": 0.25
+    }
+  },
+  "shotgun": {
+    "id": "shotgun",
+    "name": "Double Barrel",
+    "tier": 2,
+    "cooldownSeconds": 1.2,
+    "damage": 8,
+    "projectileSpeed": 500,
+    "range": 300,
+    "textureKey": "weapons_sheet",
+    "scale": 1.2,
+    "iconFrame": 2,
+    "statBonuses": {
+      "maxHp": 2
+    },
+    "damageScaling": {
+      "rangedDamage": 0.4
+    }
+  },
+  "sniper": {
+    "id": "sniper",
+    "name": "Sniper Rifle",
+    "tier": 4,
+    "cooldownSeconds": 2.0,
+    "damage": 45,
+    "projectileSpeed": 1200,
+    "range": 1000,
+    "textureKey": "weapons_sheet",
+    "scale": 1.5,
+    "iconFrame": 3,
+    "statBonuses": {
+      "speedPercent": -0.05
+    },
+    "damageScaling": {
+      "rangedDamage": 1.2
+    }
+  },
+  "rocket": {
+    "id": "rocket",
+    "name": "Rocket Launcher",
+    "tier": 4,
+    "cooldownSeconds": 1.8,
+    "damage": 60,
+    "projectileSpeed": 400,
+    "range": 700,
+    "textureKey": "weapons_sheet",
+    "scale": 1.4,
+    "iconFrame": 4,
+    "statBonuses": {
+      "armor": -1
+    },
+    "damageScaling": {
+      "rangedDamage": 1.0,
+      "engineering": 0.5
+    }
+  },
+  "stick": {
+    "id": "stick",
+    "name": "Wooden Stick",
+    "tier": 1,
+    "cooldownSeconds": 0.6,
+    "damage": 8,
+    "projectileSpeed": 0,
+    "range": 120,
+    "textureKey": "weapons_sheet",
+    "scale": 1.0,
+    "iconFrame": 5,
+    "statBonuses": {
+      "maxHp": 5
+    },
+    "damageScaling": {
+      "meleeDamage": 0.5
+    }
+  },
+  "sword": {
+    "id": "sword",
+    "name": "Iron Sword",
+    "tier": 2,
+    "cooldownSeconds": 0.8,
+    "damage": 18,
+    "projectileSpeed": 0,
+    "range": 150,
+    "textureKey": "weapons_sheet",
+    "scale": 1.2,
+    "iconFrame": 6,
+    "statBonuses": {
+      "speedPercent": 0.02
+    },
+    "damageScaling": {
+      "meleeDamage": 0.8
+    }
+  },
+  "hammer": {
+    "id": "hammer",
+    "name": "War Hammer",
+    "tier": 3,
+    "cooldownSeconds": 1.5,
+    "damage": 35,
+    "projectileSpeed": 0,
+    "range": 160,
+    "textureKey": "weapons_sheet",
+    "scale": 1.5,
+    "iconFrame": 7,
+    "statBonuses": {
+      "armor": 2,
+      "speedPercent": -0.05
+    },
+    "damageScaling": {
+      "meleeDamage": 1.5
+    }
+  },
+  "wand": {
+    "id": "wand",
+    "name": "Magic Wand",
+    "tier": 2,
+    "cooldownSeconds": 0.7,
+    "damage": 12,
+    "projectileSpeed": 350,
+    "range": 600,
+    "textureKey": "weapons_sheet",
+    "scale": 1.0,
+    "iconFrame": 8,
+    "statBonuses": {
+      "elementalDamage": 2
+    },
+    "damageScaling": {
+      "elementalDamage": 1.0
+    }
+  },
+  "potato_thrower": {
+    "id": "potato_thrower",
+    "name": "Potato Thrower",
+    "tier": 3,
+    "cooldownSeconds": 0.3,
+    "damage": 14,
+    "projectileSpeed": 450,
+    "range": 500,
+    "textureKey": "weapons_sheet",
+    "scale": 1.1,
+    "iconFrame": 9,
+    "statBonuses": {
+      "hpRegen": 2
+    },
+    "damageScaling": {
+      "rangedDamage": 0.4,
+      "maxHp": 0.05
+    }
+  }
+}
