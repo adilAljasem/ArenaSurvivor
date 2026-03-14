@@ -50,7 +50,7 @@ export class Tooltip extends Phaser.GameObjects.Container {
         scene.add.existing(this);
     }
 
-    public show(config: any, x: number, y: number, stackCount: number = 1) { 
+    public show(config: any, x: number, y: number, stackCount: number = 1) {
         if (!config) return;
         this.titleText.setText(config.name);
 
@@ -59,13 +59,13 @@ export class Tooltip extends Phaser.GameObjects.Container {
 
         // >>> FIX: TYPED BASE DAMAGE WITH LEVEL MULTIPLIERS <<<
         if (config.meleeDamage || config.rangedDamage || config.elementalDamage) {
-            
+
             if (config.meleeDamage) posStr += `🗡️ Base Melee: ${config.meleeDamage * stackCount}\n`;
             if (config.rangedDamage) posStr += `🏹 Base Ranged: ${config.rangedDamage * stackCount}\n`;
             if (config.elementalDamage) posStr += `🔥 Base Elemental: ${config.elementalDamage * stackCount}\n`;
-            
+
             if (config.damageScaling) {
-                const scales = Object.entries(config.damageScaling).map(([k, v]) => `${(v as number)*100}% of ${this.getLabel(k)}`);
+                const scales = Object.entries(config.damageScaling).map(([k, v]) => `${(v as number) * 100}% of ${this.getLabel(k)}`);
                 if (scales.length > 0) {
                     posStr += `📈 Scales with: ${scales.join(', ')}\n`;
                 }

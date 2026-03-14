@@ -14,8 +14,7 @@
         "conditionType": "MissingHealthPercent",
         "conditionThreshold": 0.20,
         "targetStat": "meleeDamage",
-        "bonusFlat": 5,
-        "bonusPercent": 0
+        "amount": 5
       }
     ]
   },
@@ -32,13 +31,11 @@
     "effectsAtWaveEnd": [
       {
         "statName": "maxHp",
-        "flatAmount": 3,
-        "percentAmount": 0
+        "amount": 3
       },
       {
         "statName": "hpRegen",
-        "flatAmount": 1,
-        "percentAmount": 0
+        "amount": 1
       }
     ],
     "effectsOnPurchase": [],
@@ -72,9 +69,8 @@
       {
         "conditionType": "MissingHealthPercent",
         "conditionThreshold": 0.10,
-        "targetStat": "speedPercent",
-        "bonusFlat": 0,
-        "bonusPercent": 0.02
+        "targetStat": "speed",
+        "amount": 5
       }
     ]
   },
@@ -89,8 +85,7 @@
     "effectsAtWaveEnd": [
       {
         "statName": "lifeSteal",
-        "flatAmount": 0,
-        "percentAmount": 0.01
+        "amount": 0.01
       }
     ],
     "effectsOnPurchase": [],
@@ -113,8 +108,7 @@
         "conditionType": "MissingHealthPercent",
         "conditionThreshold": 0.50,
         "targetStat": "armor",
-        "bonusFlat": 5,
-        "bonusPercent": 0
+        "amount": 5
       }
     ]
   },
@@ -129,8 +123,7 @@
     "effectsAtWaveEnd": [
       {
         "statName": "engineering",
-        "flatAmount": 2,
-        "percentAmount": 0
+        "amount": 2
       }
     ],
     "effectsOnPurchase": [],
@@ -149,13 +142,11 @@
     "effectsAtWaveEnd": [
       {
         "statName": "maxHp",
-        "flatAmount": -2,
-        "percentAmount": 0
+        "amount": -2
       },
       {
         "statName": "meleeDamage",
-        "flatAmount": 8,
-        "percentAmount": 0
+        "amount": 8
       }
     ],
     "effectsOnPurchase": [],
@@ -176,8 +167,7 @@
         "conditionType": "MissingHealthPercent",
         "conditionThreshold": 0.25,
         "targetStat": "elementalDamage",
-        "bonusFlat": 3,
-        "bonusPercent": 0
+        "amount": 3
       }
     ]
   },
@@ -191,9 +181,8 @@
     "traits": [],
     "effectsAtWaveEnd": [
       {
-        "statName": "speedPercent",
-        "flatAmount": 0,
-        "percentAmount": 0.05
+        "statName": "speed",
+        "amount": 10
       }
     ],
     "effectsOnPurchase": [],

@@ -93,9 +93,8 @@ public class GameLoop : BackgroundService
         {
             if (player.InputX != 0 || player.InputY != 0)
             {
-                float baseSpeed = player.GetTotalStat("speed", _configManager);
-                float speedPct = player.GetTotalStat("speedPercent", _configManager);
-                float finalSpeed = baseSpeed * (1f + speedPct);
+                // >>> FIX: Just one clean line for speed! <<<
+                float finalSpeed = player.GetTotalStat("speed", _configManager);
 
                 player.X += player.InputX * finalSpeed * dt;
                 player.Y += player.InputY * finalSpeed * dt;
@@ -148,9 +147,7 @@ public class GameLoop : BackgroundService
                     float length = (float)Math.Sqrt((dx * dx) + (dy * dy));
 
                     // >>> THE NEW ENEMY SPEED CALCULATION <<<
-                    float baseSpeed = enemy.GetTotalStat("speed", _configManager);
-                    float speedPct = enemy.GetTotalStat("speedPercent", _configManager);
-                    float finalSpeed = baseSpeed * (1f + speedPct);
+                    float finalSpeed = enemy.GetTotalStat("speed", _configManager);
 
                     enemy.X += (dx / length) * finalSpeed * dt;
                     enemy.Y += (dy / length) * finalSpeed * dt;
@@ -325,13 +322,34 @@ public class GameLoop : BackgroundService
         _gameState.Phase = GamePhase.ShopPhase;
         _gameState.PhaseTimer = 30f;
 
+        // 1. Convert surviving enemies to gold
         foreach (var enemy in _gameState.Enemies.Values)
         {
             var gold = new PickupEntity { X = enemy.X, Y = enemy.Y, Value = 1 };
             _gameState.Pickups.TryAdd(gold.Id, gold);
         }
+
         _gameState.Enemies.Clear();
         _gameState.Projectiles.Clear();
+
+        // 2. >>> NEW: THE CO-OP LOOT SWEEP <<<
+        // Sum up the value of every gold piece left on the floor
+        int totalLootValue = _gameState.Pickups.Values.Sum(p => p.Value);
+        _gameState.Pickups.Clear(); // Sweep the floor clean!
+
+        if (totalLootValue > 0 && !_gameState.Players.IsEmpty)
+        {
+            // Divide the loot evenly among all connected players
+            int lootPerPlayer = (int)Math.Max(1, Math.Floor((double)totalLootValue / _gameState.Players.Count));
+
+            foreach (var player in _gameState.Players.Values)
+            {
+                player.Gold += lootPerPlayer;
+                player.GainXp(lootPerPlayer, _configManager);
+            }
+        }
+
+        // 3. Shop Setup & UI Broadcast
 
         foreach (var player in _gameState.Players.Values)
         {
@@ -345,7 +363,8 @@ public class GameLoop : BackgroundService
                     int stackCount = kvp.Value;
                     foreach (var effect in itemConfig.EffectsAtWaveEnd)
                     {
-                        player.Stats.AddModifier(effect.StatName, effect.FlatAmount * stackCount, effect.PercentAmount * stackCount);
+                        // >>> FIX: Uses the unified Amount property! <<<
+                        player.Stats.AddModifier(effect.StatName, effect.Amount * stackCount, 0);
                     }
                 }
             }

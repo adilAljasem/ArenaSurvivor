@@ -1,7 +1,6 @@
 import * as Phaser from 'phaser';
 import { HubConnectionBuilder, HubConnectionState } from '@microsoft/signalr';
-import { ShopUI } from './ui/ShopUI';
-
+import { ShopUI } from './ui/UI';
 // --- SIGNALR CONNECTION ---
 const connection = new HubConnectionBuilder()
   .withUrl("http://localhost:5000/gameHub") // Ensure this matches your .NET port
@@ -402,10 +401,10 @@ class GameScene extends Phaser.Scene {
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   scale: {
-      mode: Phaser.Scale.FIT, // Instantly scales to fit the screen
-      autoCenter: Phaser.Scale.CENTER_BOTH,
-      width: 1920,
-      height: 1080
+    mode: Phaser.Scale.FIT, // Instantly scales to fit the screen
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+    width: 1920,
+    height: 1080
   },
   scene: GameScene,
   parent: 'app'

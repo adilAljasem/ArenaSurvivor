@@ -197,12 +197,13 @@ public class GameHub : Hub
                 var card = player.CurrentLevelUpChoices.FirstOrDefault(c => c.Id == cardId);
                 if (card != null)
                 {
-                    // Applies the stat globally and permanently!
-                    player.Stats.AddModifier(card.StatName, card.FlatAmount, card.PercentAmount);
+                    // >>> FIX: We just pass the single Amount. The math engine handles the rest! <<<
+                    player.Stats.AddModifier(card.StatName, card.Amount, 0);
+
                     player.PendingLevelUps--;
                     player.CurrentLevelUpChoices.Clear();
-                    
-                    await SendPlayerUI(player); // Recursively sends new cards if they leveled up multiple times!
+
+                    await SendPlayerUI(player);
                 }
             }
         }

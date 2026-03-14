@@ -75,21 +75,16 @@ public class PlayerEntity
     public float GetTotalStat(string statName, ConfigManager configManager)
     {
         float baseStat = Stats.GetFinalStat(statName);
-        float dynamicFlat = 0f;
-        float dynamicPercent = 0f;
+        float dynamicFlat = 0f; // All stats are added flatly to their buckets now!
 
         // --- 1. ITEMS ---
         foreach (var kvp in OwnedItems)
         {
             if (configManager.Items.TryGetValue(kvp.Key, out var itemConfig))
             {
-                // Passive flat stats (e.g., +5 MaxHp)
                 if (itemConfig.StatBonuses != null && itemConfig.StatBonuses.TryGetValue(statName, out float bonus))
-                {
                     dynamicFlat += (bonus * kvp.Value);
-                }
 
-                // Dynamic Conditions (e.g., +Damage per Missing Health or Armor)
                 if (itemConfig.DynamicModifiers != null)
                 {
                     foreach (var mod in itemConfig.DynamicModifiers.Where(m => m.TargetStat == statName))
@@ -99,16 +94,13 @@ public class PlayerEntity
                             float maxHp = Stats.GetFinalStat("maxHp");
                             float missingHpPercent = 1f - (CurrentHp / Math.Max(1f, maxHp));
                             int chunks = (int)Math.Floor(missingHpPercent / Math.Max(0.01f, mod.ConditionThreshold));
-                            dynamicFlat += (mod.BonusFlat * chunks * kvp.Value);
-                            dynamicPercent += (mod.BonusPercent * chunks * kvp.Value);
+                            dynamicFlat += (mod.Amount * chunks * kvp.Value); // Unifed!
                         }
                         else if (mod.ConditionType == "PerXStat" && !string.IsNullOrEmpty(mod.ConditionStat))
                         {
-                            // Recursively calculate the condition stat (e.g., finding current Armor)
                             float sourceStatValue = GetTotalStat(mod.ConditionStat, configManager);
                             int chunks = (int)Math.Floor(sourceStatValue / Math.Max(0.01f, mod.ConditionThreshold));
-                            dynamicFlat += (mod.BonusFlat * chunks * kvp.Value);
-                            dynamicPercent += (mod.BonusPercent * chunks * kvp.Value);
+                            dynamicFlat += (mod.Amount * chunks * kvp.Value); // Unified!
                         }
                     }
                 }
@@ -116,19 +108,16 @@ public class PlayerEntity
         }
 
         // --- 2. WEAPONS ---
-        // Passive bonuses granted just by holding the weapon
         foreach (var weapon in Weapons)
         {
             if (configManager.Weapons.TryGetValue(weapon.ConfigId, out var weaponConfig))
             {
                 if (weaponConfig.StatBonuses != null && weaponConfig.StatBonuses.TryGetValue(statName, out float wBonus))
-                {
                     dynamicFlat += (wBonus * weapon.Level);
-                }
             }
         }
 
-        return (baseStat + dynamicFlat) * (1f + dynamicPercent);
+        return baseStat + dynamicFlat;
     }
 
     // The function that grants XP and checks for level ups!

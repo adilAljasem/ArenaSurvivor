@@ -39,7 +39,7 @@ public class EnemyEntity
                 Stats.InitializeStat(stat.Key, stat.Value);
             }
         }
-        
+
         CurrentHp = Stats.GetFinalStat("maxHp");
     }
 
@@ -48,9 +48,7 @@ public class EnemyEntity
     {
         float baseStat = Stats.GetFinalStat(statName);
         float dynamicFlat = 0f;
-        float dynamicPercent = 0f;
 
-        // Calculate dynamic boss phases / conditions
         if (configManager.Enemies.TryGetValue(ConfigId, out var config))
         {
             if (config.DynamicModifiers != null)
@@ -61,20 +59,18 @@ public class EnemyEntity
                     {
                         float missingHpPercent = 1f - (CurrentHp / Math.Max(1f, Stats.GetFinalStat("maxHp")));
                         int chunks = (int)Math.Floor(missingHpPercent / Math.Max(0.01f, mod.ConditionThreshold));
-                        dynamicFlat += (mod.BonusFlat * chunks);
-                        dynamicPercent += (mod.BonusPercent * chunks);
+                        dynamicFlat += (mod.Amount * chunks);
                     }
                     else if (mod.ConditionType == "PerXStat" && !string.IsNullOrEmpty(mod.ConditionStat))
                     {
                         float sourceStatValue = GetTotalStat(mod.ConditionStat, configManager);
                         int chunks = (int)Math.Floor(sourceStatValue / Math.Max(0.01f, mod.ConditionThreshold));
-                        dynamicFlat += (mod.BonusFlat * chunks);
-                        dynamicPercent += (mod.BonusPercent * chunks);
+                        dynamicFlat += (mod.Amount * chunks);
                     }
                 }
             }
         }
 
-        return (baseStat + dynamicFlat) * (1f + dynamicPercent);
+        return baseStat + dynamicFlat;
     }
 }

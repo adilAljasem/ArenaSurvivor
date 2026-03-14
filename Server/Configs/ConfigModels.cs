@@ -68,8 +68,7 @@ public class WeaponConfig
 public class WaveEndEffect
 {
     public string StatName { get; set; } = string.Empty;
-    public float FlatAmount { get; set; }
-    public float PercentAmount { get; set; }
+    public float Amount { get; set; }
 }
 
 public class DynamicModifier
@@ -77,8 +76,7 @@ public class DynamicModifier
     public string ConditionType { get; set; } = string.Empty; // e.g., "MissingHealthPercent"
     public float ConditionThreshold { get; set; } // e.g., 0.20
     public string TargetStat { get; set; } = string.Empty; // e.g., "maxHp"
-    public float BonusFlat { get; set; }
-    public float BonusPercent { get; set; }
+    public float Amount { get; set; } // Clean and unified!
     public string ConditionStat { get; set; } = string.Empty;
 }
 
@@ -106,6 +104,5 @@ public class LevelUpCardConfig
     public string Name { get; set; } = string.Empty;
     public int Tier { get; set; }
     public string StatName { get; set; } = string.Empty;
-    public float FlatAmount { get; set; }
-    public float PercentAmount { get; set; }
+    public float Amount { get; set; }
 }

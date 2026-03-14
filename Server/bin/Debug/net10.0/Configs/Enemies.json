@@ -7,8 +7,14 @@
     "textureKey": "enemies_sheet",
     "scale": 1.0,
     "iconFrame": 0,
-    "animIdle": [0, 5],
-    "animAttack": [6, 10],
+    "animIdle": [
+      0,
+      5
+    ],
+    "animAttack": [
+      6,
+      10
+    ],
     "attackDuration": 0.5,
     "baseStats": {
       "maxHp": 30,
@@ -26,8 +32,14 @@
     "textureKey": "enemies_sheet",
     "scale": 2.5,
     "iconFrame": 5,
-    "animIdle": [20, 25],
-    "animAttack": [26, 32],
+    "animIdle": [
+      20,
+      25
+    ],
+    "animAttack": [
+      26,
+      32
+    ],
     "attackDuration": 1.2,
     "baseStats": {
       "maxHp": 5000,
@@ -40,8 +52,8 @@
       {
         "conditionType": "MissingHealthPercent",
         "conditionThreshold": 0.50,
-        "targetStat": "speedPercent",
-        "bonusPercent": 0.50
+        "targetStat": "speed",
+        "amount": 30
       }
     ]
   },
@@ -53,8 +65,14 @@
     "textureKey": "enemies_sheet",
     "scale": 0.8,
     "iconFrame": 1,
-    "animIdle": [0, 5],
-    "animAttack": [6, 10],
+    "animIdle": [
+      0,
+      5
+    ],
+    "animAttack": [
+      6,
+      10
+    ],
     "attackDuration": 0.3,
     "baseStats": {
       "maxHp": 15,
@@ -72,8 +90,14 @@
     "textureKey": "enemies_sheet",
     "scale": 1.4,
     "iconFrame": 2,
-    "animIdle": [0, 5],
-    "animAttack": [6, 10],
+    "animIdle": [
+      0,
+      5
+    ],
+    "animAttack": [
+      6,
+      10
+    ],
     "attackDuration": 0.8,
     "baseStats": {
       "maxHp": 120,
@@ -91,8 +115,14 @@
     "textureKey": "enemies_sheet",
     "scale": 1.1,
     "iconFrame": 3,
-    "animIdle": [0, 5],
-    "animAttack": [6, 10],
+    "animIdle": [
+      0,
+      5
+    ],
+    "animAttack": [
+      6,
+      10
+    ],
     "attackDuration": 0.4,
     "baseStats": {
       "maxHp": 50,
@@ -110,8 +140,14 @@
     "textureKey": "enemies_sheet",
     "scale": 1.2,
     "iconFrame": 4,
-    "animIdle": [0, 5],
-    "animAttack": [6, 10],
+    "animIdle": [
+      0,
+      5
+    ],
+    "animAttack": [
+      6,
+      10
+    ],
     "attackDuration": 0.6,
     "baseStats": {
       "maxHp": 80,
@@ -124,13 +160,19 @@
   "goblin_berserker": {
     "id": "goblin_berserker",
     "name": "Goblin Berserker",
-    "tier": 3,
+    "tier": 1,
     "isBoss": false,
     "textureKey": "enemies_sheet",
-    "scale": 1.1,
+    "scale": 4.1,
     "iconFrame": 6,
-    "animIdle": [0, 5],
-    "animAttack": [6, 10],
+    "animIdle": [
+      0,
+      5
+    ],
+    "animAttack": [
+      6,
+      10
+    ],
     "attackDuration": 0.4,
     "baseStats": {
       "maxHp": 90,
@@ -141,14 +183,14 @@
       {
         "conditionType": "MissingHealthPercent",
         "conditionThreshold": 0.50,
-        "targetStat": "speedPercent",
-        "bonusPercent": 0.50
+        "targetStat": "speed",
+        "amount": 400
       },
       {
         "conditionType": "MissingHealthPercent",
         "conditionThreshold": 0.50,
         "targetStat": "meleeDamage",
-        "bonusFlat": 10
+        "amount": 10
       }
     ]
   }
