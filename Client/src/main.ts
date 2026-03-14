@@ -401,8 +401,12 @@ class GameScene extends Phaser.Scene {
 // --- INITIALIZE PHASER ---
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
-  width: 1920,
-  height: 1080,
+  scale: {
+      mode: Phaser.Scale.FIT, // Instantly scales to fit the screen
+      autoCenter: Phaser.Scale.CENTER_BOTH,
+      width: 1920,
+      height: 1080
+  },
   scene: GameScene,
   parent: 'app'
 };

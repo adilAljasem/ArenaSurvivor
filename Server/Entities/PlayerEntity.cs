@@ -11,7 +11,14 @@ public class PlayerEntity
     public string ConnectionId { get; set; } = string.Empty;
     public float X { get; set; }
     public float Y { get; set; }
-    
+
+    public int Level { get; set; } = 1;
+    public float CurrentXp { get; set; }
+    public int PendingLevelUps { get; set; }
+    public List<Configs.LevelUpCardConfig> CurrentLevelUpChoices { get; set; } = new();
+    // The formula for how much XP you need to reach the next level
+    public float GetXpRequirement() => 5 + (Level * 3);
+
     // Physics & Inputs
     public float InputX { get; set; }
     public float InputY { get; set; }
@@ -19,7 +26,7 @@ public class PlayerEntity
     public float AimY { get; set; }
 
     // Active Resource Pool (Changes when you take damage or heal)
-    public float CurrentHp { get; set; } 
+    public float CurrentHp { get; set; }
 
     // Economy & Shop
     public int Gold { get; set; }
@@ -32,7 +39,7 @@ public class PlayerEntity
     // Inventory
     public List<EquippedWeapon> Weapons { get; set; } = new();
     public Dictionary<string, int> OwnedItems { get; set; } = new();
-    
+
     // Mechanics
     public List<string> Traits { get; set; } = new();
     public bool DuplicateNextPurchase { get; set; }
@@ -54,7 +61,7 @@ public class PlayerEntity
                 Stats.InitializeStat(stat.Key, stat.Value);
             }
         }
-        
+
         if (config.Traits != null)
         {
             foreach (var trait in config.Traits) Traits.Add(trait);
@@ -122,5 +129,19 @@ public class PlayerEntity
         }
 
         return (baseStat + dynamicFlat) * (1f + dynamicPercent);
+    }
+
+    // The function that grants XP and checks for level ups!
+    public void GainXp(float amount, Configs.ConfigManager configManager)
+    {
+        float xpBonus = GetTotalStat("xpGainPercent", configManager);
+        CurrentXp += amount * (1f + xpBonus);
+
+        while (CurrentXp >= GetXpRequirement())
+        {
+            CurrentXp -= GetXpRequirement();
+            Level++;
+            PendingLevelUps++; // Stores the level up for the shop phase!
+        }
     }
 }

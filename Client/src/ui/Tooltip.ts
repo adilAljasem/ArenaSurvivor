@@ -6,7 +6,6 @@ export class Tooltip extends Phaser.GameObjects.Container {
     private descText: Phaser.GameObjects.Text;
     private negativeText: Phaser.GameObjects.Text;
 
-    // --- IDENTICAL DATA-DRIVEN DICTIONARY ---
     private getLabel(key: string): string {
         const labels: Record<string, string> = {
             maxHp: "❤️ Max HP",
@@ -26,7 +25,8 @@ export class Tooltip extends Phaser.GameObjects.Container {
             critMultiplier: "✖️ Crit Multiplier",
             knockback: "💨 Knockback",
             pierceCount: "🏹 Pierces",
-            bounceCount: "🪃 Bounces"
+            bounceCount: "🪃 Bounces",
+            attackSpeedPercent: "⚡ % Attack Speed", xpGainPercent: "🧠 % XP Gain",
         };
         return labels[key] || `❓ ${key}`;
     }
@@ -50,36 +50,34 @@ export class Tooltip extends Phaser.GameObjects.Container {
         scene.add.existing(this);
     }
 
-    public show(config: any, x: number, y: number, stackCount: number = 1) { // <-- ADD stackCount
+    public show(config: any, x: number, y: number, stackCount: number = 1) { 
         if (!config) return;
         this.titleText.setText(config.name);
 
         let posStr = `Tier: ${config.tier || 1}\n`;
         let negStr = '';
 
-        if (config.damage) {
-            // >>> SMART WEAPON LABELS <<<
-            let dmgLabel = "⚔️ Base Dmg";
+        // >>> FIX: TYPED BASE DAMAGE WITH LEVEL MULTIPLIERS <<<
+        if (config.meleeDamage || config.rangedDamage || config.elementalDamage) {
+            
+            if (config.meleeDamage) posStr += `🗡️ Base Melee: ${config.meleeDamage * stackCount}\n`;
+            if (config.rangedDamage) posStr += `🏹 Base Ranged: ${config.rangedDamage * stackCount}\n`;
+            if (config.elementalDamage) posStr += `🔥 Base Elemental: ${config.elementalDamage * stackCount}\n`;
+            
             if (config.damageScaling) {
-                if (config.damageScaling["rangedDamage"]) dmgLabel = "🏹 Ranged Dmg";
-                else if (config.damageScaling["meleeDamage"]) dmgLabel = "🗡️ Melee Dmg";
-                else if (config.damageScaling["elementalDamage"]) dmgLabel = "🔥 Elemental Dmg";
+                const scales = Object.entries(config.damageScaling).map(([k, v]) => `${(v as number)*100}% of ${this.getLabel(k)}`);
+                if (scales.length > 0) {
+                    posStr += `📈 Scales with: ${scales.join(', ')}\n`;
+                }
             }
-            // Show multiplied damage for leveled weapons
-            posStr += `${dmgLabel}: ${config.damage * stackCount}`;
-
-            if (config.damageScaling) {
-                const scales = Object.entries(config.damageScaling).map(([k, v]) => `${(v as number) * 100}% ${this.getLabel(k)}`);
-                if (scales.length > 0) posStr += ` (+${scales.join(', ')})`;
-            }
-            posStr += `\n⏱️ CD: ${config.cooldownSeconds}s\n`;
+            posStr += `⏱️ CD: ${config.cooldownSeconds}s\n`;
+            if (config.range) posStr += `📏 Range: ${config.range}\n`;
         }
 
         if (config.mechanics) {
             Object.entries(config.mechanics).forEach(([k, v]) => posStr += `${this.getLabel(k)}: ${this.formatVal(k, (v as number) * stackCount)}\n`);
         }
 
-        // MULTIPLY PASSIVE BONUSES
         if (config.statBonuses) {
             Object.entries(config.statBonuses).forEach(([k, v]) => {
                 const num = (v as number) * stackCount;
@@ -88,7 +86,6 @@ export class Tooltip extends Phaser.GameObjects.Container {
             });
         }
 
-        // MULTIPLY WAVE END EFFECTS
         if (config.effectsAtWaveEnd) {
             config.effectsAtWaveEnd.forEach((e: any) => {
                 const isPct = e.percentAmount !== 0;
@@ -98,7 +95,6 @@ export class Tooltip extends Phaser.GameObjects.Container {
             });
         }
 
-        // 5. Dynamic Modifiers
         if (config.dynamicModifiers) {
             config.dynamicModifiers.forEach((m: any) => {
                 const isPct = m.bonusPercent !== 0;
@@ -107,27 +103,24 @@ export class Tooltip extends Phaser.GameObjects.Container {
             });
         }
 
-        // 6. Traits & Purchase Effects
         if (config.effectsOnPurchase) config.effectsOnPurchase.forEach((e: string) => posStr += `🔹 ${e}\n`);
         if (config.traits) config.traits.forEach((t: string) => {
             if (t === "CannotHeal") negStr += `(You can't heal in any way)\n`;
             else posStr += `🔹 ${t}\n`;
         });
 
-        // Apply text
         this.descText.setText(posStr.trim());
         this.negativeText.setText(negStr.trim());
         this.negativeText.setY(this.descText.y + this.descText.displayHeight + (posStr ? 5 : 0));
 
-        // Resize background dynamically
         const totalTextHeight = this.descText.displayHeight + (negStr ? this.negativeText.displayHeight + 5 : 0);
         this.bg.height = Math.max(80, 40 + totalTextHeight + 10);
 
-        // Keep inside screen bounds
+        // Uses the dynamic scene scale bounds!
         let targetX = x + 15;
         let targetY = y + 15;
-        if (targetX + this.bg.width > 1280) targetX = x - this.bg.width - 5;
-        if (targetY + this.bg.height > 720) targetY = y - this.bg.height - 5;
+        if (targetX + this.bg.width > this.scene.scale.width) targetX = x - this.bg.width - 5;
+        if (targetY + this.bg.height > this.scene.scale.height) targetY = y - this.bg.height - 5;
 
         this.setPosition(targetX, targetY);
         this.setVisible(true);

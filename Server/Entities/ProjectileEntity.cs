@@ -9,6 +9,6 @@ public class ProjectileEntity
     public float VelX { get; set; }
     public float VelY { get; set; }
     public float Damage { get; set; }
-    public float DistanceTraveled { get; set; }
     public float MaxRange { get; set; }
+    public float LifeStealChance { get; set; }
 }

@@ -7,14 +7,8 @@
     "textureKey": "enemies_sheet",
     "scale": 1.0,
     "iconFrame": 0,
-    "animIdle": [
-      0,
-      5
-    ],
-    "animAttack": [
-      6,
-      10
-    ],
+    "animIdle": [0, 5],
+    "animAttack": [6, 10],
     "attackDuration": 0.5,
     "baseStats": {
       "maxHp": 30,
@@ -32,14 +26,8 @@
     "textureKey": "enemies_sheet",
     "scale": 2.5,
     "iconFrame": 5,
-    "animIdle": [
-      20,
-      25
-    ],
-    "animAttack": [
-      26,
-      32
-    ],
+    "animIdle": [20, 25],
+    "animAttack": [26, 32],
     "attackDuration": 1.2,
     "baseStats": {
       "maxHp": 5000,
@@ -54,6 +42,113 @@
         "conditionThreshold": 0.50,
         "targetStat": "speedPercent",
         "bonusPercent": 0.50
+      }
+    ]
+  },
+  "cave_bat": {
+    "id": "cave_bat",
+    "name": "Cave Bat",
+    "tier": 1,
+    "isBoss": false,
+    "textureKey": "enemies_sheet",
+    "scale": 0.8,
+    "iconFrame": 1,
+    "animIdle": [0, 5],
+    "animAttack": [6, 10],
+    "attackDuration": 0.3,
+    "baseStats": {
+      "maxHp": 15,
+      "speed": 140,
+      "meleeDamage": 3,
+      "dodge": 0.20
+    },
+    "dynamicModifiers": []
+  },
+  "orc_bruiser": {
+    "id": "orc_bruiser",
+    "name": "Orc Bruiser",
+    "tier": 2,
+    "isBoss": false,
+    "textureKey": "enemies_sheet",
+    "scale": 1.4,
+    "iconFrame": 2,
+    "animIdle": [0, 5],
+    "animAttack": [6, 10],
+    "attackDuration": 0.8,
+    "baseStats": {
+      "maxHp": 120,
+      "speed": 55,
+      "meleeDamage": 15,
+      "armor": 3
+    },
+    "dynamicModifiers": []
+  },
+  "vampire_spawn": {
+    "id": "vampire_spawn",
+    "name": "Vampire Spawn",
+    "tier": 2,
+    "isBoss": false,
+    "textureKey": "enemies_sheet",
+    "scale": 1.1,
+    "iconFrame": 3,
+    "animIdle": [0, 5],
+    "animAttack": [6, 10],
+    "attackDuration": 0.4,
+    "baseStats": {
+      "maxHp": 50,
+      "speed": 100,
+      "meleeDamage": 8,
+      "lifeSteal": 0.10
+    },
+    "dynamicModifiers": []
+  },
+  "troll_runt": {
+    "id": "troll_runt",
+    "name": "Troll Runt",
+    "tier": 2,
+    "isBoss": false,
+    "textureKey": "enemies_sheet",
+    "scale": 1.2,
+    "iconFrame": 4,
+    "animIdle": [0, 5],
+    "animAttack": [6, 10],
+    "attackDuration": 0.6,
+    "baseStats": {
+      "maxHp": 80,
+      "speed": 65,
+      "meleeDamage": 10,
+      "hpRegen": 2
+    },
+    "dynamicModifiers": []
+  },
+  "goblin_berserker": {
+    "id": "goblin_berserker",
+    "name": "Goblin Berserker",
+    "tier": 3,
+    "isBoss": false,
+    "textureKey": "enemies_sheet",
+    "scale": 1.1,
+    "iconFrame": 6,
+    "animIdle": [0, 5],
+    "animAttack": [6, 10],
+    "attackDuration": 0.4,
+    "baseStats": {
+      "maxHp": 90,
+      "speed": 80,
+      "meleeDamage": 12
+    },
+    "dynamicModifiers": [
+      {
+        "conditionType": "MissingHealthPercent",
+        "conditionThreshold": 0.50,
+        "targetStat": "speedPercent",
+        "bonusPercent": 0.50
+      },
+      {
+        "conditionType": "MissingHealthPercent",
+        "conditionThreshold": 0.50,
+        "targetStat": "meleeDamage",
+        "bonusFlat": 10
       }
     ]
   }

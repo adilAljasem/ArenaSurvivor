@@ -93,6 +93,15 @@ public class GameHub : Hub
 
     private async Task SendPlayerUI(PlayerEntity player)
     {
+        // Generate choices if they leveled up!
+        if (player.PendingLevelUps > 0 && player.CurrentLevelUpChoices.Count == 0)
+        {
+            player.CurrentLevelUpChoices = _configManager.LevelUpCards.Values
+                .OrderBy(x => Random.Shared.Next())
+                .Take(3)
+                .ToList();
+        }
+
         var uiData = new
         {
             player.Gold,
@@ -102,7 +111,13 @@ public class GameHub : Hub
             CurrentRerollCost = player.CurrentRerollCost,
             CurrentWave = _gameState.CurrentWave,
 
-            // >>> NEW: Automatically calculates and sends all 15 stats <<<
+            // >>> NEW: Send leveling data to the UI <<<
+            Level = player.Level,
+            CurrentXp = player.CurrentXp,
+            XpRequired = player.GetXpRequirement(),
+            PendingLevelUps = player.PendingLevelUps,
+            LevelUpChoices = player.CurrentLevelUpChoices,
+
             Stats = _configManager.AllStats.ToDictionary(k => k, k => player.GetTotalStat(k, _configManager))
         };
         await Clients.Caller.SendAsync("UpdatePlayerUI", uiData);
@@ -168,6 +183,26 @@ public class GameHub : Hub
                     player.Weapons.Add(new Server.Entities.EquippedWeapon { ConfigId = configId, SlotIndex = nextSlot, Level = 1 });
                     player.CurrentShop.Remove(shopItem);
                     await SendPlayerUI(player);
+                }
+            }
+        }
+    }
+
+    public async Task SelectLevelUpStat(string cardId)
+    {
+        if (_gameState.Players.TryGetValue(Context.ConnectionId, out var player))
+        {
+            if (player.PendingLevelUps > 0)
+            {
+                var card = player.CurrentLevelUpChoices.FirstOrDefault(c => c.Id == cardId);
+                if (card != null)
+                {
+                    // Applies the stat globally and permanently!
+                    player.Stats.AddModifier(card.StatName, card.FlatAmount, card.PercentAmount);
+                    player.PendingLevelUps--;
+                    player.CurrentLevelUpChoices.Clear();
+                    
+                    await SendPlayerUI(player); // Recursively sends new cards if they leveled up multiple times!
                 }
             }
         }

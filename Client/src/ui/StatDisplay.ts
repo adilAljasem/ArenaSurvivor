@@ -9,7 +9,8 @@ export class StatDisplay extends Phaser.GameObjects.Container {
         damagePercent: "💥 % Damage", meleeDamage: "🗡️ Melee Dmg", rangedDamage: "🏹 Ranged Dmg",
         elementalDamage: "🔥 Elemental Dmg", speed: "💨 Speed", speedPercent: "💨 % Speed",
         range: "📏 Range", engineering: "🔧 Engineering", armor: "🛡️ Armor",
-        dodge: "👻 % Dodge", luck: "🍀 Luck", harvesting: "🌾 Harvesting"
+        dodge: "👻 % Dodge", luck: "🍀 Luck", harvesting: "🌾 Harvesting",
+        attackSpeedPercent: "⚡ % Attack Speed", xpGainPercent: "🧠 % XP Gain",
     };
 
     // >>> FIX: Automatically attach the ❓ fallback for unknown stats! <<<

@@ -9,6 +9,7 @@ public class ConfigManager
     public Dictionary<string, ItemConfig> Items { get; private set; } = new();
     public Dictionary<string, CharacterConfig> Characters { get; private set; } = new();
     public List<string> AllStats { get; private set; } = new();
+    public Dictionary<string, LevelUpCardConfig> LevelUpCards { get; private set; } = new();
     public void LoadConfigs()
     {
         // Reads the JSON file into memory
@@ -52,6 +53,15 @@ public class ConfigManager
             var statsJson = File.ReadAllText("Configs/Stats.json");
             AllStats = System.Text.Json.JsonSerializer.Deserialize<List<string>>(statsJson) ?? new();
             Console.WriteLine($"Loaded {AllStats.Count} Master Stats.");
+        }
+
+        if (File.Exists("Configs/LevelUpCards.json"))
+        {
+            var lvlJson = File.ReadAllText("Configs/LevelUpCards.json");
+            LevelUpCards = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, LevelUpCardConfig>>(
+                lvlJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+            ) ?? new();
+            Console.WriteLine($"Loaded {LevelUpCards.Count} Level Up Cards.");
         }
     }
 }

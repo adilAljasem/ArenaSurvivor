@@ -187,23 +187,31 @@ public class GameLoop : BackgroundService
 
                     if (length > 0)
                     {
-                        // >>> NEW: CALCULATE FINAL DAMAGE AND RANGE <<<
-                        float finalDamage = config.Damage;
+                        float attackSpeedPct = player.GetTotalStat("attackSpeedPercent", _configManager);
+                        weapon.CurrentCooldown = config.CooldownSeconds / Math.Max(0.1f, (1f + attackSpeedPct));
+                        // 1. DAMAGE: Weapon Base Damage + Player Stat Scaling
+                        float finalDamage = config.MeleeDamage + config.RangedDamage + config.ElementalDamage;
 
-                        // 1. Add Flat Damage Scaling (e.g., +50% of your Ranged Damage stat)
                         if (config.DamageScaling != null)
                         {
                             foreach (var scale in config.DamageScaling)
                             {
+                                // Adds the Player's Global Stat (e.g. Melee Damage) * The Weapon's Scaling multiplier
                                 finalDamage += player.GetTotalStat(scale.Key, _configManager) * scale.Value;
                             }
                         }
 
-                        // 2. Multiply by Weapon Level and Global % Damage
+                        // Apply Global % Damage Multiplier
                         float damagePercent = player.GetTotalStat("damagePercent", _configManager);
                         finalDamage = (finalDamage * weapon.Level) * (1f + damagePercent);
 
-                        // 3. Apply Global Range stat
+                        // 2. LIFE STEAL: Weapon Local Mechanics + Player Global Life Steal
+                        float localLifeSteal = config.Mechanics != null && config.Mechanics.ContainsKey("lifeSteal")
+                                               ? config.Mechanics["lifeSteal"] : 0f;
+                        float globalLifeSteal = player.GetTotalStat("lifeSteal", _configManager);
+                        float totalLifeStealForThisAttack = localLifeSteal + globalLifeSteal;
+
+                        // 3. RANGE: Weapon Base + Player Global Range
                         float finalRange = config.Range + player.GetTotalStat("range", _configManager);
 
                         var bullet = new ProjectileEntity
@@ -214,7 +222,8 @@ public class GameLoop : BackgroundService
                             VelX = (dirX / length) * config.ProjectileSpeed,
                             VelY = (dirY / length) * config.ProjectileSpeed,
                             Damage = finalDamage,
-                            MaxRange = finalRange
+                            MaxRange = finalRange,
+                            LifeStealChance = totalLifeStealForThisAttack // Assign it to the bullet!
                         };
                         _gameState.Projectiles.TryAdd(bullet.Id, bullet);
                     }
@@ -230,15 +239,14 @@ public class GameLoop : BackgroundService
         var enemiesToRemove = new List<string>();
         var pickupsToRemove = new List<string>();
 
-
         // 1. Projectiles vs Enemies
         foreach (var proj in _gameState.Projectiles.Values)
         {
             proj.X += proj.VelX * dt;
             proj.Y += proj.VelY * dt;
-            proj.DistanceTraveled += Math.Abs(proj.VelX * dt) + Math.Abs(proj.VelY * dt);
+            proj.MaxRange -= (float)Math.Sqrt((proj.VelX * dt) * (proj.VelX * dt) + (proj.VelY * dt) * (proj.VelY * dt));
 
-            if (proj.DistanceTraveled >= proj.MaxRange)
+            if (proj.MaxRange <= 0)
             {
                 projectilesToRemove.Add(proj.Id);
                 continue;
@@ -250,12 +258,22 @@ public class GameLoop : BackgroundService
                 if (enemy.CurrentHp <= 0) continue;
 
                 float distSq = (proj.X - enemy.X) * (proj.X - enemy.X) + (proj.Y - enemy.Y) * (proj.Y - enemy.Y);
-                if (distSq < 400)
+                if (distSq < 400) // Collision detected!
                 {
                     enemy.CurrentHp -= proj.Damage;
                     projectilesToRemove.Add(proj.Id);
 
                     tickDamageEvents.Add(new Server.DTOs.DamageEventDto { X = enemy.X, Y = enemy.Y, Amount = proj.Damage });
+
+                    // >>> NEW: LOCAL WEAPON LIFE STEAL LOGIC <<<
+                    if (Random.Shared.NextDouble() < proj.LifeStealChance)
+                    {
+                        if (_gameState.Players.TryGetValue(proj.OwnerId, out var player))
+                        {
+                            float maxHp = player.GetTotalStat("maxHp", _configManager);
+                            player.CurrentHp = Math.Min(maxHp, player.CurrentHp + 1f);
+                        }
+                    }
 
                     if (enemy.CurrentHp <= 0)
                     {
@@ -263,7 +281,8 @@ public class GameLoop : BackgroundService
                         var gold = new PickupEntity { X = enemy.X, Y = enemy.Y, Value = 1 };
                         _gameState.Pickups.TryAdd(gold.Id, gold);
                     }
-                    break;
+
+                    break; // Stop checking other enemies for this specific bullet
                 }
             }
         }
@@ -279,6 +298,10 @@ public class GameLoop : BackgroundService
                 if (distSq < 625)
                 {
                     player.Gold += pickup.Value;
+
+                    // >>> NEW: Grant XP whenever you pick up a drop! <<<
+                    player.GainXp(pickup.Value, _configManager);
+
                     pickupsToRemove.Add(pickup.Id);
                 }
             }

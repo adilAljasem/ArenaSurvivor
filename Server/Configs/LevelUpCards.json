@@ -1,0 +1,42 @@
+{
+    "brawn_1": {
+        "id": "brawn_1",
+        "name": "Brawn",
+        "tier": 1,
+        "statName": "meleeDamage",
+        "flatAmount": 2,
+        "percentAmount": 0
+    },
+    "swiftness_1": {
+        "id": "swiftness_1",
+        "name": "Swiftness",
+        "tier": 1,
+        "statName": "attackSpeedPercent",
+        "flatAmount": 0.05,
+        "percentAmount": 0
+    },
+    "learner_1": {
+        "id": "learner_1",
+        "name": "Learner",
+        "tier": 1,
+        "statName": "xpGainPercent",
+        "flatAmount": 0.10,
+        "percentAmount": 0
+    },
+    "vitality_2": {
+        "id": "vitality_2",
+        "name": "Vitality",
+        "tier": 2,
+        "statName": "maxHp",
+        "flatAmount": 8,
+        "percentAmount": 0
+    },
+    "fury_3": {
+        "id": "fury_3",
+        "name": "Fury",
+        "tier": 3,
+        "statName": "damagePercent",
+        "flatAmount": 0.10,
+        "percentAmount": 0
+    }
+}

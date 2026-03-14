@@ -13,6 +13,7 @@ export class ShopUI extends Phaser.GameObjects.Container {
     private rerollText: Phaser.GameObjects.Text;
     private connection: HubConnection;
     private tooltip: Tooltip;
+    private levelUpContainer: Phaser.GameObjects.Container; // Add to properties
 
     private getLabel(key: string): string {
         const labels: Record<string, string> = {
@@ -22,7 +23,7 @@ export class ShopUI extends Phaser.GameObjects.Container {
             engineering: "🔧 Engineering", armor: "🛡️ Armor", luck: "🍀 Luck",
             harvesting: "🌾 Harvesting", dodge: "👻 % Dodge", critChance: "💥 Crit Chance",
             critMultiplier: "✖️ Crit Multiplier", knockback: "💨 Knockback",
-            pierceCount: "🏹 Pierces", bounceCount: "🪃 Bounces"
+            pierceCount: "🏹 Pierces", bounceCount: "🪃 Bounces", attackSpeedPercent: "⚡ % Attack Speed", xpGainPercent: "🧠 % XP Gain",
         };
         return labels[key] || `❓ ${key}`;
     }
@@ -36,10 +37,13 @@ export class ShopUI extends Phaser.GameObjects.Container {
         super(scene, 0, 0);
         this.connection = connection;
 
-        const overlay = scene.add.rectangle(0, 0, 1280, 720, 0x000000, 0.85).setOrigin(0, 0);
+        // >>> FIX: Use the scene's dynamic scale instead of hardcoded 1280x720 <<<
+        const overlay = scene.add.rectangle(0, 0, scene.scale.width, scene.scale.height, 0x000000, 0.85).setOrigin(0, 0);
         this.add(overlay);
 
-        // UI Polish: Removed duplicate gold counter
+        this.levelUpContainer = scene.add.container(120, 100);
+        this.add(this.levelUpContainer);
+
         this.headerText = scene.add.text(40, 20, 'Shop (Wave 1)', { fontSize: '32px', color: '#ffffff', fontStyle: 'bold' });
         this.add(this.headerText);
 
@@ -68,6 +72,51 @@ export class ShopUI extends Phaser.GameObjects.Container {
     public updateUIData(uiData: any, atlasConfigs: any) {
         if (!uiData) return;
 
+        this.statDisplay.updateStats(uiData.stats);
+        this.inventoryDisplay.updateInventory(uiData.weapons, uiData.ownedItems, atlasConfigs);
+        this.shopCardsContainer.removeAll(true);
+        this.levelUpContainer.removeAll(true);
+
+        // >>> NEW: THE LEVEL-UP INTERCEPTOR <<<
+        if (uiData.pendingLevelUps > 0) {
+            this.shopCardsContainer.setVisible(false);
+            this.rerollButtonContainer.setVisible(false);
+            this.levelUpContainer.setVisible(true);
+
+            this.headerText.setText(`LEVEL UP! (x${uiData.pendingLevelUps})`);
+            this.headerText.setColor('#00ff00');
+
+            uiData.levelUpChoices.forEach((card: any, index: number) => {
+                const cardX = index * 280;
+                const cardBg = this.scene.add.rectangle(cardX, 0, 240, 300, 0x1a1a1a).setOrigin(0, 0).setStrokeStyle(3, 0xffd700);
+                cardBg.setInteractive({ useHandCursor: true });
+                cardBg.on('pointerdown', () => this.connection.invoke("SelectLevelUpStat", card.id).catch((err: any) => console.error(err)));
+                cardBg.on('pointerover', () => cardBg.setStrokeStyle(3, 0xffffff));
+                cardBg.on('pointerout', () => cardBg.setStrokeStyle(3, 0xffd700));
+
+                const nameText = this.scene.add.text(cardX + 120, 50, card.name, { fontSize: '24px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
+                const tierText = this.scene.add.text(cardX + 120, 80, `Tier ${card.tier}`, { fontSize: '16px', color: '#aaa' }).setOrigin(0.5);
+
+                // >>> FIX: Let formatVal handle the percentage conversion! <<<
+                let valStr = "";
+                if (card.percentAmount !== 0) {
+                    valStr = `+${Math.round(card.percentAmount * 100)}%`;
+                } else {
+                    valStr = `+${this.formatVal(card.statName, card.flatAmount)}`;
+                }
+
+                const statText = this.scene.add.text(cardX + 120, 150, `${valStr}\n${this.getLabel(card.statName)}`, { fontSize: '20px', color: '#00ff00', fontStyle: 'bold', align: 'center' }).setOrigin(0.5);
+                
+                this.levelUpContainer.add([cardBg, nameText, tierText, statText]);
+            });
+            return; // EXIT FUNCTION EARLY! Do not render the shop items.
+        }
+
+        // --- NORMAL SHOP RENDER CODE ---
+        this.levelUpContainer.setVisible(false);
+        this.shopCardsContainer.setVisible(true);
+        this.rerollButtonContainer.setVisible(true);
+
         this.headerText.setText(`Shop (Wave ${uiData.currentWave})`);
         const cost = uiData.currentRerollCost || 2;
         this.rerollText.setText(`REROLL - 💰 ${cost}`);
@@ -85,7 +134,7 @@ export class ShopUI extends Phaser.GameObjects.Container {
             cardBg.setInteractive({ useHandCursor: true });
 
             let config = undefined;
-            let isWeapon = false; // <<< NEW: Identify if it is a weapon
+            let isWeapon = false;
 
             if (atlasConfigs?.items && atlasConfigs.items[item.configId]) {
                 config = atlasConfigs.items[item.configId];
@@ -94,9 +143,6 @@ export class ShopUI extends Phaser.GameObjects.Container {
                 isWeapon = true;
             }
 
-            // --- UI POLISH: THE CLEAN CARD HEADER ---
-
-            // 1. Image firmly locked to the left side
             if (config && config.textureKey) {
                 const icon = this.scene.add.sprite(cardX + 40, 45, config.textureKey);
                 if (config.iconFrame !== undefined) icon.setFrame(config.iconFrame);
@@ -104,37 +150,30 @@ export class ShopUI extends Phaser.GameObjects.Container {
                 this.shopCardsContainer.add(icon);
             }
 
-            // 2. Name printed next to the image
             const nameText = this.scene.add.text(cardX + 75, 30, item.name || "Unknown", { fontSize: '18px', color: '#fff', fontStyle: 'bold' }).setOrigin(0, 0.5);
-
-            // 3. Item/Weapon Type printed under the name
             const typeStr = isWeapon ? "Weapon" : "Item";
             const typeColor = isWeapon ? '#ffaaaa' : '#aaaaff';
             const typeText = this.scene.add.text(cardX + 75, 50, typeStr, { fontSize: '14px', color: typeColor, fontStyle: 'italic' }).setOrigin(0, 0.5);
-
-            // 4. A clean graphical divider line
             const divider = this.scene.add.rectangle(cardX + 120, 75, 220, 2, 0x333333).setOrigin(0.5);
 
-            // --- BUILD STAT STRINGS ---
             let posStr = `Tier: ${config?.tier || 1}\n`;
             let negStr = '';
 
             if (config) {
-                if (config.damage) {
-                    // >>> SMART WEAPON LABELS <<<
-                    let dmgLabel = "⚔️ Base Dmg";
-                    if (config.damageScaling) {
-                        if (config.damageScaling["rangedDamage"]) dmgLabel = "🏹 Ranged Dmg";
-                        else if (config.damageScaling["meleeDamage"]) dmgLabel = "🗡️ Melee Dmg";
-                        else if (config.damageScaling["elementalDamage"]) dmgLabel = "🔥 Elemental Dmg";
-                    }
-                    posStr += `${dmgLabel}: ${config.damage}`;
+                // >>> FIX: TYPED BASE DAMAGE <<<
+                if (config.meleeDamage || config.rangedDamage || config.elementalDamage) {
+
+                    if (config.meleeDamage) posStr += `🗡️ Base Melee: ${config.meleeDamage}\n`;
+                    if (config.rangedDamage) posStr += `🏹 Base Ranged: ${config.rangedDamage}\n`;
+                    if (config.elementalDamage) posStr += `🔥 Base Elemental: ${config.elementalDamage}\n`;
 
                     if (config.damageScaling) {
-                        const scales = Object.entries(config.damageScaling).map(([k, v]) => `${(v as number) * 100}% ${this.getLabel(k)}`);
-                        if (scales.length > 0) posStr += ` (+${scales.join(', ')})`;
+                        const scales = Object.entries(config.damageScaling).map(([k, v]) => `${(v as number) * 100}% of ${this.getLabel(k)}`);
+                        if (scales.length > 0) {
+                            posStr += `📈 Scales with: ${scales.join(', ')}\n`;
+                        }
                     }
-                    posStr += `\n⏱️ CD: ${config.cooldownSeconds}s\n`;
+                    posStr += `⏱️ CD: ${config.cooldownSeconds}s\n`;
                     if (config.range) posStr += `📏 Range: ${config.range}\n`;
                 }
 
@@ -170,13 +209,10 @@ export class ShopUI extends Phaser.GameObjects.Container {
                 });
             }
 
-            // Moved the text down slightly to fit the new header and divider
             const posTextObj = this.scene.add.text(cardX + 10, 85, posStr.trim(), { fontSize: '13px', color: '#bbbbbb', wordWrap: { width: 220 } }).setOrigin(0, 0);
             const negTextObj = this.scene.add.text(cardX + 10, 85 + posTextObj.height + 4, negStr.trim(), { fontSize: '13px', color: '#ff4444', wordWrap: { width: 220 } }).setOrigin(0, 0);
 
-            // --- BUY AND LOCK BUTTONS ---
             const buyBtnBg = this.scene.add.rectangle(cardX + 120, 340, 160, 45, 0x44aa44).setOrigin(0.5);
-            // UI Polish: Merged price and buy button text
             const buyText = this.scene.add.text(cardX + 120, 340, `BUY - 💰 ${item.price}`, { fontSize: '18px', fontStyle: 'bold' }).setOrigin(0.5);
 
             buyBtnBg.setInteractive({ useHandCursor: true });

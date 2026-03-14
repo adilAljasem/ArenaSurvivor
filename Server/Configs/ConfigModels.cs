@@ -6,10 +6,10 @@ public class CharacterConfig
     public string Name { get; set; } = string.Empty;
     public string TextureKey { get; set; } = string.Empty;
     public int IconFrame { get; set; }
-    
+
     // Starting stats: "maxHp": 150, "speed": 180, "dodge": 0.15
     public Dictionary<string, float> BaseStats { get; set; } = new();
-    
+
     // Built-in character traits: "CannotHeal", "MoreEnemies"
     public List<string> Traits { get; set; } = new();
 }
@@ -18,12 +18,12 @@ public class EnemyConfig
 {
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
-    public int Tier { get; set; } 
-    public bool IsBoss { get; set; } 
+    public int Tier { get; set; }
+    public bool IsBoss { get; set; }
     public string TextureKey { get; set; } = string.Empty;
     public float Scale { get; set; } = 1.0f;
     public int IconFrame { get; set; }
-    
+
     // Animation data
     public int[] AnimIdle { get; set; } = Array.Empty<int>();
     public int[] AnimAttack { get; set; } = Array.Empty<int>();
@@ -42,25 +42,27 @@ public class WeaponConfig
     public string Name { get; set; } = string.Empty;
     public int Tier { get; set; }
     public float CooldownSeconds { get; set; }
-    public float Damage { get; set; }
+    public float MeleeDamage { get; set; }
+    public float RangedDamage { get; set; }
+    public float ElementalDamage { get; set; }
     public float ProjectileSpeed { get; set; }
     public float Range { get; set; }
-    
+
     public string TextureKey { get; set; } = string.Empty;
     public int IconFrame { get; set; }
 
     // 2. THE DATA-DRIVEN RPG SYSTEMS
     // Any weapon-specific stat goes here: "critChance", "knockback", "pierce", "burnDamage"
-    public Dictionary<string, float> Mechanics { get; set; } = new(); 
-    
+    public Dictionary<string, float> Mechanics { get; set; } = new();
+
     // Stats given globally to the player while holding it: "maxHp", "speed"
     public Dictionary<string, float> StatBonuses { get; set; } = new();
-    
+
     // How the base damage scales with player stats
     public Dictionary<string, float> DamageScaling { get; set; } = new();
-    
+
     // Text-based behaviors: "ExplodesOnImpact", "Homing"
-    public List<string> Traits { get; set; } = new(); 
+    public List<string> Traits { get; set; } = new();
 }
 
 public class WaveEndEffect
@@ -96,4 +98,14 @@ public class ItemConfig
     public List<DynamicModifier> DynamicModifiers { get; set; } = new();
     public List<string> EffectsOnPurchase { get; set; } = new();
     public Dictionary<string, float> StatBonuses { get; set; } = new();
+}
+
+public class LevelUpCardConfig
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public int Tier { get; set; }
+    public string StatName { get; set; } = string.Empty;
+    public float FlatAmount { get; set; }
+    public float PercentAmount { get; set; }
 }
