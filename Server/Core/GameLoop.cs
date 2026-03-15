@@ -20,6 +20,23 @@ public class GameLoop : BackgroundService
         _gameState = gameState;
         _configManager = configManager;
         _configManager.LoadConfigs(); // Load JSON on startup
+
+        // >>> NEW: Listen for Hot Reloads and push to all connected players! <<<
+        _configManager.OnConfigsReloaded += async () =>
+        {
+            // Re-package the entire Master Config dictionary
+            var payload = new
+            {
+                enemies = _configManager.Enemies,
+                projectiles = _configManager.Projectiles,
+                weapons = _configManager.Weapons,
+                items = _configManager.Items,
+                characters = _configManager.Characters
+            };
+
+            // Blast it to every active browser window!
+            await _hubContext.Clients.All.SendAsync("ReceiveHandshake", payload);
+        };
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -186,6 +203,7 @@ public class GameLoop : BackgroundService
                     {
                         float attackSpeedPct = player.GetTotalStat("attackSpeedPercent", _configManager);
                         weapon.CurrentCooldown = config.CooldownSeconds / Math.Max(0.1f, (1f + attackSpeedPct));
+
                         // 1. DAMAGE: Weapon Base Damage + Player Stat Scaling
                         float finalDamage = config.MeleeDamage + config.RangedDamage + config.ElementalDamage;
 
@@ -193,7 +211,6 @@ public class GameLoop : BackgroundService
                         {
                             foreach (var scale in config.DamageScaling)
                             {
-                                // Adds the Player's Global Stat (e.g. Melee Damage) * The Weapon's Scaling multiplier
                                 finalDamage += player.GetTotalStat(scale.Key, _configManager) * scale.Value;
                             }
                         }
@@ -211,18 +228,32 @@ public class GameLoop : BackgroundService
                         // 3. RANGE: Weapon Base + Player Global Range
                         float finalRange = config.Range + player.GetTotalStat("range", _configManager);
 
-                        var bullet = new ProjectileEntity
+                        // >>> THE PROJECTILE LOOKUP & SPEED MATH <<<
+                        string projId = config.ProjectileId ?? "9mm_bullet";
+                        if (_configManager.Projectiles.TryGetValue(projId, out var projConfig))
                         {
-                            OwnerId = player.ConnectionId,
-                            X = spawnX,
-                            Y = spawnY,
-                            VelX = (dirX / length) * config.ProjectileSpeed,
-                            VelY = (dirY / length) * config.ProjectileSpeed,
-                            Damage = finalDamage,
-                            MaxRange = finalRange,
-                            LifeStealChance = totalLifeStealForThisAttack // Assign it to the bullet!
-                        };
-                        _gameState.Projectiles.TryAdd(bullet.Id, bullet);
+                            float speedMultiplier = 1f + player.GetTotalStat("projectileSpeedPercent", _configManager);
+                            float finalSpeed = projConfig.BaseSpeed * speedMultiplier;
+
+                            var bullet = new ProjectileEntity
+                            {
+                                ConfigId = projConfig.Id,
+                                OwnerId = player.ConnectionId,
+                                X = spawnX,
+                                Y = spawnY,
+                                VelX = (dirX / length) * finalSpeed,
+                                VelY = (dirY / length) * finalSpeed,
+                                Damage = finalDamage,
+                                LifeStealChance = totalLifeStealForThisAttack,
+
+                                // >>> PURE, EXPLICIT MATH <<<
+                                HitRadius = projConfig.HitRadius,
+
+                                PierceCount = projConfig.PierceCount,
+                                Lifespan = finalSpeed > 0 ? (finalRange / finalSpeed) : 0.15f
+                            };
+                            _gameState.Projectiles.TryAdd(bullet.Id, bullet);
+                        }
                     }
                 }
             }
@@ -239,11 +270,15 @@ public class GameLoop : BackgroundService
         // 1. Projectiles vs Enemies
         foreach (var proj in _gameState.Projectiles.Values)
         {
+            // Remember where the bullet WAS before we move it
+            float prevX = proj.X;
+            float prevY = proj.Y;
+
             proj.X += proj.VelX * dt;
             proj.Y += proj.VelY * dt;
-            proj.MaxRange -= (float)Math.Sqrt((proj.VelX * dt) * (proj.VelX * dt) + (proj.VelY * dt) * (proj.VelY * dt));
+            proj.Lifespan -= dt;
 
-            if (proj.MaxRange <= 0)
+            if (proj.Lifespan <= 0)
             {
                 projectilesToRemove.Add(proj.Id);
                 continue;
@@ -253,22 +288,45 @@ public class GameLoop : BackgroundService
             {
                 if (enemiesToRemove.Contains(enemy.Id)) continue;
                 if (enemy.CurrentHp <= 0) continue;
+                if (proj.HitEnemies.Contains(enemy.Id)) continue;
 
-                float distSq = (proj.X - enemy.X) * (proj.X - enemy.X) + (proj.Y - enemy.Y) * (proj.Y - enemy.Y);
-                if (distSq < 400) // Collision detected!
+                float combinedRadius = proj.HitRadius + enemy.HitRadius;
+                float hitThresholdSq = combinedRadius * combinedRadius;
+
+                // >>> ANTI-TUNNELING MATH (Line-Segment to Circle) <<<
+                // Vector of the bullet's movement this tick
+                float dx = proj.X - prevX;
+                float dy = proj.Y - prevY;
+
+                // Vector from the bullet's old position to the enemy
+                float fx = enemy.X - prevX;
+                float fy = enemy.Y - prevY;
+
+                // Find the closest point on the bullet's travel line to the enemy's center
+                float lengthSq = (dx * dx) + (dy * dy);
+                float t = lengthSq == 0 ? 0 : Math.Max(0, Math.Min(1, (fx * dx + fy * dy) / lengthSq));
+
+                float closestX = prevX + t * dx;
+                float closestY = prevY + t * dy;
+
+                // Check distance from that closest point to the enemy
+                float distX = closestX - enemy.X;
+                float distY = closestY - enemy.Y;
+                float distSqToSegment = (distX * distX) + (distY * distY);
+
+                if (distSqToSegment <= hitThresholdSq)
                 {
                     enemy.CurrentHp -= proj.Damage;
-                    projectilesToRemove.Add(proj.Id);
+                    proj.HitEnemies.Add(enemy.Id);
 
                     tickDamageEvents.Add(new Server.DTOs.DamageEventDto { X = enemy.X, Y = enemy.Y, Amount = proj.Damage });
 
-                    // >>> NEW: LOCAL WEAPON LIFE STEAL LOGIC <<<
                     if (Random.Shared.NextDouble() < proj.LifeStealChance)
                     {
-                        if (_gameState.Players.TryGetValue(proj.OwnerId, out var player))
+                        if (_gameState.Players.TryGetValue(proj.OwnerId, out var p))
                         {
-                            float maxHp = player.GetTotalStat("maxHp", _configManager);
-                            player.CurrentHp = Math.Min(maxHp, player.CurrentHp + 1f);
+                            float maxHp = p.GetTotalStat("maxHp", _configManager);
+                            p.CurrentHp = Math.Min(maxHp, p.CurrentHp + 1f);
                         }
                     }
 
@@ -279,11 +337,14 @@ public class GameLoop : BackgroundService
                         _gameState.Pickups.TryAdd(gold.Id, gold);
                     }
 
-                    break; // Stop checking other enemies for this specific bullet
+                    if (proj.HitEnemies.Count > proj.PierceCount)
+                    {
+                        projectilesToRemove.Add(proj.Id);
+                        break;
+                    }
                 }
             }
         }
-
         // 2. Players vs Pickups (Gold)
         foreach (var player in _gameState.Players.Values)
         {
@@ -368,6 +429,15 @@ public class GameLoop : BackgroundService
                     }
                 }
             }
+            // >>> NEW: GENERATE LEVEL UP CARDS! <<<
+            if (player.PendingLevelUps > 0 && player.CurrentLevelUpChoices.Count == 0)
+            {
+                // Pulls 3 random cards from your master JSON dictionary
+                player.CurrentLevelUpChoices = _configManager.LevelUpCards.Values
+                    .OrderBy(x => Random.Shared.Next())
+                    .Take(3)
+                    .ToList();
+            }
 
             // EVENT PAYLOAD: Only send this massive data block when the shop opens!
             var uiData = new
@@ -379,9 +449,12 @@ public class GameLoop : BackgroundService
                 CurrentRerollCost = player.CurrentRerollCost,
                 CurrentWave = _gameState.CurrentWave,
 
-                // >>> THE PURE DATA-DRIVEN MAGIC <<<
-                // This dynamically checks every stat the player has mathematically touched, 
-                // calculates the modifiers, and builds a dictionary automatically!
+                Level = player.Level,
+                CurrentXp = player.CurrentXp,
+                XpRequired = player.GetXpRequirement(),
+                PendingLevelUps = player.PendingLevelUps,
+                LevelUpChoices = player.CurrentLevelUpChoices,
+
                 Stats = player.Stats.Stats.Keys.ToDictionary(k => k, k => player.GetTotalStat(k, _configManager))
             };
             await _hubContext.Clients.Client(player.ConnectionId).SendAsync("UpdatePlayerUI", uiData);

@@ -5,6 +5,7 @@ public class CharacterConfig
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string TextureKey { get; set; } = string.Empty;
+    public bool DefaultFacingRight { get; set; } = true;
     public int IconFrame { get; set; }
 
     // Starting stats: "maxHp": 150, "speed": 180, "dodge": 0.15
@@ -21,12 +22,17 @@ public class EnemyConfig
     public int Tier { get; set; }
     public bool IsBoss { get; set; }
     public string TextureKey { get; set; } = string.Empty;
+    public bool DefaultFacingRight { get; set; } = true;
     public float Scale { get; set; } = 1.0f;
     public int IconFrame { get; set; }
+    public float HitRadius { get; set; } = 15f;
+
 
     // Animation data
     public int[] AnimIdle { get; set; } = Array.Empty<int>();
     public int[] AnimAttack { get; set; } = Array.Empty<int>();
+    public int AnimIdleFrameRate { get; set; } = 10;
+    public int AnimAttackFrameRate { get; set; } = 15;
     public float AttackDuration { get; set; } = 0.5f;
 
     // The universal stat dictionary! "maxHp": 30, "armor": 5, "lifeSteal": 0.1
@@ -45,6 +51,7 @@ public class WeaponConfig
     public float MeleeDamage { get; set; }
     public float RangedDamage { get; set; }
     public float ElementalDamage { get; set; }
+    public string ProjectileId { get; set; }
     public float ProjectileSpeed { get; set; }
     public float Range { get; set; }
 
@@ -105,4 +112,27 @@ public class LevelUpCardConfig
     public int Tier { get; set; }
     public string StatName { get; set; } = string.Empty;
     public float Amount { get; set; }
+}
+
+public class ProjectileConfig
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+
+    // --- Visuals ---
+    public string TextureKey { get; set; } = string.Empty;
+    public int IconFrame { get; set; }
+    public float Scale { get; set; } = 1.0f;
+    // --- Animations ---
+    public int[]? AnimFly { get; set; }
+    public int AnimFlyFrameRate { get; set; } = 15;
+
+    public int[]? AnimHit { get; set; } // Optional explosion on impact!
+    public int AnimHitFrameRate { get; set; } = 15;
+
+    // --- Physics & Mechanics ---
+    public float BaseSpeed { get; set; } = 500f;
+    public float HitRadius { get; set; } = 15f;
+    public int PierceCount { get; set; } = 0;
+    public int BounceCount { get; set; } = 0;
 }

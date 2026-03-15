@@ -37,3 +37,4 @@ c:\Users\fooxi\Desktop\Programming\ArenaSurvivor\Server\bin\Debug\net10.0\Config
 c:\Users\fooxi\Desktop\Programming\ArenaSurvivor\Server\bin\Debug\net10.0\Configs\Characters.json
 c:\Users\fooxi\Desktop\Programming\ArenaSurvivor\Server\bin\Debug\net10.0\Configs\Stats.json
 c:\Users\fooxi\Desktop\Programming\ArenaSurvivor\Server\bin\Debug\net10.0\Configs\LevelUpCards.json
+c:\Users\fooxi\Desktop\Programming\ArenaSurvivor\Server\bin\Debug\net10.0\Configs\Projectiles.json

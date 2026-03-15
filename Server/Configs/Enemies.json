@@ -7,14 +7,14 @@
     "textureKey": "enemies_sheet",
     "scale": 1.0,
     "iconFrame": 0,
-    "animIdle": [
-      0,
-      5
-    ],
-    "animAttack": [
-      6,
-      10
-    ],
+    "animIdle": [0, 5],
+    "animIdleFrameRate": 20,
+    "animMove": [6, 11],
+    "animMoveFrameRate": 20,
+    "animAttack": [12, 16],
+    "animAttackFrameRate": 15,
+    "animDeath": [17, 22],
+    "animDeathFrameRate": 15,
     "attackDuration": 0.5,
     "baseStats": {
       "maxHp": 30,
@@ -32,14 +32,14 @@
     "textureKey": "enemies_sheet",
     "scale": 2.5,
     "iconFrame": 5,
-    "animIdle": [
-      20,
-      25
-    ],
-    "animAttack": [
-      26,
-      32
-    ],
+    "animIdle": [20, 25],
+    "animIdleFrameRate": 20,
+    "animMove": [26, 31],
+    "animMoveFrameRate": 20,
+    "animAttack": [32, 38],
+    "animAttackFrameRate": 15,
+    "animDeath": [39, 45],
+    "animDeathFrameRate": 12,
     "attackDuration": 1.2,
     "baseStats": {
       "maxHp": 5000,
@@ -65,14 +65,14 @@
     "textureKey": "enemies_sheet",
     "scale": 0.8,
     "iconFrame": 1,
-    "animIdle": [
-      0,
-      5
-    ],
-    "animAttack": [
-      6,
-      10
-    ],
+    "animIdle": [0, 5],
+    "animIdleFrameRate": 20,
+    "animMove": [6, 11],
+    "animMoveFrameRate": 20,
+    "animAttack": [12, 16],
+    "animAttackFrameRate": 15,
+    "animDeath": [17, 20],
+    "animDeathFrameRate": 15,
     "attackDuration": 0.3,
     "baseStats": {
       "maxHp": 15,
@@ -90,14 +90,14 @@
     "textureKey": "enemies_sheet",
     "scale": 1.4,
     "iconFrame": 2,
-    "animIdle": [
-      0,
-      5
-    ],
-    "animAttack": [
-      6,
-      10
-    ],
+    "animIdle": [0, 5],
+    "animIdleFrameRate": 20,
+    "animMove": [6, 11],
+    "animMoveFrameRate": 20,
+    "animAttack": [12, 16],
+    "animAttackFrameRate": 15,
+    "animDeath": [17, 22],
+    "animDeathFrameRate": 15,
     "attackDuration": 0.8,
     "baseStats": {
       "maxHp": 120,
@@ -115,14 +115,14 @@
     "textureKey": "enemies_sheet",
     "scale": 1.1,
     "iconFrame": 3,
-    "animIdle": [
-      0,
-      5
-    ],
-    "animAttack": [
-      6,
-      10
-    ],
+    "animIdle": [0, 5],
+    "animIdleFrameRate": 20,
+    "animMove": [6, 11],
+    "animMoveFrameRate": 20,
+    "animAttack": [12, 16],
+    "animAttackFrameRate": 15,
+    "animDeath": [17, 22],
+    "animDeathFrameRate": 15,
     "attackDuration": 0.4,
     "baseStats": {
       "maxHp": 50,
@@ -135,19 +135,19 @@
   "troll_runt": {
     "id": "troll_runt",
     "name": "Troll Runt",
-    "tier": 2,
+    "tier": 1,
     "isBoss": false,
-    "textureKey": "enemies_sheet",
-    "scale": 1.2,
+    "textureKey": "enemies_sheet1",
+    "scale": 0.5,
     "iconFrame": 4,
-    "animIdle": [
-      0,
-      5
-    ],
-    "animAttack": [
-      6,
-      10
-    ],
+    "animIdle": [0, 17],
+    "animIdleFrameRate": 30,
+    "animMove": [18, 25],
+    "animMoveFrameRate": 20,
+    "animAttack": [0, 0],
+    "animAttackFrameRate": 15,
+    "animDeath": [26, 30],
+    "animDeathFrameRate": 15,
     "attackDuration": 0.6,
     "baseStats": {
       "maxHp": 80,
@@ -157,22 +157,23 @@
     },
     "dynamicModifiers": []
   },
-  "goblin_berserker": {
-    "id": "goblin_berserker",
-    "name": "Goblin Berserker",
+  "flying_forest": {
+    "id": "flying_forest",
+    "name": "Flying Forest",
     "tier": 1,
     "isBoss": false,
-    "textureKey": "enemies_sheet",
-    "scale": 4.1,
+    "textureKey": "Flying_Forest",
+    "defaultFacingRight": false,
+    "scale": 2.1,
     "iconFrame": 6,
-    "animIdle": [
-      0,
-      5
-    ],
-    "animAttack": [
-      6,
-      10
-    ],
+    "animIdle": [34, 41],
+    "animIdleFrameRate": 15,
+    "animMove": [42, 48],
+    "animMoveFrameRate": 15,
+    "animAttack": [0, 2],
+    "animAttackFrameRate": 15,
+    "animDeath": [49, 55],
+    "animDeathFrameRate": 15,
     "attackDuration": 0.4,
     "baseStats": {
       "maxHp": 90,

@@ -14,5 +14,6 @@
     "luck",
     "harvesting",
     "attackSpeedPercent",
-    "xpGainPercent"
+    "xpGainPercent",
+    "projectileSpeedPercent"
 ]

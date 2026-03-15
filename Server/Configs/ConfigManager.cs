@@ -4,12 +4,58 @@ namespace Server.Configs;
 
 public class ConfigManager
 {
+    // >>> NEW: The Hot Reload Event & Watcher <<<
+    public event Action? OnConfigsReloaded;
+    private FileSystemWatcher? _watcher;
+    private DateTime _lastRead = DateTime.MinValue;
+
+
     public Dictionary<string, EnemyConfig> Enemies { get; private set; } = new();
     public Dictionary<string, WeaponConfig> Weapons { get; private set; } = new();
     public Dictionary<string, ItemConfig> Items { get; private set; } = new();
     public Dictionary<string, CharacterConfig> Characters { get; private set; } = new();
     public List<string> AllStats { get; private set; } = new();
     public Dictionary<string, LevelUpCardConfig> LevelUpCards { get; private set; } = new();
+    public Dictionary<string, ProjectileConfig> Projectiles { get; private set; } = new();
+
+    public ConfigManager()
+    {
+        LoadConfigs(); // Your existing load method
+        StartWatching(); // Start listening for changes!
+    }
+
+    private void StartWatching()
+    {
+        // Watch the Configs folder for any .json file changes
+        _watcher = new FileSystemWatcher("Configs", "*.json")
+        {
+            NotifyFilter = NotifyFilters.LastWrite,
+            EnableRaisingEvents = true
+        };
+
+        _watcher.Changed += (sender, e) =>
+        {
+            // Debounce: Prevent the file from loading 5 times if VS Code saves weirdly
+            if ((DateTime.Now - _lastRead).TotalMilliseconds < 500) return;
+            _lastRead = DateTime.Now;
+
+            Console.WriteLine($"\n[HOT RELOAD] Detected change in {e.Name}...");
+
+            // Give the OS a tiny fraction of a second to release the file lock
+            Thread.Sleep(100);
+
+            try
+            {
+                LoadConfigs(); // Re-read all the JSON files
+                Console.WriteLine("[HOT RELOAD] Success! Pushing to clients.");
+                OnConfigsReloaded?.Invoke(); // Tell the GameLoop to update the clients!
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[HOT RELOAD] Failed to read JSON: {ex.Message}");
+            }
+        };
+    }
     public void LoadConfigs()
     {
         // Reads the JSON file into memory
@@ -62,6 +108,15 @@ public class ConfigManager
                 lvlJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
             ) ?? new();
             Console.WriteLine($"Loaded {LevelUpCards.Count} Level Up Cards.");
+        }
+
+        if (File.Exists("Configs/Projectiles.json"))
+        {
+            var projJson = File.ReadAllText("Configs/Projectiles.json");
+            Projectiles = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, ProjectileConfig>>(
+                projJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+            ) ?? new();
+            Console.WriteLine($"Loaded {Projectiles.Count} Projectiles.");
         }
     }
 }

@@ -13,6 +13,7 @@ public class EnemyEntity
     public float Y { get; set; }
     public float CurrentHp { get; set; }
     public StatDictionary Stats { get; set; } = new();
+    public float HitRadius { get; set; }
 
     // Networked state and internal timer for animations
     public string ActionState { get; set; } = "Idle";
@@ -24,6 +25,8 @@ public class EnemyEntity
         ConfigId = config.Id;
         X = spawnX;
         Y = spawnY;
+
+        HitRadius = config.HitRadius * config.Scale;
 
         // 1. Initialize EVERY stat dynamically from the JSON file!
         foreach (var stat in configManager.AllStats)
