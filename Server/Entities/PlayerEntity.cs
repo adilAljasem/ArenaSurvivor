@@ -24,6 +24,7 @@ public class PlayerEntity
     public float InputY { get; set; }
     public float AimX { get; set; }
     public float AimY { get; set; }
+    public List<int> FiredWeaponsThisTick { get; set; } = new();
 
     // Active Resource Pool (Changes when you take damage or heal)
     public float CurrentHp { get; set; }
@@ -43,6 +44,8 @@ public class PlayerEntity
     // Mechanics
     public List<string> Traits { get; set; } = new();
     public bool DuplicateNextPurchase { get; set; }
+
+    public List<ActiveEffect> ActiveEffects { get; set; } = new();
 
     // Initializes the player with the Master Stat List so it never crashes
     public void Initialize(Configs.CharacterConfig config, ConfigManager configManager)
@@ -114,6 +117,19 @@ public class PlayerEntity
             {
                 if (weaponConfig.StatBonuses != null && weaponConfig.StatBonuses.TryGetValue(statName, out float wBonus))
                     dynamicFlat += (wBonus * weapon.Level);
+            }
+        }
+
+        // >>> NEW: 3. ACTIVE EFFECTS (Buffs & Debuffs) <<<
+        foreach (var effect in ActiveEffects)
+        {
+            if (configManager.Effects.TryGetValue(effect.ConfigId, out var effectConfig))
+            {
+                // If the effect modifies this specific stat, add/subtract it!
+                if (effectConfig.StatModifiers != null && effectConfig.StatModifiers.TryGetValue(statName, out float amount))
+                {
+                    dynamicFlat += amount;
+                }
             }
         }
 

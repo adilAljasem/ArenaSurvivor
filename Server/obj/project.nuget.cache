@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "RXICbp8u8ZM=",
+  "dgSpecHash": "ReybKWIw7Bc=",
   "success": true,
-  "projectFilePath": "c:\\Users\\fooxi\\Desktop\\Programming\\ArenaSurvivor\\Server\\Server.csproj",
+  "projectFilePath": "C:\\Users\\fooxi\\Desktop\\Programming\\ArenaSurvivor\\server\\Server.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\fooxi\\.nuget\\packages\\messagepack\\3.1.4\\messagepack.3.1.4.nupkg.sha512",
     "C:\\Users\\fooxi\\.nuget\\packages\\messagepack.annotations\\3.1.4\\messagepack.annotations.3.1.4.nupkg.sha512",

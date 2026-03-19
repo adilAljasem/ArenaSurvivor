@@ -1,0 +1,30 @@
+{
+  "poison_dot": {
+    "id": "poison_dot",
+    "name": "Poisoned",
+    "isBuff": false,
+    "duration": 5.0,
+    "tickRate": 1.0,
+    "tickDamage": 5.0,
+    "statModifiers": {
+      "speed": -20
+    },
+    "textureKey": "effects_sheet",
+    "colorTint": "0x00ff00"
+  },
+  "adrenaline": {
+    "id": "adrenaline",
+    "name": "Adrenaline Rush",
+    "isBuff": true,
+    "duration": 4.0,
+    "tickRate": 0.0,
+    "tickDamage": 0.0,
+    "statModifiers": {
+      "attackSpeedPercent": 0.5,
+      "speed": 500
+    },
+    "textureKey": "effects_sheet",
+
+    "colorTint": "0xffd700"
+  }
+}

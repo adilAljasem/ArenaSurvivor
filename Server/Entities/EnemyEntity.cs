@@ -17,7 +17,10 @@ public class EnemyEntity
 
     // Networked state and internal timer for animations
     public string ActionState { get; set; } = "Idle";
+    public float DespawnTimer { get; set; } = 1.0f;
     public float AttackCooldown { get; set; } = 0f;
+
+    public List<ActiveEffect> ActiveEffects { get; set; } = new();
 
     // Initializes the enemy with the Master Stat List so it never crashes
     public void Initialize(Configs.EnemyConfig config, float spawnX, float spawnY, ConfigManager configManager)
@@ -46,7 +49,6 @@ public class EnemyEntity
         CurrentHp = Stats.GetFinalStat("maxHp");
     }
 
-    // >>> THIS IS THE METHOD GAMELOOP.CS IS LOOKING FOR! <<<
     public float GetTotalStat(string statName, ConfigManager configManager)
     {
         float baseStat = Stats.GetFinalStat(statName);
@@ -70,6 +72,18 @@ public class EnemyEntity
                         int chunks = (int)Math.Floor(sourceStatValue / Math.Max(0.01f, mod.ConditionThreshold));
                         dynamicFlat += (mod.Amount * chunks);
                     }
+                }
+            }
+        }
+
+        // >>> NEW: ACTIVE EFFECTS (Buffs & Debuffs) <<<
+        foreach (var effect in ActiveEffects)
+        {
+            if (configManager.Effects.TryGetValue(effect.ConfigId, out var effectConfig))
+            {
+                if (effectConfig.StatModifiers != null && effectConfig.StatModifiers.TryGetValue(statName, out float amount))
+                {
+                    dynamicFlat += amount;
                 }
             }
         }

@@ -31,7 +31,8 @@ public class GameLoop : BackgroundService
                 projectiles = _configManager.Projectiles,
                 weapons = _configManager.Weapons,
                 items = _configManager.Items,
-                characters = _configManager.Characters
+                characters = _configManager.Characters,
+                effects = _configManager.Effects
             };
 
             // Blast it to every active browser window!
@@ -71,6 +72,7 @@ public class GameLoop : BackgroundService
 
             // 3. Process World Updates
             ProcessPhysicsAndAI(dt);
+            ProcessEffects(dt);
             ProcessCombatAndShooting(dt);
             var tickDamageEvents = ProcessCollisions(dt);
 
@@ -103,6 +105,61 @@ public class GameLoop : BackgroundService
         }
     }
 
+    private void ProcessEffects(float dt)
+    {
+        // 1. Process Players
+        foreach (var player in _gameState.Players.Values)
+        {
+            // Iterate backwards so we can safely delete expired effects!
+            for (int i = player.ActiveEffects.Count - 1; i >= 0; i--)
+            {
+                var effect = player.ActiveEffects[i];
+                if (!_configManager.Effects.TryGetValue(effect.ConfigId, out var config)) continue;
+
+                effect.TimeRemaining -= dt;
+                effect.TimeSinceLastTick += dt;
+
+                // Deal DoT Damage (e.g., 5 damage every 1.0 seconds)
+                if (config.TickRate > 0 && effect.TimeSinceLastTick >= config.TickRate)
+                {
+                    effect.TimeSinceLastTick -= config.TickRate;
+                    player.CurrentHp -= config.TickDamage;
+                }
+
+                if (effect.TimeRemaining <= 0) player.ActiveEffects.RemoveAt(i);
+            }
+        }
+
+        // 2. Process Enemies
+        foreach (var enemy in _gameState.Enemies.Values)
+        {
+            for (int i = enemy.ActiveEffects.Count - 1; i >= 0; i--)
+            {
+                var effect = enemy.ActiveEffects[i];
+                if (!_configManager.Effects.TryGetValue(effect.ConfigId, out var config)) continue;
+
+                effect.TimeRemaining -= dt;
+                effect.TimeSinceLastTick += dt;
+
+                if (config.TickRate > 0 && effect.TimeSinceLastTick >= config.TickRate)
+                {
+                    effect.TimeSinceLastTick -= config.TickRate;
+                    enemy.CurrentHp -= config.TickDamage;
+
+                    // Check if the DoT killed the enemy!
+                    if (enemy.CurrentHp <= 0 && enemy.ActionState != "Dead")
+                    {
+                        enemy.ActionState = "Dead";
+                        var gold = new PickupEntity { X = enemy.X, Y = enemy.Y, Value = 1 };
+                        _gameState.Pickups.TryAdd(gold.Id, gold);
+                    }
+                }
+
+                if (effect.TimeRemaining <= 0) enemy.ActiveEffects.RemoveAt(i);
+            }
+        }
+    }
+
     private void ProcessPhysicsAndAI(float dt)
     {
         // 1. PLAYER PHYSICS
@@ -129,6 +186,17 @@ public class GameLoop : BackgroundService
         foreach (var enemy in _gameState.Enemies.Values)
         {
             if (!_configManager.Enemies.TryGetValue(enemy.ConfigId, out var config)) continue;
+
+            // >>> THE DEATH DELAY <<<
+            if (enemy.ActionState == "Dead")
+            {
+                enemy.DespawnTimer -= dt;
+                if (enemy.DespawnTimer <= 0)
+                {
+                    _gameState.Enemies.TryRemove(enemy.Id, out _); // Time's up, remove them!
+                }
+                continue; // Skip all AI, movement, and attacking logic because they are dead!
+            }
 
             if (enemy.AttackCooldown > 0)
             {
@@ -204,6 +272,8 @@ public class GameLoop : BackgroundService
                         float attackSpeedPct = player.GetTotalStat("attackSpeedPercent", _configManager);
                         weapon.CurrentCooldown = config.CooldownSeconds / Math.Max(0.1f, (1f + attackSpeedPct));
 
+                        player.FiredWeaponsThisTick.Add(weapon.SlotIndex);
+
                         // 1. DAMAGE: Weapon Base Damage + Player Stat Scaling
                         float finalDamage = config.MeleeDamage + config.RangedDamage + config.ElementalDamage;
 
@@ -235,6 +305,11 @@ public class GameLoop : BackgroundService
                             float speedMultiplier = 1f + player.GetTotalStat("projectileSpeedPercent", _configManager);
                             float finalSpeed = projConfig.BaseSpeed * speedMultiplier;
 
+                            // >>> NEW: Combine Effects from the Weapon AND the Projectile! <<<
+                            var combinedEffects = new List<string>();
+                            if (config.ApplyEffectsOnHit != null) combinedEffects.AddRange(config.ApplyEffectsOnHit);
+                            if (projConfig.ApplyEffectsOnHit != null) combinedEffects.AddRange(projConfig.ApplyEffectsOnHit);
+
                             var bullet = new ProjectileEntity
                             {
                                 ConfigId = projConfig.Id,
@@ -245,12 +320,12 @@ public class GameLoop : BackgroundService
                                 VelY = (dirY / length) * finalSpeed,
                                 Damage = finalDamage,
                                 LifeStealChance = totalLifeStealForThisAttack,
-
-                                // >>> PURE, EXPLICIT MATH <<<
                                 HitRadius = projConfig.HitRadius,
-
                                 PierceCount = projConfig.PierceCount,
-                                Lifespan = finalSpeed > 0 ? (finalRange / finalSpeed) : 0.15f
+                                Lifespan = finalSpeed > 0 ? (finalRange / finalSpeed) : 0.15f,
+
+                                // >>> NEW: Load the bullet with the effects! <<<
+                                ApplyEffectsOnHit = combinedEffects
                             };
                             _gameState.Projectiles.TryAdd(bullet.Id, bullet);
                         }
@@ -287,7 +362,16 @@ public class GameLoop : BackgroundService
             foreach (var enemy in _gameState.Enemies.Values)
             {
                 if (enemiesToRemove.Contains(enemy.Id)) continue;
-                if (enemy.CurrentHp <= 0) continue;
+                if (enemy.ActionState == "Dead") continue;
+                // >>> NEW: Change State to Dead instead of instantly deleting! <<<
+                if (enemy.CurrentHp <= 0 && enemy.ActionState != "Dead")
+                {
+                    enemy.ActionState = "Dead"; // Tell the Client to play the Death animation!
+
+                    // Drop the gold immediately, but don't add the enemy to enemiesToRemove yet!
+                    var gold = new PickupEntity { X = enemy.X, Y = enemy.Y, Value = 1 };
+                    _gameState.Pickups.TryAdd(gold.Id, gold);
+                }
                 if (proj.HitEnemies.Contains(enemy.Id)) continue;
 
                 float combinedRadius = proj.HitRadius + enemy.HitRadius;
@@ -321,6 +405,27 @@ public class GameLoop : BackgroundService
 
                     tickDamageEvents.Add(new Server.DTOs.DamageEventDto { X = enemy.X, Y = enemy.Y, Amount = proj.Damage });
 
+                    // >>> FIX: Read the effects directly from the flying bullet! <<<
+                    if (proj.ApplyEffectsOnHit != null)
+                    {
+                        foreach (var effectId in proj.ApplyEffectsOnHit)
+                        {
+                            if (_configManager.Effects.TryGetValue(effectId, out var effectConfig))
+                            {
+                                // Refresh timer if they already have it, otherwise add it!
+                                var existing = enemy.ActiveEffects.FirstOrDefault(e => e.ConfigId == effectId);
+                                if (existing != null)
+                                {
+                                    existing.TimeRemaining = effectConfig.Duration;
+                                }
+                                else
+                                {
+                                    enemy.ActiveEffects.Add(new ActiveEffect { ConfigId = effectId, TimeRemaining = effectConfig.Duration });
+                                }
+                            }
+                        }
+                    }
+
                     if (Random.Shared.NextDouble() < proj.LifeStealChance)
                     {
                         if (_gameState.Players.TryGetValue(proj.OwnerId, out var p))
@@ -330,9 +435,12 @@ public class GameLoop : BackgroundService
                         }
                     }
 
-                    if (enemy.CurrentHp <= 0)
+                    // >>> NEW: Change State to Dead instead of instantly deleting! <<<
+                    if (enemy.CurrentHp <= 0 && enemy.ActionState != "Dead")
                     {
-                        enemiesToRemove.Add(enemy.Id);
+                        enemy.ActionState = "Dead"; // Tell the Client to play the Death animation!
+
+                        // Drop the gold immediately
                         var gold = new PickupEntity { X = enemy.X, Y = enemy.Y, Value = 1 };
                         _gameState.Pickups.TryAdd(gold.Id, gold);
                     }
@@ -572,30 +680,55 @@ public class GameLoop : BackgroundService
     {
         if (!_gameState.Players.IsEmpty)
         {
-            // FAST PAYLOAD
+            // 1. FORMAT PLAYERS
             var playersDto = _gameState.Players.Values.Select(p => new
             {
                 p.ConnectionId,
                 p.X,
                 p.Y,
+                p.AimX,
+                p.AimY,
                 p.CurrentHp,
-                MaxHp = p.GetTotalStat("maxHp", _configManager), // Automatically handles dynamic HP buffs
+                MaxHp = p.GetTotalStat("maxHp", _configManager),
                 p.Gold,
-                Weapons = p.Weapons
+                Weapons = p.Weapons,
+                FiredWeapons = p.FiredWeaponsThisTick.ToList(),
+                ActiveEffects = p.ActiveEffects.Select(e => e.ConfigId).ToList() // Converts objects to strings!
             });
 
+            // 2. >>> NEW: FORMAT ENEMIES EXACTLY LIKE PLAYERS <<<
+            var enemiesDto = _gameState.Enemies.Values.Select(e => new
+            {
+                e.Id,
+                e.ConfigId,
+                e.X,
+                e.Y,
+                e.CurrentHp,
+                e.ActionState,
+                MaxHp = e.GetTotalStat("maxHp", _configManager), // Calculates MaxHp for the health bars!
+                ActiveEffects = e.ActiveEffects.Select(a => a.ConfigId).ToList() // Converts objects to strings!
+            });
+
+            // 3. BUILD THE FINAL PAYLOAD
             var payload = new
             {
                 Players = playersDto,
-                Enemies = _gameState.Enemies.Values,
+                Enemies = enemiesDto, // <--- Use the formatted list, NOT the raw values!
                 Projectiles = _gameState.Projectiles.Values,
                 Pickups = _gameState.Pickups.Values,
                 DamageEvents = tickDamageEvents,
                 Phase = _gameState.Phase.ToString(),
                 CurrentWave = _gameState.CurrentWave,
-                TimeRemaining = Math.Max(0, (int)_gameState.PhaseTimer)
+                TimeRemaining = Math.Max(0, (int)_gameState.PhaseTimer),
             };
+
             await _hubContext.Clients.All.SendAsync("UpdateState", payload, cancellationToken: stoppingToken);
+
+            // 4. CLEANUP (Must happen AFTER SendAsync)
+            foreach (var p in _gameState.Players.Values)
+            {
+                p.FiredWeaponsThisTick.Clear();
+            }
         }
     }
 }

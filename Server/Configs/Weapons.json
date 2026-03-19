@@ -7,16 +7,21 @@
     "rangedDamage": 50,
     "projectileSpeed": 600,
     "projectileId": "9mm_bullet",
-    "range": 500,
+    "range": 5000,
     "textureKey": "weapons_sheet",
-    "scale": 1.0,
-    "iconFrame": 0,
+    "scale": 0.15,
+    "iconFrame": 7,
+    "defaultFacingRight": true,
+    "attackAnimType": "recoil",
     "statBonuses": {
       "speedPercent": 0.05
     },
     "damageScaling": {
       "rangedDamage": 0.5
-    }
+    },
+    "applyEffectsOnHit": [
+      "poison_dot"
+    ]
   },
   "smg": {
     "id": "smg",
@@ -28,8 +33,10 @@
     "projectileId": "9mm_bullet",
     "range": 400,
     "textureKey": "weapons_sheet",
-    "scale": 1.0,
-    "iconFrame": 1,
+    "scale": 0.15,
+    "iconFrame": 11,
+    "defaultFacingRight": true,
+    "attackAnimType": "recoil",
     "statBonuses": {},
     "damageScaling": {
       "rangedDamage": 0.25
@@ -45,8 +52,10 @@
     "projectileId": "9mm_bullet",
     "range": 300,
     "textureKey": "weapons_sheet",
-    "scale": 1.2,
+    "scale": 0.15,
     "iconFrame": 2,
+    "defaultFacingRight": true,
+    "attackAnimType": "recoil",
     "statBonuses": {
       "maxHp": 2
     },
@@ -66,6 +75,8 @@
     "textureKey": "weapons_sheet",
     "scale": 1.5,
     "iconFrame": 3,
+    "defaultFacingRight": true,
+    "attackAnimType": "recoil",
     "statBonuses": {
       "speedPercent": -0.05
     },
@@ -83,8 +94,10 @@
     "projectileId": "fireball",
     "range": 700,
     "textureKey": "weapons_sheet",
-    "scale": 1.4,
+    "scale": 0.15,
     "iconFrame": 4,
+    "defaultFacingRight": true,
+    "attackAnimType": "recoil",
     "statBonuses": {
       "armor": -1
     },
@@ -103,8 +116,10 @@
     "projectileId": "sword_swing",
     "range": 120,
     "textureKey": "weapons_sheet",
-    "scale": 1.0,
+    "scale": 0.15,
     "iconFrame": 5,
+    "defaultFacingRight": true,
+    "attackAnimType": "stab",
     "statBonuses": {
       "maxHp": 5
     },
@@ -122,8 +137,10 @@
     "projectileId": "sword_swing",
     "range": 150,
     "textureKey": "weapons_sheet",
-    "scale": 1.2,
+    "scale": 0.15,
     "iconFrame": 6,
+    "defaultFacingRight": true,
+    "attackAnimType": "swing",
     "statBonuses": {
       "speedPercent": 0.02
     },
@@ -141,11 +158,13 @@
     "projectileId": "hammer_smash",
     "range": 160,
     "textureKey": "weapons_sheet",
-    "scale": 1.5,
-    "iconFrame": 7,
+    "scale": 0.15,
+    "iconFrame": 3,
+    "defaultFacingRight": true,
+    "attackAnimType": "swing",
     "statBonuses": {
       "armor": 2,
-      "speedPercent": -0.05
+      "speed": -10
     },
     "damageScaling": {
       "meleeDamage": 1.5
@@ -161,8 +180,10 @@
     "projectileId": "fireball",
     "range": 600,
     "textureKey": "weapons_sheet",
-    "scale": 1.0,
-    "iconFrame": 8,
+    "scale": 0.15,
+    "iconFrame": 36,
+    "defaultFacingRight": true,
+    "attackAnimType": "recoil",
     "statBonuses": {
       "elementalDamage": 2
     },
@@ -180,8 +201,10 @@
     "projectileId": "9mm_bullet",
     "range": 500,
     "textureKey": "weapons_sheet",
-    "scale": 1.1,
+    "scale": 0.15,
     "iconFrame": 9,
+    "defaultFacingRight": true,
+    "attackAnimType": "recoil",
     "statBonuses": {
       "hpRegen": 2
     },

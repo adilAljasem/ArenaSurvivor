@@ -4,17 +4,31 @@
     "name": "Well Rounded",
     "textureKey": "characters_sheet",
     "iconFrame": 0,
-    "animIdle": [0, 5],
+    "animIdle": [
+      0,
+      5
+    ],
     "animIdleFrameRate": 15,
-    "animMove": [6, 11],
+    "animMove": [
+      6,
+      11
+    ],
     "animMoveFrameRate": 20,
-    "animAttack": [12, 16],
+    "animAttack": [
+      12,
+      16
+    ],
     "animAttackFrameRate": 20,
-    "animDeath": [17, 22],
+    "animDeath": [
+      17,
+      22
+    ],
     "animDeathFrameRate": 12,
     "baseStats": {
-      "maxHp": 100,
+      "maxHp": 300,
       "speed": 200,
+      "meleeDamage": 50,
+      "rangedDamage": 50,
       "harvesting": 5
     },
     "traits": []
@@ -24,21 +38,37 @@
     "name": "Chunky",
     "textureKey": "characters_sheet",
     "iconFrame": 1,
-    "animIdle": [0, 5],
+    "animIdle": [
+      0,
+      5
+    ],
     "animIdleFrameRate": 15,
-    "animMove": [6, 11],
+    "animMove": [
+      6,
+      11
+    ],
     "animMoveFrameRate": 20,
-    "animAttack": [12, 16],
+    "animAttack": [
+      12,
+      16
+    ],
     "animAttackFrameRate": 20,
-    "animDeath": [17, 22],
+    "animDeath": [
+      17,
+      22
+    ],
     "animDeathFrameRate": 12,
     "baseStats": {
       "maxHp": 150,
       "hpRegen": 3,
       "speed": 250,
+      "meleeDamage": 500,
+      "rangedDamage": 500,
       "damagePercent": 0.25,
       "dodge": -0.10
     },
-    "traits": ["CannotHeal"] 
+    "traits": [
+      "CannotHeal"
+    ]
   }
 }

@@ -25,6 +25,10 @@ interface ServerPlayer {
   currentShop: ShopItem[];
   stats: any;
   ownedItems: any;
+  aimX: number;           // <--- NEW
+  aimY: number;           // <--- NEW
+  firedWeapons: number[];
+  activeEffects: string[];// <--- NEW
 }
 interface ServerEnemy {
   id: string;
@@ -35,7 +39,16 @@ interface ServerEnemy {
   currentHp: number;
   maxHp: number;
   actionState: string;
-}interface ServerProjectile { id: string; x: number; y: number; }
+  activeEffects: string[];
+}
+interface ServerProjectile {
+  id: string;
+  configId: string;
+  x: number;
+  y: number;
+  velX: number; // <--- NEW
+  velY: number; // <--- NEW
+}
 interface ServerPickup { id: string; x: number; y: number; value: number; }
 interface DamageEvent { x: number; y: number; amount: number; }
 interface ServerProjectile { id: string; configId: string; x: number; y: number; } // Added configId!
@@ -82,20 +95,32 @@ class GameScene extends Phaser.Scene {
   preload() {
     this.load.spritesheet('enemies_sheet1', '/assets/Enemies/enemy1.png', { frameWidth: 720, frameHeight: 490 });
     this.load.spritesheet('Flying_Forest', '/assets/Enemies/Flying Forest.png', { frameWidth: 64, frameHeight: 64 });
+    this.load.spritesheet('mushroomEnemy', '/assets/Enemies/mushroom.png', { frameWidth: 80, frameHeight: 64 });
+    this.load.spritesheet('ironenemy', '/assets/Enemies/ironEnemy.png', { frameWidth: 180, frameHeight: 181 });
+
+    this.load.spritesheet('weapons_sheet', '/assets/Weapons/weapons.png', { frameWidth: 704, frameHeight: 384 });
+    this.load.spritesheet('ammo_sheet', '/assets/Weapons/ammo1.png', { frameWidth: 16, frameHeight: 16 });
+
+
 
     this.load.spritesheet('items_sheet', 'assets/Enemies/items_sheet.png', { frameWidth: 16, frameHeight: 16 });
-    this.load.spritesheet('weapons_sheet', 'assets/weapons_sheet.png', { frameWidth: 32, frameHeight: 32 });
     this.load.spritesheet('characters_sheet', 'assets/characters_sheet.png', { frameWidth: 32, frameHeight: 32 });
   }
 
   create() {
     this.cameras.main.setBackgroundColor('#2d2d2d');
 
+    // 1. Build animations on startup
     if (masterConfigs.enemies) {
       this.createAnimations(masterConfigs);
-    } else {
-      window.addEventListener('configsReady', () => this.createAnimations(masterConfigs));
     }
+
+    // 2. >>> NEW: ALWAYS listen for Hot Reloads and build any missing animations! <<<
+    window.addEventListener('configsReady', () => {
+      if (this.anims) {
+        this.createAnimations(masterConfigs);
+      }
+    });
 
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();
@@ -230,8 +255,12 @@ class GameScene extends Phaser.Scene {
             targetAnim = `${config.id}_idle`;
           }
 
-          // Only play if it's not already playing
-          if (body.anims && body.anims.currentAnim?.key !== targetAnim) {
+          // Only play if the target animation is different, 
+          // OR if it's an attack animation that has completely finished playing!
+          const isCorrectAnim = body.anims && body.anims.currentAnim?.key === targetAnim;
+          const isFinishedAttacking = body.anims && !body.anims.isPlaying && sp.actionState === "Attacking";
+
+          if (!isCorrectAnim || isFinishedAttacking) {
             body.play(targetAnim);
           }
 
@@ -248,9 +277,12 @@ class GameScene extends Phaser.Scene {
         }
 
         const weaponsContainer = pContainer.getData('weaponsContainer') as Phaser.GameObjects.Container;
-        weaponsContainer.removeAll(true);
+        const activeWeaponSlots = new Set<number>();
 
         sp.weapons.forEach(w => {
+          activeWeaponSlots.add(w.slotIndex);
+
+          // Base resting positions around the player
           let wx = 0, wy = 0; const offset = 26;
           if (w.slotIndex === 0) { wx = offset; wy = 0; }
           else if (w.slotIndex === 1) { wx = -offset; wy = 0; }
@@ -258,16 +290,88 @@ class GameScene extends Phaser.Scene {
           else if (w.slotIndex === 3) { wx = 0; wy = offset; }
 
           const config = masterConfigs.weapons ? masterConfigs.weapons[w.configId] : null;
-          if (config && config.textureKey && this.textures.exists(config.textureKey)) {
-            const sprite = this.add.sprite(wx, wy, config.textureKey);
-            if (config.iconFrame !== undefined) sprite.setFrame(config.iconFrame);
-            sprite.setScale((config.scale || 1.0) * 0.7);
-            weaponsContainer.add(sprite);
-          } else {
-            // >>> GLOBAL FALLBACK: BLACK & GREEN BOX <<<
-            weaponsContainer.add(this.add.rectangle(wx, wy, 16, 16, 0x000000).setStrokeStyle(2, 0x00ff00));
+
+          // Instead of deleting the weapon, try to find it!
+          let sprite = weaponsContainer.getByName(`weapon_${w.slotIndex}`) as Phaser.GameObjects.Sprite;
+
+          if (!sprite) {
+            // It doesn't exist yet, so create it!
+            if (config && config.textureKey && this.textures.exists(config.textureKey)) {
+              sprite = this.add.sprite(wx, wy, config.textureKey);
+              if (config.iconFrame !== undefined) sprite.setFrame(config.iconFrame);
+              sprite.setName(`weapon_${w.slotIndex}`);
+
+              // >>> FIX: Apply Scale and Facing Right <<<
+              sprite.setScale(config.scale || 1.0);
+              if (config.defaultFacingRight === false) sprite.setFlipX(true);
+
+              weaponsContainer.add(sprite);
+            }
+          }
+
+          if (sprite && config) {
+            // 1. >>> AIM AT THE MOUSE & FIX UPSIDE-DOWN WEAPONS <<<
+            const angle = Math.atan2(sp.aimY - sp.y, sp.aimX - sp.x);
+            sprite.rotation = angle;
+
+            // If the angle is aiming "Left" (past 90 degrees up or down), flip it vertically!
+            if (Math.abs(angle) > Math.PI / 2) {
+              sprite.setFlipY(true);
+            } else {
+              sprite.setFlipY(false);
+            }
+
+            // 2. >>> PROCEDURAL ANIMATIONS (TWEENS) <<<
+            // If the server says this weapon fired this tick, animate it!
+            if (sp.firedWeapons && sp.firedWeapons.includes(w.slotIndex)) {
+              if (!this.tweens.isTweening(sprite)) { // Don't interrupt it if it's already swinging!
+                const animType = config.attackAnimType || "recoil";
+
+                if (animType === "stab") {
+                  // Thrust forward toward the mouse!
+                  this.tweens.add({
+                    targets: sprite,
+                    x: wx + Math.cos(angle) * 20,
+                    y: wy + Math.sin(angle) * 20,
+                    yoyo: true, duration: 100, ease: 'Power2'
+                  });
+                }
+                else if (animType === "recoil") {
+                  // Kick backwards away from the mouse!
+                  this.tweens.add({
+                    targets: sprite,
+                    x: wx + Math.cos(angle) * -15,
+                    y: wy + Math.sin(angle) * -15,
+                    yoyo: true, duration: 80, ease: 'Cubic.easeOut'
+                  });
+                }
+                else if (animType === "swing") {
+                  // Do a 360 spin!
+                  this.tweens.add({
+                    targets: sprite,
+                    angle: sprite.angle + 360,
+                    duration: 150, ease: 'Linear'
+                  });
+                }
+              }
+            }
+
+            // 3. Return to resting position if it's not currently animating
+            if (!this.tweens.isTweening(sprite)) {
+              sprite.x = wx;
+              sprite.y = wy;
+            }
           }
         });
+
+        // Cleanup: If you sold a weapon, remove its sprite!
+        weaponsContainer.each((child: Phaser.GameObjects.Sprite) => {
+          const slotStr = child.name.split('_')[1];
+          if (!activeWeaponSlots.has(parseInt(slotStr))) {
+            child.destroy();
+          }
+        });
+
       });
 
       // --- GAME WORLD: ENEMIES ---
@@ -333,11 +437,14 @@ class GameScene extends Phaser.Scene {
             targetAnim = `${config.id}_idle`;
           }
 
-          // Only play if it's not already playing
-          if (body.anims.currentAnim?.key !== targetAnim) {
+          // Only play if the target animation is different, 
+          // OR if it's an attack animation that has completely finished playing!
+          const isCorrectAnim = body.anims.currentAnim?.key === targetAnim;
+          const isFinishedAttacking = !body.anims.isPlaying && se.actionState === "Attacking";
+
+          if (!isCorrectAnim || isFinishedAttacking) {
             body.play(targetAnim);
           }
-
           // >>> THE INVERTED SPRITE FIX <<<
           const isDefaultRight = config.defaultFacingRight !== false;
           const moveDelta = se.velX !== undefined ? se.velX : (se.x - eContainer.x);
@@ -348,6 +455,21 @@ class GameScene extends Phaser.Scene {
           } else if (moveDelta < -0.1) {
             body.setFlipX(isDefaultRight);
           }
+          // >>> NEW: EFFECT VISUALS (COLOR TINTING) <<<
+          let appliedTint = false;
+          if (se.activeEffects && masterConfigs.effects) {
+            // Find the first effect that has a colorTint
+            for (const effectId of se.activeEffects) {
+              const effectConfig = masterConfigs.effects[effectId];
+              if (effectConfig && effectConfig.colorTint) {
+                // Convert hex string "0x00ff00" to a real number
+                body.setTint(parseInt(effectConfig.colorTint, 16));
+                appliedTint = true;
+                break; // Only apply one tint at a time
+              }
+            }
+          }
+          if (!appliedTint) body.clearTint(); // Remove tint if no effects are active!
         }
       });
 
@@ -384,11 +506,8 @@ class GameScene extends Phaser.Scene {
         if (sprite.type === 'Sprite') {
           const target = this.targetPositions.get(proj.id);
           if (target) {
-            const dx = target.x - sprite.x;
-            const dy = target.y - sprite.y;
-            // If the bullet is moving, angle it toward its destination!
-            if (Math.abs(dx) > 0.1 || Math.abs(dy) > 0.1) {
-              sprite.rotation = Math.atan2(dy, dx);
+            if (proj.velX !== 0 || proj.velY !== 0) {
+              sprite.rotation = Math.atan2(proj.velY, proj.velX);
             }
           }
         }
@@ -554,8 +673,7 @@ class GameScene extends Phaser.Scene {
             const customFrameRate = entity[`${key}FrameRate`] || 15;
 
             // Attacks and Hits should only play once. Flying and Idling should loop forever (-1).
-            const shouldLoop = (actionName === 'attack' || actionName === 'hit') ? 0 : -1;
-
+            const shouldLoop = (actionName === 'attack' || actionName === 'hit' || actionName === 'death') ? 0 : -1;
             this.anims.create({
               key: animKey,
               frames: this.anims.generateFrameNumbers(entity.textureKey, {

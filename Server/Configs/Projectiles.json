@@ -1,53 +1,56 @@
 {
-  "9mm_bullet": {
-    "id": "9mm_bullet",
-    "name": "9mm Round",
-    "textureKey": "weapons_sheet",
-    "iconFrame": 0,
-    "scale": 0.5,
-    "baseSpeed": 800,
-    "hitRadius": 10,
-    "pierceCount": 0
-  },
-  "sniper_round": {
-    "id": "sniper_round",
-    "name": "Heavy Caliber",
-    "textureKey": "weapons_sheet",
-    "iconFrame": 3,
-    "scale": 0.8,
-    "baseSpeed": 1500,
-    "hitRadius": 15,
-    "pierceCount": 3
-  },
-  "fireball": {
-    "id": "fireball",
-    "name": "Fireball",
-    "textureKey": "weapons_sheet",
-    "scale": 1.2,
-    "animFly": [8, 11],
-    "animFlyFrameRate": 20,
-    "baseSpeed": 450,
-    "hitRadius": 30,
-    "pierceCount": 0
-  },
-  "sword_swing": {
-    "id": "sword_swing",
-    "name": "Sword Swing Hitbox",
-    "textureKey": "weapons_sheet",
-    "iconFrame": 6,
-    "scale": 1.5,
-    "baseSpeed": 0,
-    "hitRadius": 60,
-    "pierceCount": 999
-  },
-  "hammer_smash": {
-    "id": "hammer_smash",
-    "name": "Hammer Smash Hitbox",
-    "textureKey": "weapons_sheet",
-    "iconFrame": 7,
-    "scale": 2.0,
-    "baseSpeed": 0,
-    "hitRadius": 80,
-    "pierceCount": 999
-  }
+    "9mm_bullet": {
+        "id": "9mm_bullet",
+        "name": "9mm Round",
+        "textureKey": "ammo_sheet",
+        "iconFrame": 26,
+        "scale": 4.5,
+        "baseSpeed": 800,
+        "hitRadius": 10,
+        "pierceCount": 0
+    },
+    "sniper_round": {
+        "id": "sniper_round",
+        "name": "Heavy Caliber",
+        "textureKey": "ammo_sheet",
+        "iconFrame": 11,
+        "scale": 0.5,
+        "baseSpeed": 1500,
+        "hitRadius": 15,
+        "pierceCount": 3
+    },
+    "fireball": {
+        "id": "fireball",
+        "name": "Fireball",
+        "textureKey": "ammo_sheet",
+        "scale": 0.5,
+        "animFly": [
+            8,
+            11
+        ],
+        "animFlyFrameRate": 20,
+        "baseSpeed": 450,
+        "hitRadius": 30,
+        "pierceCount": 0
+    },
+    "sword_swing": {
+        "id": "sword_swing",
+        "name": "Sword Swing Hitbox",
+        "textureKey": "ammo_sheet",
+        "iconFrame": 6,
+        "scale": 0.5,
+        "baseSpeed": 0,
+        "hitRadius": 60,
+        "pierceCount": 999
+    },
+    "hammer_smash": {
+        "id": "hammer_smash",
+        "name": "Hammer Smash Hitbox",
+        "textureKey": "ammo_sheet",
+        "iconFrame": 7,
+        "scale": 0.5,
+        "baseSpeed": 0,
+        "hitRadius": 80,
+        "pierceCount": 999
+    }
 }
