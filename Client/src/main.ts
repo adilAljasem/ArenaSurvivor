@@ -31,6 +31,8 @@ interface ServerPlayer {
   firedWeapons: number[];
   activeEffects: string[];// <--- NEW
   currentCastingSkillId: string;
+  currentCastTimer: number;
+  maxCastTimer: number;
 }
 interface ServerEnemy {
   id: string;
@@ -43,6 +45,8 @@ interface ServerEnemy {
   actionState: string;
   activeEffects: string[];
   currentCastingSkillId: string;
+  currentCastTimer: number;
+  maxCastTimer: number;
 }
 interface ServerProjectile {
   id: string;
@@ -213,32 +217,47 @@ class GameScene extends Phaser.Scene {
         activePlayers.add(sp.connectionId);
         this.targetPositions.set(sp.connectionId, { x: sp.x, y: sp.y });
 
+
+
         if (!this.playerSprites.has(sp.connectionId)) {
           const container = this.add.container(sp.x, sp.y);
 
+          // 1. The Cast Circle (Optional, you can remove this if you only want the WoW Bar!)
           const castCircle = this.add.ellipse(0, 16, 40, 15, 0x00ffff, 0.4);
           castCircle.setStrokeStyle(2, 0x00ffff, 1);
           castCircle.setVisible(false);
 
+          // 2. The Body
           let body;
           if (masterConfigs.characters && masterConfigs.characters["char_well_rounded"] && this.textures.exists(masterConfigs.characters["char_well_rounded"].textureKey)) {
             const charCfg = masterConfigs.characters["char_well_rounded"];
             body = this.add.sprite(0, 0, charCfg.textureKey, charCfg.iconFrame);
           } else {
-            // >>> GLOBAL FALLBACK: BLACK & GREEN BOX <<<
             body = this.add.rectangle(0, 0, 32, 32, 0x000000).setStrokeStyle(2, 0x00ff00);
           }
 
+          // 3. Health Bar & Weapons
           const hpBg = this.add.rectangle(0, -24, 32, 6, 0x000000);
           const hpFill = this.add.rectangle(-16, -24, 32, 6, 0x00ff00).setOrigin(0, 0.5);
           const weaponsContainer = this.add.container(0, 0);
 
-          container.add([body, hpBg, hpFill, weaponsContainer]);
+          // 4. WoW Style Cast Bar
+          const castBarBg = this.add.rectangle(0, 24, 40, 6, 0x000000).setOrigin(0.5, 0.5);
+          castBarBg.setStrokeStyle(1, 0x555555);
+          const castBarFill = this.add.rectangle(-20, 24, 40, 6, 0xffd700).setOrigin(0, 0.5);
+          castBarBg.setVisible(false);
+          castBarFill.setVisible(false);
+
+          // >>> FIX: Add EVERYTHING to the container EXACTLY ONCE! <<<
+          container.add([castCircle, body, hpBg, hpFill, weaponsContainer, castBarBg, castBarFill]);
+
+          // Save references for the update loop
           container.setData('bodySprite', body);
           container.setData('hpFill', hpFill);
           container.setData('weaponsContainer', weaponsContainer);
-          container.add([castCircle, body, hpBg, hpFill, weaponsContainer]);
-          container.setData('castCircle', castCircle); // Save it so we can access it later
+          container.setData('castCircle', castCircle);
+          container.setData('castBarBg', castBarBg);
+          container.setData('castBarFill', castBarFill);
 
           this.playerSprites.set(sp.connectionId, container);
         }
@@ -251,33 +270,51 @@ class GameScene extends Phaser.Scene {
         const body = pContainer.getData('bodySprite') as Phaser.GameObjects.Sprite;
         const config = masterConfigs.characters ? masterConfigs.characters[sp.configId] : null;
 
-        // Toggle the Cast Circle!
-        const castCircle = pContainer.getData('castCircle') as Phaser.GameObjects.Ellipse; // use eContainer for enemies!
-        if (sp.actionState === "Casting") {
-          castCircle.setVisible(true);
-          castCircle.scaleX = 0.8 + Math.sin(this.time.now / 100) * 0.2; // Makes it throb/pulse!
+        // >>> FIX: Check for uppercase ActionState from the server <<<
+        const pActionState = sp.actionState || (sp as any).ActionState;
+        const pCastingId = sp.currentCastingSkillId || (sp as any).CurrentCastingSkillId;
+
+        // >>> MISSING CODE: UPDATE THE PLAYER'S CAST BAR <<<
+        const castBarBg = pContainer.getData('castBarBg') as Phaser.GameObjects.Rectangle;
+        const castBarFill = pContainer.getData('castBarFill') as Phaser.GameObjects.Rectangle;
+
+        const currentCast = sp.currentCastTimer || (sp as any).CurrentCastTimer || 0;
+        const maxCast = sp.maxCastTimer || (sp as any).MaxCastTimer || 0;
+
+        if (pActionState === "Casting" && maxCast > 0) {
+          castBarBg.setVisible(true);
+          castBarFill.setVisible(true);
+
+          // The server counts down, so we invert it to make the bar fill UP from 0 to 100%
+          const fillPercent = Math.max(0, 1 - (currentCast / maxCast));
+          castBarFill.width = 40 * fillPercent;
         } else {
-          castCircle.setVisible(false);
+          castBarBg.setVisible(false);
+          castBarFill.setVisible(false);
         }
+
+
 
         if (body && body.type === 'Sprite' && config) {
           let targetAnim = `${config.id}_idle`;
 
-          if (sp.actionState === "Dead" && config.animDeath) {
+          // >>> FIX: Use pActionState and pCastingId here instead of sp.actionState! <<<
+          if (pActionState === "Dead" && config.animDeath) {
             targetAnim = `${config.id}_death`;
-          } else if (sp.actionState === "Casting" && sp.currentCastingSkillId) {
-            targetAnim = `${sp.currentCastingSkillId}_skill`; // <<< ADD THIS BLOCK
-          } else if (sp.actionState === "Attacking" && config.animAttack) {
+          } else if (pActionState === "Casting" && pCastingId) {
+            targetAnim = `${pCastingId}_skill`;
+          } else if (pActionState === "Attacking" && config.animAttack) {
             targetAnim = `${config.id}_attack`;
-          } else if (sp.actionState === "Moving" && config.animMove) {
+          } else if (pActionState === "Moving" && config.animMove) {
             targetAnim = `${config.id}_move`;
           } else if (config.animIdle) {
             targetAnim = `${config.id}_idle`;
           }
+
           // Only play if the target animation is different, 
           // OR if it's an attack animation that has completely finished playing!
           const isCorrectAnim = body.anims && body.anims.currentAnim?.key === targetAnim;
-          const isFinishedAttacking = body.anims && !body.anims.isPlaying && sp.actionState === "Attacking";
+          const isFinishedAttacking = body.anims && !body.anims.isPlaying && pActionState === "Attacking";
 
           if (!isCorrectAnim || isFinishedAttacking) {
             body.play(targetAnim);
@@ -422,10 +459,12 @@ class GameScene extends Phaser.Scene {
           const container = this.add.container(se.x, se.y);
           const config = masterConfigs.enemies ? masterConfigs.enemies[se.configId] : null;
 
-          const castCircle = this.add.ellipse(0, 16, 40, 15, 0xffa500, 0.4); // Orange for enemies!
+          // 1. Cast Circle
+          const castCircle = this.add.ellipse(0, 16, 40, 15, 0xffa500, 0.4);
           castCircle.setStrokeStyle(2, 0xffa500, 1);
           castCircle.setVisible(false);
 
+          // 2. The Body
           let body;
           if (config && config.textureKey && this.textures.exists(config.textureKey)) {
             body = this.add.sprite(0, 0, config.textureKey);
@@ -437,21 +476,33 @@ class GameScene extends Phaser.Scene {
               body.setFrame(config.iconFrame);
             }
           } else {
-            // >>> GLOBAL FALLBACK: BLACK & GREEN BOX <<<
             body = this.add.rectangle(0, 0, 32, 32, 0x000000).setStrokeStyle(2, 0x00ff00) as any;
           }
 
+          // 3. Health Bar
           const hpBg = this.add.rectangle(0, -24, 32, 4, 0x000000);
           const hpFill = this.add.rectangle(-16, -24, 32, 4, 0x00ff00).setOrigin(0, 0.5);
 
-          container.add([body, hpBg, hpFill]);
+          // 4. WoW Style Cast Bar
+          const castBarBg = this.add.rectangle(0, 24, 40, 6, 0x000000).setOrigin(0.5, 0.5);
+          castBarBg.setStrokeStyle(1, 0x555555);
+          const castBarFill = this.add.rectangle(-20, 24, 40, 6, 0xffd700).setOrigin(0, 0.5);
+          castBarBg.setVisible(false);
+          castBarFill.setVisible(false);
+
+          // >>> FIX: Add EVERYTHING to the container EXACTLY ONCE! <<<
+          container.add([castCircle, body, hpBg, hpFill, castBarBg, castBarFill]);
+
+          // Save references for the update loop
           container.setData('bodySprite', body);
           container.setData('hpFill', hpFill);
           container.setData('baseWidth', 32 * (config?.scale || 1.0));
           container.setData('configId', se.configId);
-          this.enemySprites.set(se.id, container);
-          container.add([castCircle, body, hpBg, hpFill]);
           container.setData('castCircle', castCircle);
+          container.setData('castBarBg', castBarBg);
+          container.setData('castBarFill', castBarFill);
+
+          this.enemySprites.set(se.id, container);
         }
 
         const eContainer = this.enemySprites.get(se.id)!;
@@ -469,25 +520,40 @@ class GameScene extends Phaser.Scene {
         const body = eContainer.getData('bodySprite') as Phaser.GameObjects.Sprite;
         const config = masterConfigs.enemies ? masterConfigs.enemies[se.configId] : null;
 
-        // Toggle the Cast Circle!
-        const castCircle = eContainer.getData('castCircle') as Phaser.GameObjects.Ellipse; // use eContainer for enemies!
-        if (se.actionState === "Casting") {
-          castCircle.setVisible(true);
-          castCircle.scaleX = 0.8 + Math.sin(this.time.now / 100) * 0.2; // Makes it throb/pulse!
+        // >>> FIX: Setup the safe variables for Enemies! <<<
+        const eActionState = se.actionState || (se as any).ActionState;
+        const eCastingId = se.currentCastingSkillId || (se as any).CurrentCastingSkillId;
+
+        const castBarBg = eContainer.getData('castBarBg') as Phaser.GameObjects.Rectangle;
+        const castBarFill = eContainer.getData('castBarFill') as Phaser.GameObjects.Rectangle;
+
+        // Safely grab uppercase or lowercase values
+        const currentCast = se.currentCastTimer || (se as any).CurrentCastTimer || 0;
+        const maxCast = se.maxCastTimer || (se as any).MaxCastTimer || 0;
+
+        if (eActionState === "Casting" && maxCast > 0) {
+          castBarBg.setVisible(true);
+          castBarFill.setVisible(true);
+
+          // The server counts down, so we invert it to make the bar fill UP from 0 to 100%
+          const fillPercent = Math.max(0, 1 - (currentCast / maxCast));
+          castBarFill.width = 40 * fillPercent;
         } else {
-          castCircle.setVisible(false);
+          castBarBg.setVisible(false);
+          castBarFill.setVisible(false);
         }
 
         if (body && body.anims && config) {
           let targetAnim = `${config.id}_idle`;
 
-          if (se.actionState === "Dead" && config.animDeath) {
+          // >>> FIX: Use eActionState and eCastingId here! <<<
+          if (eActionState === "Dead" && config.animDeath) {
             targetAnim = `${config.id}_death`;
-          } else if (se.actionState === "Casting" && se.currentCastingSkillId) {
-            targetAnim = `${se.currentCastingSkillId}_skill`; // <<< ADD THIS BLOCK
-          } else if (se.actionState === "Attacking" && config.animAttack) {
+          } else if (eActionState === "Casting" && eCastingId) {
+            targetAnim = `${eCastingId}_skill`;
+          } else if (eActionState === "Attacking" && config.animAttack) {
             targetAnim = `${config.id}_attack`;
-          } else if (se.actionState === "Moving" && config.animMove) {
+          } else if (eActionState === "Moving" && config.animMove) {
             targetAnim = `${config.id}_move`;
           } else if (config.animIdle) {
             targetAnim = `${config.id}_idle`;
@@ -496,7 +562,7 @@ class GameScene extends Phaser.Scene {
           // Only play if the target animation is different, 
           // OR if it's an attack animation that has completely finished playing!
           const isCorrectAnim = body.anims.currentAnim?.key === targetAnim;
-          const isFinishedAttacking = !body.anims.isPlaying && se.actionState === "Attacking";
+          const isFinishedAttacking = !body.anims.isPlaying && eActionState === "Attacking";
 
           if (!isCorrectAnim || isFinishedAttacking) {
             body.play(targetAnim);
@@ -639,24 +705,24 @@ class GameScene extends Phaser.Scene {
       });
 
       // --- GAME WORLD: AOE RINGS ---
-      if (state.aoeEvents) {
-        state.aoeEvents.forEach(aoe => {
+      const aoeList = state.aoeEvents || (state as any).AoeEvents;
+
+      if (aoeList) {
+        aoeList.forEach((aoe: any) => {
           // Soft Green for allies, Soft Red for enemies
-          const color = aoe.isFriendly ? 0x88ff88 : 0xff4444; 
-          
-          const ring = this.add.circle(aoe.x, aoe.y, aoe.radius, color, 0.2);
+          const color = aoe.isFriendly || aoe.IsFriendly ? 0x88ff88 : 0xff4444;
+
+          const ring = this.add.circle(aoe.x || aoe.X, aoe.y || aoe.Y, aoe.radius || aoe.Radius, color, 0.2);
           ring.setStrokeStyle(2, color, 0.8);
-          ring.setDepth(15); // Draw under players, but over floor
-          
-          // Start small
+          ring.setDepth(15);
+
           ring.setScale(0.1);
 
-          // Expand out to full size and fade away!
           this.tweens.add({
             targets: ring,
             scale: 1.0,
             alpha: 0,
-            duration: 500, // Half a second fade
+            duration: 500,
             ease: 'Cubic.easeOut',
             onComplete: () => ring.destroy()
           });

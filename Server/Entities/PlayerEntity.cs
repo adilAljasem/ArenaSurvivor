@@ -50,6 +50,8 @@ public class PlayerEntity
     public string ActionState { get; set; } = "Idle";
     public List<ActiveSkill> Skills { get; set; } = new();
     public string CurrentCastingSkillId { get; set; } = string.Empty;
+    public float CurrentCastTimer { get; set; }
+    public float MaxCastTimer { get; set; }
 
     // Initializes the player with the Master Stat List so it never crashes
     public void Initialize(CharacterConfig config, ConfigManager configManager)

@@ -211,6 +211,13 @@ public class GameLoop : BackgroundService
                 continue; // Skip all AI, movement, and attacking logic because they are dead!
             }
 
+
+            // Stop the AI from overwriting the state and moving the boss!
+            if (enemy.ActionState == "Casting")
+            {
+                continue;
+            }
+
             if (enemy.AttackCooldown > 0)
             {
                 enemy.AttackCooldown -= dt;
@@ -322,6 +329,13 @@ public class GameLoop : BackgroundService
                             if (config.ApplyEffectsOnHit != null) combinedEffects.AddRange(config.ApplyEffectsOnHit);
                             if (projConfig.ApplyEffectsOnHit != null) combinedEffects.AddRange(projConfig.ApplyEffectsOnHit);
 
+                            // 1. Guess based on range/speed
+                            float computedLifespan = finalSpeed > 0 ? (finalRange / finalSpeed) : 0.15f;
+                            // 2. Projectile JSON overrides guess
+                            if (projConfig.Lifespan > 0) computedLifespan = projConfig.Lifespan;
+                            // 3. Weapon JSON overrides Projectile JSON
+                            if (config.Lifespan > 0) computedLifespan = config.Lifespan;
+
                             var bullet = new ProjectileEntity
                             {
                                 ConfigId = projConfig.Id,
@@ -334,7 +348,7 @@ public class GameLoop : BackgroundService
                                 LifeStealChance = totalLifeStealForThisAttack,
                                 HitRadius = projConfig.HitRadius,
                                 PierceCount = projConfig.PierceCount,
-                                Lifespan = finalSpeed > 0 ? (finalRange / finalSpeed) : 0.15f,
+                                Lifespan = computedLifespan,
 
                                 // >>> NEW: Load the bullet with the effects! <<<
                                 ApplyEffectsOnHit = combinedEffects
@@ -361,14 +375,16 @@ public class GameLoop : BackgroundService
                 if (skill.IsCasting)
                 {
                     skill.CurrentCastTimer -= dt;
+                    enemy.CurrentCastTimer = skill.CurrentCastTimer; // >>> SYNC TIMER
+
                     if (skill.CurrentCastTimer <= 0)
                     {
-                        // FIRE!
                         ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, damageEvents, aoeEvents);
                         skill.IsCasting = false;
                         skill.CurrentCooldown = config.CooldownSeconds;
                         enemy.ActionState = "Idle";
                         enemy.CurrentCastingSkillId = string.Empty;
+                        enemy.CurrentCastTimer = 0; // >>> RESET
                     }
                 }
                 else
@@ -376,11 +392,12 @@ public class GameLoop : BackgroundService
                     skill.CurrentCooldown -= dt;
                     if (skill.CurrentCooldown <= 0 && config.TriggerType == Configs.SkillTriggerType.Auto)
                     {
-                        // START CASTING!
                         skill.IsCasting = true;
                         skill.CurrentCastTimer = config.CastTimeSeconds;
                         enemy.ActionState = "Casting";
                         enemy.CurrentCastingSkillId = skill.ConfigId;
+                        enemy.MaxCastTimer = config.CastTimeSeconds;     // >>> SET MAX
+                        enemy.CurrentCastTimer = config.CastTimeSeconds; // >>> SET CURRENT
                     }
                 }
             }
@@ -396,27 +413,29 @@ public class GameLoop : BackgroundService
                 if (skill.IsCasting)
                 {
                     skill.CurrentCastTimer -= dt;
-                    // You might want to add a "player.ActionState" later if you want players to have cast animations!
+                    player.CurrentCastTimer = skill.CurrentCastTimer; // >>> SYNC TIMER
+
                     if (skill.CurrentCastTimer <= 0)
                     {
-                        // FIRE!
                         ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents);
                         skill.IsCasting = false;
                         skill.CurrentCooldown = config.CooldownSeconds;
+                        player.ActionState = "Idle";
                         player.CurrentCastingSkillId = string.Empty;
+                        player.CurrentCastTimer = 0; // >>> RESET
                     }
-
                 }
                 else
                 {
                     skill.CurrentCooldown -= dt;
                     if (skill.CurrentCooldown <= 0 && config.TriggerType == Configs.SkillTriggerType.Auto)
                     {
-                        // START CASTING!
                         skill.IsCasting = true;
-                        player.ActionState = "Casting";
                         skill.CurrentCastTimer = config.CastTimeSeconds;
+                        player.ActionState = "Casting";
                         player.CurrentCastingSkillId = skill.ConfigId;
+                        player.MaxCastTimer = config.CastTimeSeconds;     // >>> SET MAX
+                        player.CurrentCastTimer = config.CastTimeSeconds; // >>> SET CURRENT
                     }
                 }
             }
@@ -451,6 +470,7 @@ public class GameLoop : BackgroundService
         // --- ACTION: AOE EXPLOSION ---
         if (config.ActionType == Configs.SkillActionType.AoE)
         {
+            aoeEvents.Add(new Server.DTOs.AoeEventDto { X = startX, Y = startY, Radius = config.Radius, IsFriendly = (team == "Player") });
             float radiusSq = config.Radius * config.Radius;
 
             if (team == "Enemy")
@@ -604,6 +624,7 @@ public class GameLoop : BackgroundService
         // --- ACTION: AOE HEAL ---
         if (config.ActionType == Configs.SkillActionType.AoEHeal)
         {
+            aoeEvents.Add(new Server.DTOs.AoeEventDto { X = startX, Y = startY, Radius = config.Radius, IsFriendly = (team == "Player") });
             float radiusSq = config.Radius * config.Radius;
 
             // 1. Heal Players (if caster is a Player OR a Player's Summon)
@@ -889,7 +910,7 @@ public class GameLoop : BackgroundService
 
                 if (!bossAlreadySpawend && _gameState.PhaseTimer > 50f)
                 {
-                    var bossConfigs = _configManager.Enemies.Values.Where(e => e.IsBoss && e.Tier <= maxAllowedTier).ToList();
+                    var bossConfigs = _configManager.Enemies.Values.Where(e => e.IsBoss && !e.IsSummonOnly && e.Tier <= maxAllowedTier).ToList();
                     if (bossConfigs.Any())
                     {
                         var bossConfig = bossConfigs[Random.Shared.Next(bossConfigs.Count)];
@@ -903,8 +924,7 @@ public class GameLoop : BackgroundService
             // Regular Spawn Logic
             if (!skipRegularSpawn)
             {
-                var availableEnemies = _configManager.Enemies.Values.Where(e => !e.IsBoss).ToList();
-
+                var availableEnemies = _configManager.Enemies.Values.Where(e => !e.IsBoss && !e.IsSummonOnly).ToList();
                 int targetTier = maxAllowedTier;
                 if (maxAllowedTier > 1 && Random.Shared.Next(0, 100) < 50)
                 {
@@ -985,6 +1005,8 @@ public class GameLoop : BackgroundService
                 p.Gold,
                 p.ActionState,            // <<< FIX: Tell the UI the player is casting!
                 p.CurrentCastingSkillId,  // <<< FIX: Tell the UI WHICH skill is casting!
+                p.CurrentCastTimer,       // <<< ADD THIS
+                p.MaxCastTimer,           // <<< ADD THIS
                 Weapons = p.Weapons,
                 FiredWeapons = p.FiredWeaponsThisTick.ToList(),
                 ActiveEffects = p.ActiveEffects.Select(e => e.ConfigId).ToList() // Converts objects to strings!
@@ -999,6 +1021,9 @@ public class GameLoop : BackgroundService
                 e.Y,
                 e.CurrentHp,
                 e.ActionState,
+                e.CurrentCastingSkillId, // <<< THIS WAS MISSING!
+                e.CurrentCastTimer,      // <<< ADD THIS
+                e.MaxCastTimer,          // <<< ADD THIS
                 MaxHp = e.GetTotalStat("maxHp", _configManager), // Calculates MaxHp for the health bars!
                 ActiveEffects = e.ActiveEffects.Select(a => a.ConfigId).ToList() // Converts objects to strings!
             });

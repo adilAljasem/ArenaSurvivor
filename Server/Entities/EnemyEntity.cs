@@ -23,6 +23,8 @@ public class EnemyEntity
     public List<ActiveEffect> ActiveEffects { get; set; } = new();
     public List<ActiveSkill> Skills { get; set; } = new();
     public string CurrentCastingSkillId { get; set; } = string.Empty;
+    public float CurrentCastTimer { get; set; }
+    public float MaxCastTimer { get; set; }
 
     // Initializes the enemy with the Master Stat List so it never crashes
     public void Initialize(Configs.EnemyConfig config, float spawnX, float spawnY, ConfigManager configManager)

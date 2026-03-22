@@ -64,6 +64,7 @@ public class EnemyConfig
     public int IconFrame { get; set; }
     public float Scale { get; set; } = 1.0f;
     public bool DefaultFacingRight { get; set; } = true;
+    public bool IsSummonOnly { get; set; } = false;
 
     public int[]? AnimIdle { get; set; }
     public int AnimIdleFrameRate { get; set; } = 10;
@@ -107,6 +108,7 @@ public class WeaponConfig
     public float RangedDamage { get; set; }
     public float ElementalDamage { get; set; }
     public float Range { get; set; }
+    public float Lifespan { get; set; } = 0f;
 
     // --- Projectile Links ---
     public string ProjectileId { get; set; } = string.Empty;
@@ -153,6 +155,7 @@ public class ProjectileConfig
     public int AnimHitFrameRate { get; set; } = 15;
 
     // --- Physics & Mechanics ---
+    public float Lifespan { get; set; } = 0f;
     public float BaseSpeed { get; set; } = 500f;
     public float HitRadius { get; set; } = 15f;
     public int PierceCount { get; set; } = 0;
@@ -196,30 +199,31 @@ public class SkillConfig
 {
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
-    
+
     // --- Visuals ---
     public string TextureKey { get; set; } = string.Empty;
     public int IconFrame { get; set; }
-    public int[]? AnimSkill { get; set; } 
+    public int[]? AnimSkill { get; set; }
     public int AnimFrameRate { get; set; } = 15;
 
     // --- Timing ---
     public float CooldownSeconds { get; set; }
-    public float CastTimeSeconds { get; set; } 
+    public float CastTimeSeconds { get; set; }
 
     // --- Payload: Summon Specific ---
     public string SummonConfigId { get; set; } = string.Empty; // e.g., "goblin_basic" or "tree"
     public int SummonCount { get; set; } = 1;
     public float SummonRadius { get; set; } = 50f; // Scatter them so they don't stack perfectly!
-    
+
     // --- Mechanics ---
-    public SkillTriggerType TriggerType { get; set; } = SkillTriggerType.Auto; 
-    public SkillTargetType TargetType { get; set; } = SkillTargetType.ClosestEnemy; 
-    public SkillActionType ActionType { get; set; } = SkillActionType.Projectile; 
+    public SkillTriggerType TriggerType { get; set; } = SkillTriggerType.Auto;
+    public SkillTargetType TargetType { get; set; } = SkillTargetType.ClosestEnemy;
+    public SkillActionType ActionType { get; set; } = SkillActionType.Projectile;
 
     // --- Payload ---
     public string ProjectileId { get; set; } = string.Empty;
     public float Radius { get; set; } = 0f;
     public float BaseDamage { get; set; } = 0f;
+    public float Lifespan { get; set; } = 0f;
     public List<string> ApplyEffects { get; set; } = new();
 }

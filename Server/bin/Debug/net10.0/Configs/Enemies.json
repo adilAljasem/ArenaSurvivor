@@ -278,6 +278,9 @@
         "targetStat": "meleeDamage",
         "amount": 10
       }
+    ],
+    "startingSkills": [
+      "summon_trees"
     ]
   },
   "tree_obstacle": {
@@ -285,6 +288,7 @@
     "name": "Healing Tree",
     "tier": 1,
     "isBoss": false,
+    "isSummonOnly": true,
     "textureKey": "scenery_sheet",
     "scale": 1.5,
     "startingSkills": [
