@@ -11,6 +11,7 @@ const connection = new HubConnectionBuilder()
 // --- INTERFACES ---
 interface EquippedWeapon { configId: string; slotIndex: number; level: number; }
 interface ShopItem { configId: string; name: string; price: number; }
+interface AoeEvent { x: number; y: number; radius: number; isFriendly: boolean; }
 interface ServerPlayer {
   connectionId: string;
   configId: string;       // <--- NEW
@@ -57,7 +58,7 @@ interface ServerProjectile { id: string; configId: string; x: number; y: number;
 
 interface GameStatePayload {
   players: ServerPlayer[]; enemies: ServerEnemy[]; projectiles: ServerProjectile[];
-  pickups: ServerPickup[]; damageEvents: DamageEvent[];
+  pickups: ServerPickup[]; damageEvents: DamageEvent[]; aoeEvents: AoeEvent[];
   phase: string; currentWave: number; timeRemaining: number;
 }
 
@@ -215,6 +216,10 @@ class GameScene extends Phaser.Scene {
         if (!this.playerSprites.has(sp.connectionId)) {
           const container = this.add.container(sp.x, sp.y);
 
+          const castCircle = this.add.ellipse(0, 16, 40, 15, 0x00ffff, 0.4);
+          castCircle.setStrokeStyle(2, 0x00ffff, 1);
+          castCircle.setVisible(false);
+
           let body;
           if (masterConfigs.characters && masterConfigs.characters["char_well_rounded"] && this.textures.exists(masterConfigs.characters["char_well_rounded"].textureKey)) {
             const charCfg = masterConfigs.characters["char_well_rounded"];
@@ -232,6 +237,8 @@ class GameScene extends Phaser.Scene {
           container.setData('bodySprite', body);
           container.setData('hpFill', hpFill);
           container.setData('weaponsContainer', weaponsContainer);
+          container.add([castCircle, body, hpBg, hpFill, weaponsContainer]);
+          container.setData('castCircle', castCircle); // Save it so we can access it later
 
           this.playerSprites.set(sp.connectionId, container);
         }
@@ -243,6 +250,15 @@ class GameScene extends Phaser.Scene {
         // >>> THE PUPPET MASTER: PLAYER ANIMATIONS & FLIPPING <<<
         const body = pContainer.getData('bodySprite') as Phaser.GameObjects.Sprite;
         const config = masterConfigs.characters ? masterConfigs.characters[sp.configId] : null;
+
+        // Toggle the Cast Circle!
+        const castCircle = pContainer.getData('castCircle') as Phaser.GameObjects.Ellipse; // use eContainer for enemies!
+        if (sp.actionState === "Casting") {
+          castCircle.setVisible(true);
+          castCircle.scaleX = 0.8 + Math.sin(this.time.now / 100) * 0.2; // Makes it throb/pulse!
+        } else {
+          castCircle.setVisible(false);
+        }
 
         if (body && body.type === 'Sprite' && config) {
           let targetAnim = `${config.id}_idle`;
@@ -406,6 +422,10 @@ class GameScene extends Phaser.Scene {
           const container = this.add.container(se.x, se.y);
           const config = masterConfigs.enemies ? masterConfigs.enemies[se.configId] : null;
 
+          const castCircle = this.add.ellipse(0, 16, 40, 15, 0xffa500, 0.4); // Orange for enemies!
+          castCircle.setStrokeStyle(2, 0xffa500, 1);
+          castCircle.setVisible(false);
+
           let body;
           if (config && config.textureKey && this.textures.exists(config.textureKey)) {
             body = this.add.sprite(0, 0, config.textureKey);
@@ -430,6 +450,8 @@ class GameScene extends Phaser.Scene {
           container.setData('baseWidth', 32 * (config?.scale || 1.0));
           container.setData('configId', se.configId);
           this.enemySprites.set(se.id, container);
+          container.add([castCircle, body, hpBg, hpFill]);
+          container.setData('castCircle', castCircle);
         }
 
         const eContainer = this.enemySprites.get(se.id)!;
@@ -446,6 +468,15 @@ class GameScene extends Phaser.Scene {
         // >>> THE PUPPET MASTER: ENEMY ANIMATIONS & FLIPPING <<<
         const body = eContainer.getData('bodySprite') as Phaser.GameObjects.Sprite;
         const config = masterConfigs.enemies ? masterConfigs.enemies[se.configId] : null;
+
+        // Toggle the Cast Circle!
+        const castCircle = eContainer.getData('castCircle') as Phaser.GameObjects.Ellipse; // use eContainer for enemies!
+        if (se.actionState === "Casting") {
+          castCircle.setVisible(true);
+          castCircle.scaleX = 0.8 + Math.sin(this.time.now / 100) * 0.2; // Makes it throb/pulse!
+        } else {
+          castCircle.setVisible(false);
+        }
 
         if (body && body.anims && config) {
           let targetAnim = `${config.id}_idle`;
@@ -606,6 +637,31 @@ class GameScene extends Phaser.Scene {
           }
         });
       });
+
+      // --- GAME WORLD: AOE RINGS ---
+      if (state.aoeEvents) {
+        state.aoeEvents.forEach(aoe => {
+          // Soft Green for allies, Soft Red for enemies
+          const color = aoe.isFriendly ? 0x88ff88 : 0xff4444; 
+          
+          const ring = this.add.circle(aoe.x, aoe.y, aoe.radius, color, 0.2);
+          ring.setStrokeStyle(2, color, 0.8);
+          ring.setDepth(15); // Draw under players, but over floor
+          
+          // Start small
+          ring.setScale(0.1);
+
+          // Expand out to full size and fade away!
+          this.tweens.add({
+            targets: ring,
+            scale: 1.0,
+            alpha: 0,
+            duration: 500, // Half a second fade
+            ease: 'Cubic.easeOut',
+            onComplete: () => ring.destroy()
+          });
+        });
+      }
 
       this.cleanupSprites(this.playerSprites, activePlayers);
       this.cleanupSprites(this.enemySprites, activeEnemies);

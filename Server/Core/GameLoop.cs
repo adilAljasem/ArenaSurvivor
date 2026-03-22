@@ -74,16 +74,17 @@ public class GameLoop : BackgroundService
             // 3. Process World Updates
 
             var tickDamageEvents = new List<Server.DTOs.DamageEventDto>();
+            var tickAoeEvents = new List<Server.DTOs.AoeEventDto>();
 
             ProcessPhysicsAndAI(dt);
             ProcessEffects(dt, tickDamageEvents);
             ProcessCombatAndShooting(dt);
-            ProcessSkills(dt, tickDamageEvents);
+            ProcessSkills(dt, tickDamageEvents, tickAoeEvents);
             var collisionEvents = ProcessCollisions(dt);
             tickDamageEvents.AddRange(collisionEvents); // Combine bullet hits with DoT ticks!
+            tickDamageEvents.AddRange(collisionEvents);
             // 4. Broadcast to Clients
-            await BroadcastStateAsync(tickDamageEvents, stoppingToken);
-
+            await BroadcastStateAsync(tickDamageEvents, tickAoeEvents, stoppingToken);
             // 5. Maintain Tick Rate
             var executionTime = DateTime.UtcNow - currentTickTime;
             var delay = _tickRateMs - (int)executionTime.TotalMilliseconds;
@@ -181,8 +182,7 @@ public class GameLoop : BackgroundService
             if (player.InputX != 0 || player.InputY != 0)
             {
                 // >>> FIX: Just one clean line for speed! <<<
-                float finalSpeed = player.GetTotalStat("speed", _configManager);
-
+                float finalSpeed = Math.Max(0f, player.GetTotalStat("speed", _configManager));
                 player.X += player.InputX * finalSpeed * dt;
                 player.Y += player.InputY * finalSpeed * dt;
             }
@@ -245,8 +245,7 @@ public class GameLoop : BackgroundService
                     float length = (float)Math.Sqrt((dx * dx) + (dy * dy));
 
                     // >>> THE NEW ENEMY SPEED CALCULATION <<<
-                    float finalSpeed = enemy.GetTotalStat("speed", _configManager);
-
+                    float finalSpeed = Math.Max(0f, enemy.GetTotalStat("speed", _configManager));
                     enemy.X += (dx / length) * finalSpeed * dt;
                     enemy.Y += (dy / length) * finalSpeed * dt;
                 }
@@ -348,7 +347,7 @@ public class GameLoop : BackgroundService
         }
     }
 
-    private void ProcessSkills(float dt, List<Server.DTOs.DamageEventDto> damageEvents)
+    private void ProcessSkills(float dt, List<Server.DTOs.DamageEventDto> damageEvents, List<DTOs.AoeEventDto> aoeEvents)
     {
         // 1. Process Enemy Skills
         foreach (var enemy in _gameState.Enemies.Values)
@@ -365,7 +364,7 @@ public class GameLoop : BackgroundService
                     if (skill.CurrentCastTimer <= 0)
                     {
                         // FIRE!
-                        ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, damageEvents);
+                        ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, damageEvents, aoeEvents);
                         skill.IsCasting = false;
                         skill.CurrentCooldown = config.CooldownSeconds;
                         enemy.ActionState = "Idle";
@@ -401,11 +400,12 @@ public class GameLoop : BackgroundService
                     if (skill.CurrentCastTimer <= 0)
                     {
                         // FIRE!
-                        ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, damageEvents);
+                        ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents);
                         skill.IsCasting = false;
                         skill.CurrentCooldown = config.CooldownSeconds;
                         player.CurrentCastingSkillId = string.Empty;
                     }
+
                 }
                 else
                 {
@@ -423,7 +423,8 @@ public class GameLoop : BackgroundService
         }
     }
 
-    private void ExecuteSkill(Configs.SkillConfig config, string casterId, float startX, float startY, string team, List<Server.DTOs.DamageEventDto> damageEvents)
+    private void ExecuteSkill(Configs.SkillConfig config, string casterId, float startX, float startY, string team,
+     List<Server.DTOs.DamageEventDto> damageEvents, List<Server.DTOs.AoeEventDto> aoeEvents)
     {
         // --- ACTION: SELF BUFF ---
         if (config.ActionType == Configs.SkillActionType.SelfBuff)
@@ -967,7 +968,7 @@ public class GameLoop : BackgroundService
         }
     }
 
-    private async Task BroadcastStateAsync(List<Server.DTOs.DamageEventDto> tickDamageEvents, CancellationToken stoppingToken)
+    private async Task BroadcastStateAsync(List<Server.DTOs.DamageEventDto> tickDamageEvents, List<Server.DTOs.AoeEventDto> tickAoeEvents, CancellationToken stoppingToken)
     {
         if (!_gameState.Players.IsEmpty)
         {
@@ -982,6 +983,8 @@ public class GameLoop : BackgroundService
                 p.CurrentHp,
                 MaxHp = p.GetTotalStat("maxHp", _configManager),
                 p.Gold,
+                p.ActionState,            // <<< FIX: Tell the UI the player is casting!
+                p.CurrentCastingSkillId,  // <<< FIX: Tell the UI WHICH skill is casting!
                 Weapons = p.Weapons,
                 FiredWeapons = p.FiredWeaponsThisTick.ToList(),
                 ActiveEffects = p.ActiveEffects.Select(e => e.ConfigId).ToList() // Converts objects to strings!
@@ -1008,6 +1011,7 @@ public class GameLoop : BackgroundService
                 Projectiles = _gameState.Projectiles.Values,
                 Pickups = _gameState.Pickups.Values,
                 DamageEvents = tickDamageEvents,
+                AoeEvents = tickAoeEvents, // <<< FIX: Send the AoE rings to the UI!
                 Phase = _gameState.Phase.ToString(),
                 CurrentWave = _gameState.CurrentWave,
                 TimeRemaining = Math.Max(0, (int)_gameState.PhaseTimer),

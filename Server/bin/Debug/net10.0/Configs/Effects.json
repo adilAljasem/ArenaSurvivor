@@ -7,7 +7,7 @@
     "tickRate": 1.0,
     "tickDamage": 5.0,
     "statModifiers": {
-      "speed": -20
+      "speed": -200
     },
     "textureKey": "effects_sheet",
     "colorTint": "0x00ff00"
