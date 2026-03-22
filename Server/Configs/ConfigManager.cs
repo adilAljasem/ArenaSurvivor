@@ -18,6 +18,7 @@ public class ConfigManager
     public Dictionary<string, LevelUpCardConfig> LevelUpCards { get; private set; } = new();
     public Dictionary<string, ProjectileConfig> Projectiles { get; private set; } = new();
     public Dictionary<string, EffectConfig> Effects { get; private set; } = new();
+    public Dictionary<string, SkillConfig> Skills { get; private set; } = new(); // <<< ADD THIS
 
     public ConfigManager()
     {
@@ -127,6 +128,15 @@ public class ConfigManager
                 effectJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
             ) ?? new();
             Console.WriteLine($"Loaded {Effects.Count} Effects.");
+        }
+
+        if (File.Exists("Configs/Skills.json"))
+        {
+            var skillsJson = File.ReadAllText("Configs/Skills.json");
+            Skills = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, SkillConfig>>(
+                skillsJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+            ) ?? new();
+            Console.WriteLine($"Loaded {Skills.Count} Skills.");
         }
     }
 }

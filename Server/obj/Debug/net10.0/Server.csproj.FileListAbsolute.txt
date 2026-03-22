@@ -40,3 +40,4 @@ C:\Users\fooxi\Desktop\Programming\ArenaSurvivor\server\obj\Debug\net10.0\refint
 C:\Users\fooxi\Desktop\Programming\ArenaSurvivor\server\obj\Debug\net10.0\Server.pdb
 C:\Users\fooxi\Desktop\Programming\ArenaSurvivor\server\obj\Debug\net10.0\Server.genruntimeconfig.cache
 C:\Users\fooxi\Desktop\Programming\ArenaSurvivor\server\obj\Debug\net10.0\ref\Server.dll
+c:\Users\fooxi\Desktop\Programming\ArenaSurvivor\Server\bin\Debug\net10.0\Configs\Skills.json

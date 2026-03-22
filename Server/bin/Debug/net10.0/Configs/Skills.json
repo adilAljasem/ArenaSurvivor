@@ -1,0 +1,85 @@
+{
+    "boss_stomp": {
+        "id": "boss_stomp",
+        "name": "Ground Stomp",
+        "textureKey": "boss_skills_sheet",
+        "iconFrame": 0,
+        "animSkill": [
+            10,
+            15
+        ],
+        "animFrameRate": 15,
+        "cooldownSeconds": 5.0,
+        "castTimeSeconds": 1.5,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "AoE",
+        "radius": 150,
+        "baseDamage": 25
+    },
+    "magic_missile": {
+        "id": "magic_missile",
+        "name": "Magic Missile",
+        "cooldownSeconds": 2.0,
+        "castTimeSeconds": 0.2,
+        "triggerType": "Auto",
+        "targetType": "ClosestEnemy",
+        "actionType": "Projectile",
+        "projectileId": "fireball",
+        "baseDamage": 15
+    },
+    "goblin_ambush": {
+        "id": "goblin_ambush",
+        "name": "Goblin Ambush",
+        "cooldownSeconds": 15.0,
+        "castTimeSeconds": 1.0,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "Summon",
+        "summonConfigId": "goblin_basic",
+        "summonCount": 10,
+        "summonRadius": 120.0
+    },
+    "summon_trees": {
+        "id": "summon_trees",
+        "name": "Grow Forest",
+        "cooldownSeconds": 20.0,
+        "castTimeSeconds": 2.0,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "Summon",
+        "summonConfigId": "tree_obstacle",
+        "summonCount": 5,
+        "summonRadius": 200.0
+    },
+    "nature_pulse": {
+        "id": "nature_pulse",
+        "name": "Nature Pulse",
+        "cooldownSeconds": 3.0,
+        "castTimeSeconds": 0.0,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "AoEHeal",
+        "radius": 200,
+        "baseDamage": 15
+    },
+    "adrenaline_surge": {
+        "id": "adrenaline_surge",
+        "name": "Adrenaline Surge",
+        "textureKey": "effects_sheet",
+        "iconFrame": 0,
+        "animSkill": [
+            0,
+            5
+        ],
+        "animFrameRate": 15,
+        "cooldownSeconds": 10.0,
+        "castTimeSeconds": 3.5,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "SelfBuff",
+        "applyEffects": [
+            "adrenaline"
+        ]
+    }
+}

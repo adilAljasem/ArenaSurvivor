@@ -46,9 +46,13 @@ public class PlayerEntity
     public bool DuplicateNextPurchase { get; set; }
 
     public List<ActiveEffect> ActiveEffects { get; set; } = new();
+    public string Team { get; set; } = "Player"; // Hardcoded for players
+    public string ActionState { get; set; } = "Idle";
+    public List<ActiveSkill> Skills { get; set; } = new();
+    public string CurrentCastingSkillId { get; set; } = string.Empty;
 
     // Initializes the player with the Master Stat List so it never crashes
-    public void Initialize(Configs.CharacterConfig config, ConfigManager configManager)
+    public void Initialize(CharacterConfig config, ConfigManager configManager)
     {
         // 1. Initialize EVERY stat dynamically from the JSON file!
         foreach (var stat in configManager.AllStats)
@@ -69,6 +73,15 @@ public class PlayerEntity
         {
             foreach (var trait in config.Traits) Traits.Add(trait);
         }
+
+        if (config.StartingSkills != null)
+        {
+            foreach (var skillId in config.StartingSkills)
+            {
+                Skills.Add(new ActiveSkill { ConfigId = skillId, IsCasting = false, CurrentCooldown = 0f });
+            }
+        }
+
 
         // Set starting health to whatever the dictionary calculated for maxHp
         CurrentHp = Stats.GetFinalStat("maxHp");

@@ -32,7 +32,8 @@ public class GameLoop : BackgroundService
                 weapons = _configManager.Weapons,
                 items = _configManager.Items,
                 characters = _configManager.Characters,
-                effects = _configManager.Effects
+                effects = _configManager.Effects,
+                skills = _configManager.Skills
             };
 
             // Blast it to every active browser window!
@@ -71,11 +72,15 @@ public class GameLoop : BackgroundService
             }
 
             // 3. Process World Updates
-            ProcessPhysicsAndAI(dt);
-            ProcessEffects(dt);
-            ProcessCombatAndShooting(dt);
-            var tickDamageEvents = ProcessCollisions(dt);
 
+            var tickDamageEvents = new List<Server.DTOs.DamageEventDto>();
+
+            ProcessPhysicsAndAI(dt);
+            ProcessEffects(dt, tickDamageEvents);
+            ProcessCombatAndShooting(dt);
+            ProcessSkills(dt, tickDamageEvents);
+            var collisionEvents = ProcessCollisions(dt);
+            tickDamageEvents.AddRange(collisionEvents); // Combine bullet hits with DoT ticks!
             // 4. Broadcast to Clients
             await BroadcastStateAsync(tickDamageEvents, stoppingToken);
 
@@ -105,7 +110,7 @@ public class GameLoop : BackgroundService
         }
     }
 
-    private void ProcessEffects(float dt)
+    private void ProcessEffects(float dt, List<Server.DTOs.DamageEventDto> damageEvents)
     {
         // 1. Process Players
         foreach (var player in _gameState.Players.Values)
@@ -145,6 +150,14 @@ public class GameLoop : BackgroundService
                 {
                     effect.TimeSinceLastTick -= config.TickRate;
                     enemy.CurrentHp -= config.TickDamage;
+
+                    // >>> NEW: Create floating text for the DoT tick! <<<
+                    damageEvents.Add(new Server.DTOs.DamageEventDto
+                    {
+                        X = enemy.X,
+                        Y = enemy.Y,
+                        Amount = config.TickDamage
+                    });
 
                     // Check if the DoT killed the enemy!
                     if (enemy.CurrentHp <= 0 && enemy.ActionState != "Dead")
@@ -335,12 +348,306 @@ public class GameLoop : BackgroundService
         }
     }
 
+    private void ProcessSkills(float dt, List<Server.DTOs.DamageEventDto> damageEvents)
+    {
+        // 1. Process Enemy Skills
+        foreach (var enemy in _gameState.Enemies.Values)
+        {
+            if (enemy.ActionState == "Dead") continue;
+
+            foreach (var skill in enemy.Skills)
+            {
+                if (!_configManager.Skills.TryGetValue(skill.ConfigId, out var config)) continue;
+
+                if (skill.IsCasting)
+                {
+                    skill.CurrentCastTimer -= dt;
+                    if (skill.CurrentCastTimer <= 0)
+                    {
+                        // FIRE!
+                        ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, damageEvents);
+                        skill.IsCasting = false;
+                        skill.CurrentCooldown = config.CooldownSeconds;
+                        enemy.ActionState = "Idle";
+                        enemy.CurrentCastingSkillId = string.Empty;
+                    }
+                }
+                else
+                {
+                    skill.CurrentCooldown -= dt;
+                    if (skill.CurrentCooldown <= 0 && config.TriggerType == Configs.SkillTriggerType.Auto)
+                    {
+                        // START CASTING!
+                        skill.IsCasting = true;
+                        skill.CurrentCastTimer = config.CastTimeSeconds;
+                        enemy.ActionState = "Casting";
+                        enemy.CurrentCastingSkillId = skill.ConfigId;
+                    }
+                }
+            }
+        }
+
+        // 2. Process Player Skills
+        foreach (var player in _gameState.Players.Values)
+        {
+            foreach (var skill in player.Skills)
+            {
+                if (!_configManager.Skills.TryGetValue(skill.ConfigId, out var config)) continue;
+
+                if (skill.IsCasting)
+                {
+                    skill.CurrentCastTimer -= dt;
+                    // You might want to add a "player.ActionState" later if you want players to have cast animations!
+                    if (skill.CurrentCastTimer <= 0)
+                    {
+                        // FIRE!
+                        ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, damageEvents);
+                        skill.IsCasting = false;
+                        skill.CurrentCooldown = config.CooldownSeconds;
+                        player.CurrentCastingSkillId = string.Empty;
+                    }
+                }
+                else
+                {
+                    skill.CurrentCooldown -= dt;
+                    if (skill.CurrentCooldown <= 0 && config.TriggerType == Configs.SkillTriggerType.Auto)
+                    {
+                        // START CASTING!
+                        skill.IsCasting = true;
+                        player.ActionState = "Casting";
+                        skill.CurrentCastTimer = config.CastTimeSeconds;
+                        player.CurrentCastingSkillId = skill.ConfigId;
+                    }
+                }
+            }
+        }
+    }
+
+    private void ExecuteSkill(Configs.SkillConfig config, string casterId, float startX, float startY, string team, List<Server.DTOs.DamageEventDto> damageEvents)
+    {
+        // --- ACTION: SELF BUFF ---
+        if (config.ActionType == Configs.SkillActionType.SelfBuff)
+        {
+            if (team == "Player" && _gameState.Players.TryGetValue(casterId, out var player))
+            {
+                foreach (var effect in config.ApplyEffects)
+                {
+                    var duration = _configManager.Effects.ContainsKey(effect) ? _configManager.Effects[effect].Duration : 3f;
+                    player.ActiveEffects.Add(new ActiveEffect { ConfigId = effect, TimeRemaining = duration });
+                }
+            }
+            else if (team == "Enemy" && _gameState.Enemies.TryGetValue(casterId, out var enemy))
+            {
+                foreach (var effect in config.ApplyEffects)
+                {
+                    var duration = _configManager.Effects.ContainsKey(effect) ? _configManager.Effects[effect].Duration : 3f;
+                    enemy.ActiveEffects.Add(new ActiveEffect { ConfigId = effect, TimeRemaining = duration });
+                }
+            }
+            return;
+        }
+
+        // --- ACTION: AOE EXPLOSION ---
+        if (config.ActionType == Configs.SkillActionType.AoE)
+        {
+            float radiusSq = config.Radius * config.Radius;
+
+            if (team == "Enemy")
+            {
+                foreach (var player in _gameState.Players.Values)
+                {
+                    float distSq = (player.X - startX) * (player.X - startX) + (player.Y - startY) * (player.Y - startY);
+                    if (distSq <= radiusSq)
+                    {
+                        player.CurrentHp -= config.BaseDamage;
+                        damageEvents.Add(new Server.DTOs.DamageEventDto { X = player.X, Y = player.Y, Amount = config.BaseDamage });
+                    }
+                }
+            }
+            else if (team == "Player")
+            {
+                foreach (var enemy in _gameState.Enemies.Values)
+                {
+                    if (enemy.ActionState == "Dead") continue;
+                    float distSq = (enemy.X - startX) * (enemy.X - startX) + (enemy.Y - startY) * (enemy.Y - startY);
+                    if (distSq <= radiusSq)
+                    {
+                        enemy.CurrentHp -= config.BaseDamage;
+                        damageEvents.Add(new Server.DTOs.DamageEventDto { X = enemy.X, Y = enemy.Y, Amount = config.BaseDamage });
+
+                        if (enemy.CurrentHp <= 0 && enemy.ActionState != "Dead")
+                        {
+                            enemy.ActionState = "Dead";
+                            var gold = new PickupEntity { X = enemy.X, Y = enemy.Y, Value = 1 };
+                            _gameState.Pickups.TryAdd(gold.Id, gold);
+                        }
+                    }
+                }
+            }
+            return;
+        }
+
+        // --- ACTION: PROJECTILE ---
+        if (config.ActionType == Configs.SkillActionType.Projectile && _configManager.Projectiles.TryGetValue(config.ProjectileId, out var projConfig))
+        {
+            float targetX = startX + 1; // Default fallback direction
+            float targetY = startY;
+
+            // --- 1. DETERMINE TARGETING ---
+            if (config.TargetType == Configs.SkillTargetType.ClosestEnemy && team == "Player")
+            {
+                float closestDistSq = float.MaxValue;
+                foreach (var enemy in _gameState.Enemies.Values)
+                {
+                    if (enemy.ActionState == "Dead") continue;
+                    float distSq = (enemy.X - startX) * (enemy.X - startX) + (enemy.Y - startY) * (enemy.Y - startY);
+                    if (distSq < closestDistSq)
+                    {
+                        closestDistSq = distSq;
+                        targetX = enemy.X;
+                        targetY = enemy.Y;
+                    }
+                }
+                if (closestDistSq == float.MaxValue) return; // No enemies alive, don't shoot!
+            }
+            else if (config.TargetType == Configs.SkillTargetType.ClosestPlayer && team == "Enemy")
+            {
+                float closestDistSq = float.MaxValue;
+                foreach (var player in _gameState.Players.Values)
+                {
+                    float distSq = (player.X - startX) * (player.X - startX) + (player.Y - startY) * (player.Y - startY);
+                    if (distSq < closestDistSq)
+                    {
+                        closestDistSq = distSq;
+                        targetX = player.X;
+                        targetY = player.Y;
+                    }
+                }
+                if (closestDistSq == float.MaxValue) return; // No players alive
+            }
+            else if (config.TargetType == Configs.SkillTargetType.AimDirection && team == "Player")
+            {
+                if (_gameState.Players.TryGetValue(casterId, out var p))
+                {
+                    targetX = p.AimX;
+                    targetY = p.AimY;
+                }
+            }
+            else if (config.TargetType == Configs.SkillTargetType.Self)
+            {
+                targetX = startX;
+                targetY = startY;
+            }
+
+            // --- 2. FIRE BULLET ---
+            float dirX = targetX - startX;
+            float dirY = targetY - startY;
+            float length = (float)Math.Sqrt(dirX * dirX + dirY * dirY);
+
+            if (length > 0)
+            {
+                var bullet = new ProjectileEntity
+                {
+                    ConfigId = projConfig.Id,
+                    OwnerId = casterId,
+                    X = startX,
+                    Y = startY,
+                    VelX = (dirX / length) * projConfig.BaseSpeed,
+                    VelY = (dirY / length) * projConfig.BaseSpeed,
+                    Damage = config.BaseDamage,
+                    HitRadius = projConfig.HitRadius,
+                    Lifespan = 5f,
+                    ApplyEffectsOnHit = new List<string>(config.ApplyEffects)
+                };
+
+                // Note: You will need to add `public string Team { get; set; }` to ProjectileEntity.cs so Enemy bullets don't hit Enemies!
+                bullet.Team = team;
+
+                _gameState.Projectiles.TryAdd(bullet.Id, bullet);
+            }
+        }
+
+        // --- ACTION: SUMMON ---
+        if (config.ActionType == Configs.SkillActionType.Summon)
+        {
+            // Make sure the thing we want to summon actually exists in Enemies.json
+            if (_configManager.Enemies.TryGetValue(config.SummonConfigId, out var summonConfig))
+            {
+                for (int i = 0; i < config.SummonCount; i++)
+                {
+                    // Randomly scatter them in a circle around the caster
+                    float angle = (float)(Random.Shared.NextDouble() * Math.PI * 2);
+                    float dist = (float)(Random.Shared.NextDouble() * config.SummonRadius);
+                    float spawnX = startX + (float)Math.Cos(angle) * dist;
+                    float spawnY = startY + (float)Math.Sin(angle) * dist;
+
+                    // Clamp to map boundaries if needed (assuming 1280x720 map)
+                    spawnX = Math.Clamp(spawnX, 0, 1280);
+                    spawnY = Math.Clamp(spawnY, 0, 720);
+
+                    // Create and initialize the entity
+                    var newSummon = new Server.Entities.EnemyEntity();
+                    newSummon.Initialize(summonConfig, spawnX, spawnY, _configManager);
+
+                    // You could boost their stats here if you wanted, but usually, base stats are fine
+                    newSummon.CurrentHp = newSummon.GetTotalStat("maxHp", _configManager);
+                    newSummon.Team = team;
+                    // Add them to the world!
+                    _gameState.Enemies.TryAdd(newSummon.Id, newSummon);
+                }
+            }
+            return;
+        }
+
+
+        // --- ACTION: AOE HEAL ---
+        if (config.ActionType == Configs.SkillActionType.AoEHeal)
+        {
+            float radiusSq = config.Radius * config.Radius;
+
+            // 1. Heal Players (if caster is a Player OR a Player's Summon)
+            if (team == "Player")
+            {
+                foreach (var ally in _gameState.Players.Values)
+                {
+                    float distSq = (ally.X - startX) * (ally.X - startX) + (ally.Y - startY) * (ally.Y - startY);
+                    if (distSq <= radiusSq)
+                    {
+                        float maxHp = ally.GetTotalStat("maxHp", _configManager);
+                        float healAmount = Math.Min(config.BaseDamage, maxHp - ally.CurrentHp); // Prevent overhealing
+                        ally.CurrentHp += healAmount;
+
+                        // Pass negative amount so the UI knows it's a heal!
+                        if (healAmount > 0) damageEvents.Add(new Server.DTOs.DamageEventDto { X = ally.X, Y = ally.Y, Amount = -healAmount });
+                    }
+                }
+            }
+
+            // 2. Heal Enemies/Summons (Find anyone in the Enemies dictionary that shares your team)
+            foreach (var ally in _gameState.Enemies.Values.Where(e => e.Team == team))
+            {
+                if (ally.ActionState == "Dead") continue;
+
+                float distSq = (ally.X - startX) * (ally.X - startX) + (ally.Y - startY) * (ally.Y - startY);
+                if (distSq <= radiusSq)
+                {
+                    float maxHp = ally.GetTotalStat("maxHp", _configManager);
+                    float healAmount = Math.Min(config.BaseDamage, maxHp - ally.CurrentHp);
+                    ally.CurrentHp += healAmount;
+
+                    if (healAmount > 0) damageEvents.Add(new Server.DTOs.DamageEventDto { X = ally.X, Y = ally.Y, Amount = -healAmount });
+                }
+            }
+            return;
+        }
+
+    }
+
     private List<Server.DTOs.DamageEventDto> ProcessCollisions(float dt)
     {
-        var tickDamageEvents = new List<Server.DTOs.DamageEventDto>();
         var projectilesToRemove = new List<string>();
-        var enemiesToRemove = new List<string>();
         var pickupsToRemove = new List<string>();
+        var tickDamageEvents = new List<Server.DTOs.DamageEventDto>();
 
         // 1. Projectiles vs Enemies
         foreach (var proj in _gameState.Projectiles.Values)
@@ -361,39 +668,27 @@ public class GameLoop : BackgroundService
 
             foreach (var enemy in _gameState.Enemies.Values)
             {
-                if (enemiesToRemove.Contains(enemy.Id)) continue;
+                // If they are already dead and playing their animation, bullets should pass through them!
                 if (enemy.ActionState == "Dead") continue;
-                // >>> NEW: Change State to Dead instead of instantly deleting! <<<
-                if (enemy.CurrentHp <= 0 && enemy.ActionState != "Dead")
-                {
-                    enemy.ActionState = "Dead"; // Tell the Client to play the Death animation!
 
-                    // Drop the gold immediately, but don't add the enemy to enemiesToRemove yet!
-                    var gold = new PickupEntity { X = enemy.X, Y = enemy.Y, Value = 1 };
-                    _gameState.Pickups.TryAdd(gold.Id, gold);
-                }
+                // If this specific bullet already hit this enemy, skip them
                 if (proj.HitEnemies.Contains(enemy.Id)) continue;
 
                 float combinedRadius = proj.HitRadius + enemy.HitRadius;
                 float hitThresholdSq = combinedRadius * combinedRadius;
 
                 // >>> ANTI-TUNNELING MATH (Line-Segment to Circle) <<<
-                // Vector of the bullet's movement this tick
                 float dx = proj.X - prevX;
                 float dy = proj.Y - prevY;
-
-                // Vector from the bullet's old position to the enemy
                 float fx = enemy.X - prevX;
                 float fy = enemy.Y - prevY;
 
-                // Find the closest point on the bullet's travel line to the enemy's center
                 float lengthSq = (dx * dx) + (dy * dy);
                 float t = lengthSq == 0 ? 0 : Math.Max(0, Math.Min(1, (fx * dx + fy * dy) / lengthSq));
 
                 float closestX = prevX + t * dx;
                 float closestY = prevY + t * dy;
 
-                // Check distance from that closest point to the enemy
                 float distX = closestX - enemy.X;
                 float distY = closestY - enemy.Y;
                 float distSqToSegment = (distX * distX) + (distY * distY);
@@ -405,14 +700,13 @@ public class GameLoop : BackgroundService
 
                     tickDamageEvents.Add(new Server.DTOs.DamageEventDto { X = enemy.X, Y = enemy.Y, Amount = proj.Damage });
 
-                    // >>> FIX: Read the effects directly from the flying bullet! <<<
+                    // >>> APPLY EFFECTS <<<
                     if (proj.ApplyEffectsOnHit != null)
                     {
                         foreach (var effectId in proj.ApplyEffectsOnHit)
                         {
                             if (_configManager.Effects.TryGetValue(effectId, out var effectConfig))
                             {
-                                // Refresh timer if they already have it, otherwise add it!
                                 var existing = enemy.ActiveEffects.FirstOrDefault(e => e.ConfigId == effectId);
                                 if (existing != null)
                                 {
@@ -426,6 +720,7 @@ public class GameLoop : BackgroundService
                         }
                     }
 
+                    // >>> LIFE STEAL <<<
                     if (Random.Shared.NextDouble() < proj.LifeStealChance)
                     {
                         if (_gameState.Players.TryGetValue(proj.OwnerId, out var p))
@@ -435,16 +730,16 @@ public class GameLoop : BackgroundService
                         }
                     }
 
-                    // >>> NEW: Change State to Dead instead of instantly deleting! <<<
+                    // >>> DEATH CHECK <<<
                     if (enemy.CurrentHp <= 0 && enemy.ActionState != "Dead")
                     {
-                        enemy.ActionState = "Dead"; // Tell the Client to play the Death animation!
+                        enemy.ActionState = "Dead";
 
-                        // Drop the gold immediately
                         var gold = new PickupEntity { X = enemy.X, Y = enemy.Y, Value = 1 };
                         _gameState.Pickups.TryAdd(gold.Id, gold);
                     }
 
+                    // >>> PIERCE CHECK <<<
                     if (proj.HitEnemies.Count > proj.PierceCount)
                     {
                         projectilesToRemove.Add(proj.Id);
@@ -453,6 +748,7 @@ public class GameLoop : BackgroundService
                 }
             }
         }
+
         // 2. Players vs Pickups (Gold)
         foreach (var player in _gameState.Players.Values)
         {
@@ -461,13 +757,10 @@ public class GameLoop : BackgroundService
                 if (pickupsToRemove.Contains(pickup.Id)) continue;
 
                 float distSq = (player.X - pickup.X) * (player.X - pickup.X) + (player.Y - pickup.Y) * (player.Y - pickup.Y);
-                if (distSq < 625)
+                if (distSq < 625) // 25 radius
                 {
                     player.Gold += pickup.Value;
-
-                    // >>> NEW: Grant XP whenever you pick up a drop! <<<
                     player.GainXp(pickup.Value, _configManager);
-
                     pickupsToRemove.Add(pickup.Id);
                 }
             }
@@ -475,12 +768,10 @@ public class GameLoop : BackgroundService
 
         // 3. Cleanup
         foreach (var id in projectilesToRemove) _gameState.Projectiles.TryRemove(id, out _);
-        foreach (var id in enemiesToRemove) _gameState.Enemies.TryRemove(id, out _);
         foreach (var id in pickupsToRemove) _gameState.Pickups.TryRemove(id, out _);
 
         return tickDamageEvents;
     }
-
     // =================================================================================
     // WAVE & SHOP MANAGEMENT
     // =================================================================================

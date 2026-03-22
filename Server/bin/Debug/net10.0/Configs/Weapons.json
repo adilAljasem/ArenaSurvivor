@@ -40,7 +40,10 @@
     "statBonuses": {},
     "damageScaling": {
       "rangedDamage": 0.25
-    }
+    },
+     "applyEffectsOnHit": [
+      "poison_dot"
+    ]
   },
   "shotgun": {
     "id": "shotgun",
@@ -78,7 +81,7 @@
     "defaultFacingRight": true,
     "attackAnimType": "recoil",
     "statBonuses": {
-      "speedPercent": -0.05
+      "speed": -0.05
     },
     "damageScaling": {
       "rangedDamage": 1.2

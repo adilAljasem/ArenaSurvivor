@@ -31,6 +31,7 @@
       "rangedDamage": 50,
       "harvesting": 5
     },
+    "startingSkills": ["adrenaline_surge"],
     "traits": []
   },
   "char_chunky": {

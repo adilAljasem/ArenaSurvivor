@@ -54,7 +54,10 @@ public class GameHub : Hub
             Weapons = _configManager.Weapons, // <-- ADD THIS
             Items = _configManager.Items,
             Characters = _configManager.Characters, // <-- ADD THIS
-            StatsList = _configManager.AllStats // >>> NEW: Send the master list! <<<
+            StatsList = _configManager.AllStats, // >>> NEW: Send the master list! <<<
+            Effects = _configManager.Effects,         // <<< FIX: Add Effects!
+            Projectiles = _configManager.Projectiles,  // <<< FIX: Add Projectiles!
+            Skills = _configManager.Skills
         };
         await Clients.Caller.SendAsync("ReceiveHandshake", handshakePayload);
         await SendPlayerUI(newPlayer);

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Server.Configs;
 
 // =================================================================================
@@ -46,6 +48,7 @@ public class CharacterConfig
     // --- Stats & Mechanics ---
     public Dictionary<string, float> BaseStats { get; set; } = new(); // "maxHp": 150, "speed": 180
     public List<string> Traits { get; set; } = new();                   // "CannotHeal", "MoreEnemies"
+    public List<string> StartingSkills { get; set; } = new();           // "adrenaline_surge"
 }
 
 public class EnemyConfig
@@ -75,6 +78,8 @@ public class EnemyConfig
     public float HitRadius { get; set; } = 15f;
     public float AttackDuration { get; set; } = 0.5f;
     public Dictionary<string, float> BaseStats { get; set; } = new();
+
+    public List<string> StartingSkills { get; set; } = new();
 
     // --- Modifiers ---
     public List<DynamicModifier> DynamicModifiers { get; set; } = new();
@@ -111,7 +116,7 @@ public class WeaponConfig
     public Dictionary<string, float> Mechanics { get; set; } = new();     // "critChance", "knockback"
     public Dictionary<string, float> StatBonuses { get; set; } = new();   // "maxHp", "speed"
     public Dictionary<string, float> DamageScaling { get; set; } = new();
-    public List<string> Traits { get; set; } = new();  
+    public List<string> Traits { get; set; } = new();
     public List<string> ApplyEffectsOnHit { get; set; } = new();                   // "ExplodesOnImpact", "Homing"
 }
 
@@ -183,4 +188,38 @@ public class EffectConfig
     public int[]? AnimEffect { get; set; }
     public int AnimEffectFrameRate { get; set; } = 15;
     public string ColorTint { get; set; } = string.Empty;
+}
+
+
+
+public class SkillConfig
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    
+    // --- Visuals ---
+    public string TextureKey { get; set; } = string.Empty;
+    public int IconFrame { get; set; }
+    public int[]? AnimSkill { get; set; } 
+    public int AnimFrameRate { get; set; } = 15;
+
+    // --- Timing ---
+    public float CooldownSeconds { get; set; }
+    public float CastTimeSeconds { get; set; } 
+
+    // --- Payload: Summon Specific ---
+    public string SummonConfigId { get; set; } = string.Empty; // e.g., "goblin_basic" or "tree"
+    public int SummonCount { get; set; } = 1;
+    public float SummonRadius { get; set; } = 50f; // Scatter them so they don't stack perfectly!
+    
+    // --- Mechanics ---
+    public SkillTriggerType TriggerType { get; set; } = SkillTriggerType.Auto; 
+    public SkillTargetType TargetType { get; set; } = SkillTargetType.ClosestEnemy; 
+    public SkillActionType ActionType { get; set; } = SkillActionType.Projectile; 
+
+    // --- Payload ---
+    public string ProjectileId { get; set; } = string.Empty;
+    public float Radius { get; set; } = 0f;
+    public float BaseDamage { get; set; } = 0f;
+    public List<string> ApplyEffects { get; set; } = new();
 }

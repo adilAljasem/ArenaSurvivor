@@ -29,6 +29,7 @@ interface ServerPlayer {
   aimY: number;           // <--- NEW
   firedWeapons: number[];
   activeEffects: string[];// <--- NEW
+  currentCastingSkillId: string;
 }
 interface ServerEnemy {
   id: string;
@@ -40,6 +41,7 @@ interface ServerEnemy {
   maxHp: number;
   actionState: string;
   activeEffects: string[];
+  currentCastingSkillId: string;
 }
 interface ServerProjectile {
   id: string;
@@ -247,6 +249,8 @@ class GameScene extends Phaser.Scene {
 
           if (sp.actionState === "Dead" && config.animDeath) {
             targetAnim = `${config.id}_death`;
+          } else if (sp.actionState === "Casting" && sp.currentCastingSkillId) {
+            targetAnim = `${sp.currentCastingSkillId}_skill`; // <<< ADD THIS BLOCK
           } else if (sp.actionState === "Attacking" && config.animAttack) {
             targetAnim = `${config.id}_attack`;
           } else if (sp.actionState === "Moving" && config.animMove) {
@@ -254,7 +258,6 @@ class GameScene extends Phaser.Scene {
           } else if (config.animIdle) {
             targetAnim = `${config.id}_idle`;
           }
-
           // Only play if the target animation is different, 
           // OR if it's an attack animation that has completely finished playing!
           const isCorrectAnim = body.anims && body.anims.currentAnim?.key === targetAnim;
@@ -274,6 +277,26 @@ class GameScene extends Phaser.Scene {
           } else if (moveDelta < -0.5) {
             body.setFlipX(isDefaultRight);
           }
+          // >>> NEW: EFFECT VISUALS FOR PLAYERS <<<
+          let appliedTint = false;
+          const activeList = sp.activeEffects || (sp as any).ActiveEffects;
+          const effectsMap = masterConfigs.effects || masterConfigs.Effects;
+
+          if (activeList && effectsMap) {
+            for (const effectId of activeList) {
+              const effectConfig = effectsMap[effectId];
+              if (effectConfig) {
+                const hexString = effectConfig.colorTint || effectConfig.ColorTint;
+                if (hexString) {
+                  const safeHex = String(hexString).replace('0x', '#');
+                  body.setTint(Phaser.Display.Color.HexStringToColor(safeHex).color);
+                  appliedTint = true;
+                  break;
+                }
+              }
+            }
+          }
+          if (!appliedTint) body.clearTint();
         }
 
         const weaponsContainer = pContainer.getData('weaponsContainer') as Phaser.GameObjects.Container;
@@ -429,6 +452,8 @@ class GameScene extends Phaser.Scene {
 
           if (se.actionState === "Dead" && config.animDeath) {
             targetAnim = `${config.id}_death`;
+          } else if (se.actionState === "Casting" && se.currentCastingSkillId) {
+            targetAnim = `${se.currentCastingSkillId}_skill`; // <<< ADD THIS BLOCK
           } else if (se.actionState === "Attacking" && config.animAttack) {
             targetAnim = `${config.id}_attack`;
           } else if (se.actionState === "Moving" && config.animMove) {
@@ -455,21 +480,30 @@ class GameScene extends Phaser.Scene {
           } else if (moveDelta < -0.1) {
             body.setFlipX(isDefaultRight);
           }
-          // >>> NEW: EFFECT VISUALS (COLOR TINTING) <<<
+          // >>> NEW: BULLETPROOF EFFECT VISUALS (COLOR TINTING) <<<
           let appliedTint = false;
-          if (se.activeEffects && masterConfigs.effects) {
-            // Find the first effect that has a colorTint
-            for (const effectId of se.activeEffects) {
-              const effectConfig = masterConfigs.effects[effectId];
-              if (effectConfig && effectConfig.colorTint) {
-                // Convert hex string "0x00ff00" to a real number
-                body.setTint(parseInt(effectConfig.colorTint, 16));
-                appliedTint = true;
-                break; // Only apply one tint at a time
+
+          // Defend against C# capitalizing property names randomly!
+          const activeList = se.activeEffects || (se as any).ActiveEffects;
+          const effectsMap = masterConfigs.effects || masterConfigs.Effects;
+
+          if (activeList && effectsMap) {
+            for (const effectId of activeList) {
+              const effectConfig = effectsMap[effectId];
+              if (effectConfig) {
+                const hexString = effectConfig.colorTint || effectConfig.ColorTint;
+
+                if (hexString) {
+                  // Force the string into a # format that Phaser's built-in color engine guarantees it understands
+                  const safeHex = String(hexString).replace('0x', '#');
+                  body.setTint(Phaser.Display.Color.HexStringToColor(safeHex).color);
+                  appliedTint = true;
+                  break;
+                }
               }
             }
           }
-          if (!appliedTint) body.clearTint(); // Remove tint if no effects are active!
+          if (!appliedTint) body.clearTint();
         }
       });
 
@@ -530,16 +564,46 @@ class GameScene extends Phaser.Scene {
 
       // --- GAME WORLD: FLOATING DAMAGE TEXT ---
       state.damageEvents.forEach(de => {
-        const floatingText = this.add.text(de.x, de.y - 16, Math.round(de.amount).toString(), {
-          fontSize: '18px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 3
+        // 1. Add slight random jitter so overlapping numbers spread out
+        const jitterX = Phaser.Math.Between(-10, 10);
+        const jitterY = Phaser.Math.Between(-10, 10);
+        const startX = de.x + jitterX;
+        const startY = de.y - 16 + jitterY;
+
+        const isHeal = de.amount < 0;
+        const displayText = isHeal ? `+${Math.round(Math.abs(de.amount))}` : Math.round(de.amount).toString();
+        const textColor = isHeal ? '#00ff00' : '#ffffff'; // Green if healing, White if damage
+
+        const floatingText = this.add.text(startX, startY, displayText, {
+          fontFamily: "'Segoe UI', Tahoma, sans-serif",
+          fontSize: '20px',
+          color: textColor, // Use the dynamic color!
+          fontStyle: 'bold',
+          stroke: '#000000',
+          strokeThickness: 4
         }).setOrigin(0.5).setDepth(20);
+
+        // 2. Start small, pop to full size, then float and fade!
+        floatingText.setScale(0.5);
 
         this.tweens.add({
           targets: floatingText,
-          y: de.y - 40,
-          alpha: 0,
-          duration: 700,
-          onComplete: () => floatingText.destroy()
+          scale: 1.2, // Pop up larger than normal
+          y: startY - 20, // Float up slightly during the pop
+          duration: 150,
+          ease: 'Back.easeOut', // Gives it that snappy, bouncy feel
+          onComplete: () => {
+            // 3. After the pop, slowly drift up and fade out
+            this.tweens.add({
+              targets: floatingText,
+              y: floatingText.y - 30, // Drift higher
+              alpha: 0,
+              scale: 0.8, // Shrink slightly as it fades
+              duration: 400,
+              ease: 'Sine.inOut',
+              onComplete: () => floatingText.destroy()
+            });
+          }
         });
       });
 
@@ -651,7 +715,9 @@ class GameScene extends Phaser.Scene {
     const allEntities = [
       ...(configs.enemies ? Object.values(configs.enemies) : []),
       ...(configs.projectiles ? Object.values(configs.projectiles) : []),
-      ...(configs.characters ? Object.values(configs.characters) : [])
+      ...(configs.characters ? Object.values(configs.characters) : []),
+      ...(configs.skills ? Object.values(configs.skills) : []),
+      ...(configs.effects ? Object.values(configs.effects) : [])
     ];
 
     // 2. Loop through every entity in the game

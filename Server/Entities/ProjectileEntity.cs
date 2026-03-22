@@ -15,6 +15,7 @@ public class ProjectileEntity
     public float HitRadius { get; set; } = 15f;
     public float Lifespan { get; set; } = 1f;
     public int PierceCount { get; set; } = 0;
+    public string Team { get; set; } = string.Empty;
     public HashSet<string> HitEnemies { get; set; } = new();
     public List<string> ApplyEffectsOnHit { get; set; } = new();
 }

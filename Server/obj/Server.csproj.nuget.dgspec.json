@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\fooxi\\Desktop\\Programming\\ArenaSurvivor\\server\\Server.csproj": {}
+    "c:\\Users\\fooxi\\Desktop\\Programming\\ArenaSurvivor\\Server\\Server.csproj": {}
   },
   "projects": {
-    "C:\\Users\\fooxi\\Desktop\\Programming\\ArenaSurvivor\\server\\Server.csproj": {
+    "c:\\Users\\fooxi\\Desktop\\Programming\\ArenaSurvivor\\Server\\Server.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\fooxi\\Desktop\\Programming\\ArenaSurvivor\\server\\Server.csproj",
+        "projectUniqueName": "c:\\Users\\fooxi\\Desktop\\Programming\\ArenaSurvivor\\Server\\Server.csproj",
         "projectName": "Server",
-        "projectPath": "C:\\Users\\fooxi\\Desktop\\Programming\\ArenaSurvivor\\server\\Server.csproj",
+        "projectPath": "c:\\Users\\fooxi\\Desktop\\Programming\\ArenaSurvivor\\Server\\Server.csproj",
         "packagesPath": "C:\\Users\\fooxi\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\fooxi\\Desktop\\Programming\\ArenaSurvivor\\server\\obj\\",
+        "outputPath": "c:\\Users\\fooxi\\Desktop\\Programming\\ArenaSurvivor\\Server\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
