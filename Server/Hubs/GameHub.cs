@@ -241,7 +241,13 @@ public class GameHub : Hub
             }
         }
     }
-
+    // >>> NEW: The Ping Endpoint! <<<
+    public void Ping()
+    {
+        // This is intentionally left empty. 
+        // The client just needs the server to acknowledge the message to calculate latency!
+    }
+    
     // Add this helper method right below BuyItem inside GameHub
     private void AddItemToInventory(Server.Entities.PlayerEntity player, Server.Configs.ItemConfig item)
     {

@@ -289,7 +289,17 @@
     "tier": 1,
     "isBoss": false,
     "isSummonOnly": true,
-    "textureKey": "scenery_sheet",
+    "textureKey": "tree",
+    "animIdle": [
+      0,
+      9
+    ],
+    "animIdleFrameRate": 3,
+     "animAttack": [
+      0,
+      9
+    ],
+    "animAttackFrameRate": 5,
     "scale": 1.5,
     "startingSkills": [
       "nature_pulse"
