@@ -31,7 +31,7 @@
       "rangedDamage": 50,
       "harvesting": 5
     },
-    "startingSkills": ["frost_nova"],
+    "startingSkills": ["frost_nova","summon_trees"],
     "traits": []
   },
   "char_chunky": {
