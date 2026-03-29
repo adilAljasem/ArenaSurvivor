@@ -15,7 +15,9 @@
         "targetType": "Self",
         "actionType": "AoE",
         "radius": 150,
-        "baseDamage": 25
+        "baseDamage": 25,
+        "soundCast": "sfx_stomp_cast",
+        "soundHit": "sfx_stomp_hit"
     },
     "magic_missile": {
         "id": "magic_missile",
@@ -26,7 +28,8 @@
         "targetType": "ClosestEnemy",
         "actionType": "Projectile",
         "projectileId": "fireball",
-        "baseDamage": 15
+        "baseDamage": 15,
+        "soundCast": "sfx_magic_missile_cast"
     },
     "goblin_ambush": {
         "id": "goblin_ambush",
@@ -38,7 +41,8 @@
         "actionType": "Summon",
         "summonConfigId": "goblin_basic",
         "summonCount": 10,
-        "summonRadius": 120.0
+        "summonRadius": 120.0,
+        "soundCast": "sfx_ambush_cast"
     },
     "summon_trees": {
         "id": "summon_trees",
@@ -50,7 +54,8 @@
         "actionType": "Summon",
         "summonConfigId": "tree_obstacle",
         "summonCount": 5,
-        "summonRadius": 200.0
+        "summonRadius": 200.0,
+        "soundCast": "sfx_summon_trees_cast"
     },
     "nature_pulse": {
         "id": "nature_pulse",
@@ -62,7 +67,9 @@
         "actionType": "AoE",
         "radius": 200,
         "baseDamage": -15,
-        "StopMoving": true
+        "StopMoving": true,
+        "soundCast": "sfx_nature_pulse_cast",
+        "soundHit": "sfx_nature_pulse_hit"
     },
     "adrenaline_surge": {
         "id": "adrenaline_surge",
@@ -76,7 +83,8 @@
         "applyEffects": [
             "adrenaline"
         ],
-        "colorTint": "0xff0000"
+        "colorTint": "0xff0000",
+        "soundCast": "sfx_adrenaline_cast"
     },
     "frost_nova": {
         "id": "frost_nova",
@@ -91,7 +99,9 @@
         "applyEffects": [
             "stunned"
         ],
-        "colorTint": "#00cfff"
+        "colorTint": "#00cfff",
+        "soundCast": "sfx_frost_nova_cast",
+        "soundHit": "sfx_frost_nova_hit"
     },
     "enrage": {
         "id": "enrage",
@@ -104,7 +114,8 @@
         "applyEffects": [
             "adrenaline",
             "vampiric_aura"
-        ]
+        ],
+        "soundCast": "sfx_enrage_cast"
     },
     "poison_volley": {
         "id": "poison_volley",
@@ -118,6 +129,7 @@
         "baseDamage": 5,
         "applyEffects": [
             "poison_dot"
-        ]
+        ],
+        "soundCast": "sfx_poison_volley_cast"
     }
 }
