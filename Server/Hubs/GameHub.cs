@@ -50,16 +50,16 @@ public class GameHub : Hub
         // Send ALL the JSON configs to the person who just joined
         var handshakePayload = new
         {
-            Enemies = _configManager.Enemies,
-            Weapons = _configManager.Weapons, // <-- ADD THIS
-            Items = _configManager.Items,
-            Characters = _configManager.Characters, // <-- ADD THIS
-            StatsList = _configManager.AllStats, // >>> NEW: Send the master list! <<<
-            Effects = _configManager.Effects,         // <<< FIX: Add Effects!
-            Projectiles = _configManager.Projectiles,  // <<< FIX: Add Projectiles!
-            Skills = _configManager.Skills,
-            Maps = _configManager.Maps, // <<< FIX: Add Maps!
-            CurrentMapId = "map_forest" // <<< FIX: Send current map ID!
+            enemies = _configManager.Enemies,
+            weapons = _configManager.Weapons,
+            items = _configManager.Items,
+            characters = _configManager.Characters,
+            statsList = _configManager.AllStats,
+            effects = _configManager.Effects,
+            projectiles = _configManager.Projectiles,
+            skills = _configManager.Skills,
+            maps = _configManager.Maps,
+            currentMapId = "map_forest"
         };
         await Clients.Caller.SendAsync("ReceiveHandshake", handshakePayload);
         await SendPlayerUI(newPlayer);

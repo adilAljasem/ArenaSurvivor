@@ -88,7 +88,7 @@ export class PlayerRenderer {
       if (maxHp > 50) {
         hpMarkers.lineStyle(2, 0x000000, 1.0); 
         const segments = Math.floor(maxHp / 50);
-        const pixelsPer50 = pBaseW / (maxHp / 50); 
+        const pixelsPer50 = pBaseW / Math.floor(maxHp / 50); 
 
         for (let i = 1; i <= segments; i++) {
           const lineX = -(pBaseW / 2) + (i * pixelsPer50);
@@ -275,6 +275,7 @@ export class EnemyRenderer {
         container.setData('castCircle', castCircle);
         container.setData('castBarBg', castBarBg);
         container.setData('castBarFill', castBarFill);
+        container.setData('configId', configId);
 
         sprites.set(safeId, container);
       }
@@ -315,7 +316,7 @@ export class EnemyRenderer {
       if (maxHp > 50) {
         hpMarkers.lineStyle(2, 0x000000, 1.0); 
         const segments = Math.floor(maxHp / 50);
-        const pixelsPer50 = eBaseW / (maxHp / 50); 
+        const pixelsPer50 = eBaseW / Math.floor(maxHp / 50); 
 
         for (let i = 1; i <= segments; i++) {
           const lineX = -(eBaseW / 2) + (i * pixelsPer50);
@@ -485,7 +486,7 @@ export class WorldRenderer {
     const aoeList = state.aoeEvents || state.AoeEvents || [];
     aoeList.forEach((aoe: any) => {
       const configId = aoe.configId || aoe.ConfigId;
-      const skillConfig = configs.skills ? (configs.skills[configId] || configs.Skills?.[configId]) : null;
+      const skillConfig = (configs.skills || configs.Skills)?.[configId] ?? null;
 
       let rendered = false;
       const radius = aoe.radius || aoe.Radius;
@@ -601,13 +602,13 @@ export function applyVisualFX(scene: Phaser.Scene, container: Phaser.GameObjects
   };
 
   if (entity.actionState === 'Casting' && entity.currentCastingSkillId) {
-    const skillConfig = masterConfigs.skills ? (masterConfigs.skills[entity.currentCastingSkillId] || masterConfigs.Skills?.[entity.currentCastingSkillId]) : null;
+    const skillConfig = (masterConfigs.skills || masterConfigs.Skills)?.[entity.currentCastingSkillId] ?? null;
     if (skillConfig) renderConfig(skillConfig, true);
   }
 
   if (entity.activeEffects && entity.activeEffects.length > 0) {
     entity.activeEffects.forEach((effectId: string) => {
-      const effectConfig = masterConfigs.effects ? (masterConfigs.effects[effectId] || masterConfigs.Effects?.[effectId]) : null;
+      const effectConfig = (masterConfigs.effects || masterConfigs.Effects)?.[effectId] ?? null;
       if (effectConfig) renderConfig(effectConfig, false);
     });
   }

@@ -43,6 +43,22 @@ public static class NetworkSystem
         public List<object[]> Aoe { get; set; } = new();
     }
 
+    // Flat enemy array indices (must match FlattenGlobalState order)
+    private static class EnemyIdx
+    {
+        public const int Id = 0;
+        public const int ConfigId = 1;
+        public const int X = 2;
+        public const int Y = 3;
+        public const int CurrentHp = 4;
+        public const int MaxHp = 5;
+        public const int StateId = 6;
+        public const int CastingSkillId = 7;
+        public const int CastTimer = 8;
+        public const int MaxCastTimer = 9;
+        public const int ActiveEffects = 10;
+    }
+
     // =========================================================================
     // 1. THE MAIN ORCHESTRATOR
     // =========================================================================
@@ -57,8 +73,13 @@ public static class NetworkSystem
         // Step 1: Flatten all global game data ONCE per tick
         var globalFlatState = FlattenGlobalState(gameState, configManager, tickDamageEvents, tickAoeEvents, tickNewProjectiles);
 
-        float mapW = configManager.Maps != null && configManager.Maps.TryGetValue("map_forest", out var currentMap) ? currentMap.Width : 4000f;
-        float mapH = configManager.Maps != null && configManager.Maps.TryGetValue("map_forest", out var currentMapH) ? currentMapH.Height : 4000f;
+        float mapW = 4000f;
+        float mapH = 4000f;
+        if (configManager.Maps != null && configManager.Maps.TryGetValue("map_forest", out var currentMap))
+        {
+            mapW = currentMap.Width;
+            mapH = currentMap.Height;
+        }
 
         // Process and send the custom payload for each connected player
         foreach (var player in gameState.Players.Values)
@@ -67,22 +88,22 @@ public static class NetworkSystem
             var visibleState = CullForViewport(player, mapW, mapH, globalFlatState);
 
             // Step 3: Delta Compression (Memory Diffing)
-            var enemyDeltas = ProcessEnemyDeltas(player.ConnectionId, visibleState.Enemies, gameState);
+            var enemyDeltas = ProcessEnemyDeltas(player.ConnectionId, visibleState.Enemies);
             var pickupDeltas = ProcessPickupDeltas(player.ConnectionId, visibleState.Pickups);
 
-            // Step 4: Build Final Payload
+            // Step 4: Build Final Payload (omit empty arrays to reduce bandwidth)
             var payload = new
             {
                 p = visibleState.Players,
-                e = enemyDeltas.Full,
-                me = enemyDeltas.Mini,
-                de = enemyDeltas.Destroyed,
-                nb = visibleState.NewBullets,
-                db = tickDestroyedProjectiles,
-                pk = pickupDeltas.Full,
-                dpk = pickupDeltas.Destroyed,
-                dmg = visibleState.Damage,
-                aoe = visibleState.Aoe,
+                e = enemyDeltas.Full.Count > 0 ? enemyDeltas.Full : null,
+                me = enemyDeltas.Mini.Count > 0 ? enemyDeltas.Mini : null,
+                de = enemyDeltas.Destroyed.Count > 0 ? enemyDeltas.Destroyed : null,
+                nb = visibleState.NewBullets.Count > 0 ? visibleState.NewBullets : null,
+                db = tickDestroyedProjectiles.Count > 0 ? tickDestroyedProjectiles : null,
+                pk = pickupDeltas.Full.Count > 0 ? pickupDeltas.Full : null,
+                dpk = pickupDeltas.Destroyed.Count > 0 ? pickupDeltas.Destroyed : null,
+                dmg = visibleState.Damage.Count > 0 ? visibleState.Damage : null,
+                aoe = visibleState.Aoe.Count > 0 ? visibleState.Aoe : null,
                 ph = (byte)gameState.Phase,
                 w = gameState.CurrentWave,
                 tr = Math.Max(0, (int)gameState.PhaseTimer),
@@ -152,7 +173,7 @@ public static class NetworkSystem
         return new FlatState
         {
             Players = globalState.Players.Where(p => (int)p[1] >= minX && (int)p[1] <= maxX && (int)p[2] >= minY && (int)p[2] <= maxY).ToList(),
-            Enemies = globalState.Enemies.Where(e => (int)e[2] >= minX && (int)e[2] <= maxX && (int)e[3] >= minY && (int)e[3] <= maxY).ToList(),
+            Enemies = globalState.Enemies.Where(e => (int)e[EnemyIdx.X] >= minX && (int)e[EnemyIdx.X] <= maxX && (int)e[EnemyIdx.Y] >= minY && (int)e[EnemyIdx.Y] <= maxY).ToList(),
             Pickups = globalState.Pickups.Where(pk => (int)pk[1] >= minX && (int)pk[1] <= maxX && (int)pk[2] >= minY && (int)pk[2] <= maxY).ToList(),
             Damage = globalState.Damage.Where(d => (int)d[0] >= minX && (int)d[0] <= maxX && (int)d[1] >= minY && (int)d[1] <= maxY).ToList(),
             Aoe = globalState.Aoe.Where(a => (int)a[0] >= minX && (int)a[0] <= maxX && (int)a[1] >= minY && (int)a[1] <= maxY).ToList(),
@@ -163,10 +184,10 @@ public static class NetworkSystem
     // =========================================================================
     // 4. HELPERS: DELTA COMPRESSION
     // =========================================================================
-    private static (List<object[]> Full, List<object[]> Mini, List<string> Destroyed) ProcessEnemyDeltas(string connectionId, List<object[]> visibleEnemies, GameState gameState)
+    private static (List<object[]> Full, List<object[]> Mini, List<string> Destroyed) ProcessEnemyDeltas(string connectionId, List<object[]> visibleEnemies)
     {
         var knownEnemies = _clientKnownEnemies.GetOrAdd(connectionId, _ => new HashSet<string>());
-        var visibleEnemyIds = visibleEnemies.Select(e => (string)e[0]).ToHashSet();
+        var visibleEnemyIds = visibleEnemies.Select(e => (string)e[EnemyIdx.Id]).ToHashSet();
 
         var newEnemyIds = visibleEnemyIds.Except(knownEnemies).ToHashSet();
         var destroyedEnemyIds = knownEnemies.Except(visibleEnemyIds).ToList();
@@ -174,19 +195,19 @@ public static class NetworkSystem
 
         _clientKnownEnemies[connectionId] = visibleEnemyIds; // Save memory for next tick
 
-        var fullEnemies = visibleEnemies.Where(e => newEnemyIds.Contains((string)e[0])).ToList();
-        var miniEnemies = gameState.Enemies.Values
-                          .Where(e => existingEnemyIds.Contains(e.Id))
+        var fullEnemies = visibleEnemies.Where(e => newEnemyIds.Contains((string)e[EnemyIdx.Id])).ToList();
+        var miniEnemies = visibleEnemies
+                          .Where(e => existingEnemyIds.Contains((string)e[EnemyIdx.Id]))
                           .Select(e => new object[] {
-                        e.Id,
-                        (int)e.X,
-                        (int)e.Y,
-                        (int)e.CurrentHp,
-                        GetStateId(e.ActionState),
-                        e.CurrentCastingSkillId,
-                        Math.Round(e.CurrentCastTimer, 1),
-                        Math.Round(e.MaxCastTimer, 1),
-                        e.ActiveEffects.Select(a => a.ConfigId).ToList()
+                        e[EnemyIdx.Id],
+                        e[EnemyIdx.X],
+                        e[EnemyIdx.Y],
+                        e[EnemyIdx.CurrentHp],
+                        e[EnemyIdx.StateId],
+                        e[EnemyIdx.CastingSkillId],
+                        e[EnemyIdx.CastTimer],
+                        e[EnemyIdx.MaxCastTimer],
+                        e[EnemyIdx.ActiveEffects]
                           })
                           .ToList();
 
@@ -210,9 +231,14 @@ public static class NetworkSystem
     // =========================================================================
     // 5. HELPER: GZIP COMPRESSION
     // =========================================================================
+    private static readonly JsonSerializerOptions _serializerOptions = new JsonSerializerOptions
+    {
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+    };
+
     private static byte[] CompressPayload(object payload)
     {
-        string jsonString = JsonSerializer.Serialize(payload);
+        string jsonString = JsonSerializer.Serialize(payload, _serializerOptions);
         byte[] jsonBytes = Encoding.UTF8.GetBytes(jsonString);
 
         using var ms = new MemoryStream();
