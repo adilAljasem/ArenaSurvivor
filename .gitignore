@@ -1,0 +1,7 @@
+# .NET build artifacts
+Server/bin/
+Server/obj/
+
+# Node.js
+Client/node_modules/
+Client/dist/

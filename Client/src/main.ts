@@ -1,9 +1,8 @@
 import * as Phaser from 'phaser';
 import { HubConnectionBuilder, HubConnectionState } from '@microsoft/signalr';
 import { ShopUI } from './ui/UI';
-import { PlayerRenderer, EnemyRenderer, WorldRenderer } from './RenderSystems';
+import { PlayerRenderer, EnemyRenderer, WorldRenderer, precalculateSpriteTops } from './RenderSystems';
 import pako from 'pako';
-import { precalculateSpriteTops } from './RenderSystems';
 
 // --- SIGNALR CONNECTION ---
 const connection = new HubConnectionBuilder()
@@ -14,7 +13,7 @@ const connection = new HubConnectionBuilder()
 // --- INTERFACES ---
 interface EquippedWeapon { configId: string; slotIndex: number; level: number; }
 interface ShopItem { configId: string; name: string; price: number; }
-interface AoeEvent { x: number; y: number; radius: number; isFriendly: boolean; }
+interface AoeEvent { x: number; y: number; radius: number; isFriendly: boolean; configId?: string; }
 interface ServerPlayer {
   connectionId: string; configId: string; actionState: string;
   x: number; y: number; velX?: number;
@@ -120,7 +119,9 @@ class GameScene extends Phaser.Scene {
       if (this.anims) this.createAnimations(masterConfigs);
 
       // >>> FIX: Bulletproof map selection! If currentMapId is missing, grab the first map in the JSON! <<<
-      const mapIdToUse = masterConfigs.currentMapId || (masterConfigs.maps ? Object.keys(masterConfigs.maps)[0] : null) || (masterConfigs.Maps ? Object.keys(masterConfigs.Maps)[0] : null);
+      const mapIdToUse = masterConfigs.currentMapId || masterConfigs.CurrentMapId ||
+        (masterConfigs.maps ? Object.keys(masterConfigs.maps)[0] : null) ||
+        (masterConfigs.Maps ? Object.keys(masterConfigs.Maps)[0] : null);
 
       if (!this.isMapInitialized && mapIdToUse) {
         const currentMap = (masterConfigs.maps && masterConfigs.maps[mapIdToUse]) || (masterConfigs.Maps && masterConfigs.Maps[mapIdToUse]);
@@ -144,7 +145,7 @@ class GameScene extends Phaser.Scene {
           this.cameras.main.setBounds(0, 0, this.mapWidth, this.mapHeight);
         }
       }
-    });
+    }, { once: true });
 
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();
@@ -342,7 +343,6 @@ class GameScene extends Phaser.Scene {
         aoeEvents: rawState.aoe?.map((a: any[]) => ({ x: a[0], y: a[1], radius: a[2], isFriendly: a[3], configId: a[4] })) || []
       };
 
-      this.currentPhase = state.phase;
       this.currentPhase = state.phase;
       const myPlayer = state.players.find(p => p.connectionId === connection.connectionId);
       if (myPlayer) this.goldUIText.setText(`💰 ${myPlayer.gold}`);

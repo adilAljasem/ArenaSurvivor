@@ -8,8 +8,13 @@ public static class MovementSystem
 {
     public static void Process(float dt, GameState state, ConfigManager configs)
     {
-        float mapW = configs.Maps != null && configs.Maps.TryGetValue("map_forest", out var currentMap) ? currentMap.Width : 4000f;
-        float mapH = configs.Maps != null && configs.Maps.TryGetValue("map_forest", out var currentMapH) ? currentMapH.Height : 4000f;
+        float mapW = 4000f;
+        float mapH = 4000f;
+        if (configs.Maps != null && configs.Maps.TryGetValue("map_forest", out var currentMap))
+        {
+            mapW = currentMap.Width;
+            mapH = currentMap.Height;
+        }
 
         // 1. PLAYER PHYSICS (Players always move!)
         foreach (var player in state.Players.Values)

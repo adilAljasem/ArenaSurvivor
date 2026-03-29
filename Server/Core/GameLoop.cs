@@ -18,7 +18,7 @@ public class GameLoop : BackgroundService
     private readonly ConfigManager _configManager;
     private readonly int _tickRateMs = 50; // 20 Ticks Per Second
     private DateTime _lastSpawnTime = DateTime.UtcNow;
-    private Configs.MapConfig _currentMap;
+    private Configs.MapConfig? _currentMap;
 
     public GameLoop(IHubContext<GameHub> hubContext, GameState gameState, ConfigManager configManager)
     {
@@ -27,9 +27,16 @@ public class GameLoop : BackgroundService
         _configManager = configManager;
         _configManager.LoadConfigs(); // Load JSON on startup
 
+        // Initialize the current map from config
+        if (_configManager.Maps.TryGetValue("map_forest", out var initialMap))
+            _currentMap = initialMap;
+
         // >>> Listen for Hot Reloads and push to all connected players! <<<
         _configManager.OnConfigsReloaded += async () =>
         {
+            // Update current map on hot reload
+            if (_configManager.Maps.TryGetValue("map_forest", out var reloadedMap))
+                _currentMap = reloadedMap;
             var payload = new
             {
                 enemies = _configManager.Enemies,
