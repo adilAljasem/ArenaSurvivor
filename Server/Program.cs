@@ -1,5 +1,4 @@
 using MessagePack;
-using MessagePack.Resolvers;
 using Server.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
