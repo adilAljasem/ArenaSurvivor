@@ -489,9 +489,9 @@ export class WorldRenderer {
       const skillConfig = (configs.skills || configs.Skills)?.[configId] ?? null;
 
       let rendered = false;
-      const radius = aoe.radius || aoe.Radius;
-      const x = aoe.x || aoe.X;
-      const y = aoe.y || aoe.Y;
+      const radius = aoe.radius ?? aoe.Radius;
+      const x = aoe.x ?? aoe.X;
+      const y = aoe.y ?? aoe.Y;
 
       if (skillConfig) {
         const animArray = skillConfig.animSkill || skillConfig.AnimSkill;

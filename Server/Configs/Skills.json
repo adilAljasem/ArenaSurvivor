@@ -91,7 +91,7 @@
         "applyEffects": [
             "stunned"
         ],
-        "colorTint": "#ffffff"
+        "colorTint": "#00cfff"
     },
     "enrage": {
         "id": "enrage",
