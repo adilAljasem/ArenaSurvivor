@@ -275,7 +275,7 @@ class GameScene extends Phaser.Scene {
           const sprite = this.projectileSprites.get(id);
           if (sprite) {
             // Store this projectile's hit sound so renderers can play it on HP drop
-            const configId = (sprite as any).getData('configId') as string | undefined;
+            const configId = sprite.getData('configId') as string | undefined;
             if (configId) {
               const projCfg = masterConfigs.projectiles?.[configId] ?? masterConfigs.Projectiles?.[configId];
               if (projCfg?.soundHit) AudioManager.getInstance().setLastProjectileHitSound(projCfg.soundHit);

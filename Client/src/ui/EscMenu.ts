@@ -15,6 +15,9 @@ import { UIHelpers } from './UI';
 //   else escMenu.setVisible(true);
 // ==========================================================================
 
+/** Phaser GameObjects that are used inside EscMenu all support setVisible. */
+type VisibleGameObject = Phaser.GameObjects.GameObject & { setVisible: (v: boolean) => void };
+
 interface ActiveDrag {
   handle: Phaser.GameObjects.Rectangle;
   fill: Phaser.GameObjects.Rectangle;
@@ -26,7 +29,7 @@ interface ActiveDrag {
 }
 
 export class EscMenu {
-  private _elements: Phaser.GameObjects.GameObject[] = [];
+  private _elements: VisibleGameObject[] = [];
   private _visible: boolean = false;
   private _activeDrag: ActiveDrag | null = null;
   private readonly scene: Phaser.Scene;
@@ -67,9 +70,7 @@ export class EscMenu {
 
   setVisible(v: boolean): void {
     this._visible = v;
-    for (const el of this._elements) {
-      (el as Phaser.GameObjects.GameObject & { setVisible: (v: boolean) => void }).setVisible(v);
-    }
+    for (const el of this._elements) el.setVisible(v);
   }
 
   toggle(): void { this.setVisible(!this._visible); }
@@ -80,7 +81,7 @@ export class EscMenu {
    */
   reposition(_width: number, _height: number): void {
     for (const el of this._elements) {
-      (el as Phaser.GameObjects.GameObject & { destroy: () => void }).destroy();
+      (el as unknown as Phaser.GameObjects.GameObject).destroy();
     }
     this._elements = [];
     this._build();
