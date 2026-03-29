@@ -2,8 +2,8 @@ namespace Server.Entities;
 
 public class ProjectileEntity
 {
-    public string Id { get; set; } = Guid.NewGuid().ToString();
-    public string ConfigId { get; set; } = string.Empty; // Tells the UI what sprite to draw!
+    private static int _projIdCounter = 0;
+    public string Id { get; set; } = Interlocked.Increment(ref _projIdCounter).ToString(); public string ConfigId { get; set; } = string.Empty; // Tells the UI what sprite to draw!
     public string OwnerId { get; set; } = string.Empty;
     public float X { get; set; }
     public float Y { get; set; }

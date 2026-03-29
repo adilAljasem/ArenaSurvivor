@@ -8,7 +8,8 @@
     ".NETCoreApp,Version=v10.0": {
       "Server/1.0.0": {
         "dependencies": {
-          "MessagePack": "3.1.4"
+          "MessagePack": "3.1.4",
+          "Microsoft.AspNetCore.SignalR.Protocols.MessagePack": "10.0.5"
         },
         "runtime": {
           "Server.dll": {}
@@ -31,6 +32,17 @@
           "lib/netstandard2.0/MessagePack.Annotations.dll": {
             "assemblyVersion": "3.1.4.0",
             "fileVersion": "3.1.4.0"
+          }
+        }
+      },
+      "Microsoft.AspNetCore.SignalR.Protocols.MessagePack/10.0.5": {
+        "dependencies": {
+          "MessagePack": "3.1.4"
+        },
+        "runtime": {
+          "lib/net10.0/Microsoft.AspNetCore.SignalR.Protocols.MessagePack.dll": {
+            "assemblyVersion": "10.0.5.0",
+            "fileVersion": "10.0.526.15411"
           }
         }
       },
@@ -63,6 +75,13 @@
       "sha512": "sha512-aVWrDAkCdqxwQsz/q0ldPh2EFn48M99YUzE9OvZjMq2RNLKz4o2z88iGFvSvbMqOWRweRvKPHBJZe22PRqzslQ==",
       "path": "messagepack.annotations/3.1.4",
       "hashPath": "messagepack.annotations.3.1.4.nupkg.sha512"
+    },
+    "Microsoft.AspNetCore.SignalR.Protocols.MessagePack/10.0.5": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-6tg4j/+XZeZOsRLWdtDM3NdtrJs2C1kLZDDQ3Jq9MHt7DevXtS/V1SkHyLkZSodIdhJCritya/QF7z3E6NCSyg==",
+      "path": "microsoft.aspnetcore.signalr.protocols.messagepack/10.0.5",
+      "hashPath": "microsoft.aspnetcore.signalr.protocols.messagepack.10.0.5.nupkg.sha512"
     },
     "Microsoft.NET.StringTools/17.11.4": {
       "type": "package",

@@ -1,5 +1,6 @@
 using Server.Configs;
 using Server.Entities;
+using System;
 
 namespace Server.Core.Systems;
 
@@ -7,7 +8,10 @@ public static class MovementSystem
 {
     public static void Process(float dt, GameState state, ConfigManager configs)
     {
-        // 1. PLAYER PHYSICS
+        float mapW = configs.Maps != null && configs.Maps.TryGetValue("map_forest", out var currentMap) ? currentMap.Width : 4000f;
+        float mapH = configs.Maps != null && configs.Maps.TryGetValue("map_forest", out var currentMapH) ? currentMapH.Height : 4000f;
+
+        // 1. PLAYER PHYSICS (Players always move!)
         foreach (var player in state.Players.Values)
         {
             if (player.InputX != 0 || player.InputY != 0)
@@ -17,11 +21,12 @@ public static class MovementSystem
                 player.Y += player.InputY * finalSpeed * dt;
             }
 
+            player.X = Math.Clamp(player.X, 35, mapW - 35);
+            player.Y = Math.Clamp(player.Y, 35, mapH - 35);
+
             float regen = player.GetTotalStat("hpRegen", configs);
             if (regen > 0 && player.CurrentHp < player.GetTotalStat("maxHp", configs))
-            {
                 player.CurrentHp = Math.Min(player.GetTotalStat("maxHp", configs), player.CurrentHp + (regen * dt));
-            }
         }
 
         // 2. ENEMY AI & PHYSICS
@@ -33,10 +38,19 @@ public static class MovementSystem
             {
                 enemy.DespawnTimer -= dt;
                 if (enemy.DespawnTimer <= 0) state.Enemies.TryRemove(enemy.Id, out _);
-                continue; 
+                continue;
             }
 
-            if (enemy.ActionState == "Casting") continue;
+            // >>> THE FIX: Look at the Timer, not the State string! <<<
+            bool canMoveEnemy = true;
+            if (!string.IsNullOrEmpty(enemy.CurrentCastingSkillId) && enemy.CurrentCastTimer > 0)
+            {
+                if (configs.Skills.TryGetValue(enemy.CurrentCastingSkillId, out var eCastCfg) && eCastCfg.StopMoving)
+                {
+                    canMoveEnemy = false;
+                }
+            }
+            if (!canMoveEnemy) continue; // Skip movement completely if rooted by a spell!
 
             if (enemy.AttackCooldown > 0)
             {
@@ -50,16 +64,12 @@ public static class MovementSystem
             foreach (var player in state.Players.Values)
             {
                 float distSq = (player.X - enemy.X) * (player.X - enemy.X) + (player.Y - enemy.Y) * (player.Y - enemy.Y);
-                if (distSq < closestDistSq)
-                {
-                    closestDistSq = distSq;
-                    target = player;
-                }
+                if (distSq < closestDistSq) { closestDistSq = distSq; target = player; }
             }
 
             if (target != null)
             {
-                if (closestDistSq < 2500) 
+                if (closestDistSq < 2500)
                 {
                     enemy.ActionState = "Attacking";
                     enemy.AttackCooldown = config.AttackDuration;
@@ -75,6 +85,12 @@ public static class MovementSystem
                     enemy.X += (dx / length) * finalSpeed * dt;
                     enemy.Y += (dy / length) * finalSpeed * dt;
                 }
+            }
+
+            if (enemy.X >= 0 && enemy.X <= mapW && enemy.Y >= 0 && enemy.Y <= mapH)
+            {
+                enemy.X = Math.Clamp(enemy.X, 0, mapW);
+                enemy.Y = Math.Clamp(enemy.Y, 0, mapH);
             }
         }
     }

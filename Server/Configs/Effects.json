@@ -7,7 +7,6 @@
     "tickRate": 1.0,
     "tickDamage": 5.0,
     "statModifiers": {
-      "speed": -200
     },
     "textureKey": "effects_sheet",
     "colorTint": "0x00ff00"
@@ -20,11 +19,58 @@
     "tickRate": 0.0,
     "tickDamage": 0.0,
     "statModifiers": {
-      "attackSpeedPercent": 0.5,
+      "attackSpeedPercent": 1.5,
       "speed": 500
     },
     "textureKey": "effects_sheet",
 
     "colorTint": "0xffd700"
+  },
+  "stunned": {
+    "id": "stunned",
+    "name": "Stunned",
+    "isBuff": false,
+    "duration": 6.0,
+    "tickRate": 0.0,
+    "tickDamage": 0.0,
+    "statModifiers": {
+      "speed": -9999,
+      "attackSpeedPercent": -0.99
+    },
+    "colorTint": "0x888888"
+  },
+  "burning": {
+    "id": "burning",
+    "name": "On Fire",
+    "isBuff": false,
+    "duration": 4.0,
+    "tickRate": 0.5,
+    "tickDamage": 15.0,
+    "statModifiers": {
+      "speed": 50
+    },
+    "colorTint": "0xff4400"
+  },
+  "vampiric_aura": {
+    "id": "vampiric_aura",
+    "name": "Blood Leech",
+    "isBuff": true,
+    "duration": 8.0,
+    "tickRate": 0.0,
+    "tickDamage": 0.0,
+    "statModifiers": {
+      "lifeSteal": 0.25,
+      "damagePercent": 0.15
+    },
+    "colorTint": "0xff0000"
+  },
+  "rejuvenation_aura": {
+    "id": "rejuvenation_aura",
+    "name": "Healing Aura",
+    "isBuff": true,
+    "duration": 5.0,
+    "tickRate": 1.0,
+    "tickDamage": -10.0, 
+    "colorTint": "0x00ff00"
   }
 }

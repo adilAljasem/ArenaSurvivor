@@ -223,12 +223,24 @@
     "animDeathFrameRate": 15,
     "attackDuration": 0.6,
     "baseStats": {
-      "maxHp": 80,
+      "maxHp": 250,
       "speed": 65,
       "meleeDamage": 10,
       "hpRegen": 2
     },
-    "dynamicModifiers": []
+    "dynamicModifiers": [],
+    "onDeathSkills": [
+      "frost_nova"
+    ],
+    "dynamicSkills": [
+      {
+        "conditionType": "MissingHealthPercent",
+        "conditionThreshold": 0.30,
+        "skillId": "nature_pulse",
+        "cooldown":0.5,
+        "overrideCastTime": 4.0
+      }
+    ]
   },
   "flying_forest": {
     "id": "flying_forest",
@@ -295,7 +307,7 @@
       9
     ],
     "animIdleFrameRate": 3,
-     "animAttack": [
+    "animAttack": [
       0,
       9
     ],

@@ -39,6 +39,22 @@
           "build/MessagePackAnalyzer.targets": {}
         }
       },
+      "Microsoft.AspNetCore.SignalR.Protocols.MessagePack/10.0.5": {
+        "type": "package",
+        "dependencies": {
+          "MessagePack": "2.5.187"
+        },
+        "compile": {
+          "lib/net10.0/Microsoft.AspNetCore.SignalR.Protocols.MessagePack.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net10.0/Microsoft.AspNetCore.SignalR.Protocols.MessagePack.dll": {
+            "related": ".xml"
+          }
+        }
+      },
       "Microsoft.NET.StringTools/17.11.4": {
         "type": "package",
         "compile": {
@@ -103,6 +119,25 @@
         "messagepackanalyzer.nuspec"
       ]
     },
+    "Microsoft.AspNetCore.SignalR.Protocols.MessagePack/10.0.5": {
+      "sha512": "6tg4j/+XZeZOsRLWdtDM3NdtrJs2C1kLZDDQ3Jq9MHt7DevXtS/V1SkHyLkZSodIdhJCritya/QF7z3E6NCSyg==",
+      "type": "package",
+      "path": "microsoft.aspnetcore.signalr.protocols.messagepack/10.0.5",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "Icon.png",
+        "THIRD-PARTY-NOTICES.TXT",
+        "lib/net10.0/Microsoft.AspNetCore.SignalR.Protocols.MessagePack.dll",
+        "lib/net10.0/Microsoft.AspNetCore.SignalR.Protocols.MessagePack.xml",
+        "lib/net462/Microsoft.AspNetCore.SignalR.Protocols.MessagePack.dll",
+        "lib/net462/Microsoft.AspNetCore.SignalR.Protocols.MessagePack.xml",
+        "lib/netstandard2.0/Microsoft.AspNetCore.SignalR.Protocols.MessagePack.dll",
+        "lib/netstandard2.0/Microsoft.AspNetCore.SignalR.Protocols.MessagePack.xml",
+        "microsoft.aspnetcore.signalr.protocols.messagepack.10.0.5.nupkg.sha512",
+        "microsoft.aspnetcore.signalr.protocols.messagepack.nuspec"
+      ]
+    },
     "Microsoft.NET.StringTools/17.11.4": {
       "sha512": "mudqUHhNpeqIdJoUx2YDWZO/I9uEDYVowan89R6wsomfnUJQk6HteoQTlNjZDixhT2B4IXMkMtgZtoceIjLRmA==",
       "type": "package",
@@ -135,7 +170,8 @@
   },
   "projectFileDependencyGroups": {
     "net10.0": [
-      "MessagePack >= 3.1.4"
+      "MessagePack >= 3.1.4",
+      "Microsoft.AspNetCore.SignalR.Protocols.MessagePack >= 10.0.5"
     ]
   },
   "packageFolders": {
@@ -145,11 +181,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "c:\\Users\\fooxi\\Desktop\\Programming\\ArenaSurvivor\\Server\\Server.csproj",
+      "projectUniqueName": "C:\\Users\\fooxi\\Desktop\\Programming\\ArenaSurvivor\\server\\Server.csproj",
       "projectName": "Server",
-      "projectPath": "c:\\Users\\fooxi\\Desktop\\Programming\\ArenaSurvivor\\Server\\Server.csproj",
+      "projectPath": "C:\\Users\\fooxi\\Desktop\\Programming\\ArenaSurvivor\\server\\Server.csproj",
       "packagesPath": "C:\\Users\\fooxi\\.nuget\\packages\\",
-      "outputPath": "c:\\Users\\fooxi\\Desktop\\Programming\\ArenaSurvivor\\Server\\obj\\",
+      "outputPath": "C:\\Users\\fooxi\\Desktop\\Programming\\ArenaSurvivor\\server\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -192,6 +228,10 @@
           "MessagePack": {
             "target": "Package",
             "version": "[3.1.4, )"
+          },
+          "Microsoft.AspNetCore.SignalR.Protocols.MessagePack": {
+            "target": "Package",
+            "version": "[10.0.5, )"
           }
         },
         "imports": [

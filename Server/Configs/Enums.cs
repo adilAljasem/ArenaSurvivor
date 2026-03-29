@@ -8,5 +8,5 @@ public enum SkillTriggerType { Auto, Input }
 public enum SkillTargetType { Self, ClosestEnemy, ClosestPlayer, AimDirection }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
-public enum SkillActionType { Projectile, AoE, SelfBuff , Summon , AoEHeal}
+public enum SkillActionType { Projectile, AoE, SelfBuff , Summon }
 

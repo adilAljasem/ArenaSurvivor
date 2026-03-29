@@ -19,6 +19,7 @@ public class ConfigManager
     public Dictionary<string, ProjectileConfig> Projectiles { get; private set; } = new();
     public Dictionary<string, EffectConfig> Effects { get; private set; } = new();
     public Dictionary<string, SkillConfig> Skills { get; private set; } = new(); // <<< ADD THIS
+    public Dictionary<string, MapConfig> Maps { get; private set; } = new(); // <<< ADD THIS
 
     public ConfigManager()
     {
@@ -137,6 +138,15 @@ public class ConfigManager
                 skillsJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
             ) ?? new();
             Console.WriteLine($"Loaded {Skills.Count} Skills.");
+        }
+
+        if (File.Exists("Configs/Maps.json"))
+        {
+            var mapsJson = File.ReadAllText("Configs/Maps.json");
+            Maps = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, MapConfig>>(
+                mapsJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+            ) ?? new();
+            Console.WriteLine($"Loaded {Maps.Count} Maps.");    
         }
     }
 }

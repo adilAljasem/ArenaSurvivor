@@ -59,19 +59,14 @@
         "castTimeSeconds": 3.0,
         "triggerType": "Auto",
         "targetType": "Self",
-        "actionType": "AoEHeal",
+        "actionType": "AoE",
         "radius": 200,
-        "baseDamage": 15
+        "baseDamage": -15,
+        "StopMoving": true
     },
     "adrenaline_surge": {
         "id": "adrenaline_surge",
         "name": "Adrenaline Surge",
-        "textureKey": "effects_sheet",
-        "iconFrame": 0,
-        "animSkill": [
-            0,
-            5
-        ],
         "animFrameRate": 15,
         "cooldownSeconds": 10.0,
         "castTimeSeconds": 3.5,
@@ -80,6 +75,49 @@
         "actionType": "SelfBuff",
         "applyEffects": [
             "adrenaline"
+        ],
+        "colorTint": "0xff0000"
+    },
+    "frost_nova": {
+        "id": "frost_nova",
+        "name": "Frost Nova",
+        "cooldownSeconds": 8.0,
+        "castTimeSeconds": 2.0,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "AoE",
+        "radius": 300,
+        "baseDamage": 10,
+        "applyEffects": [
+            "stunned"
+        ],
+        "colorTint": "#ffffff"
+    },
+    "enrage": {
+        "id": "enrage",
+        "name": "Boss Enrage",
+        "cooldownSeconds": 20.0,
+        "castTimeSeconds": 3.0,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "SelfBuff",
+        "applyEffects": [
+            "adrenaline",
+            "vampiric_aura"
+        ]
+    },
+    "poison_volley": {
+        "id": "poison_volley",
+        "name": "Poison Volley",
+        "cooldownSeconds": 4.0,
+        "castTimeSeconds": 1.0,
+        "triggerType": "Auto",
+        "targetType": "ClosestEnemy",
+        "actionType": "Projectile",
+        "projectileId": "toxic_sludge",
+        "baseDamage": 5,
+        "applyEffects": [
+            "poison_dot"
         ]
     }
 }

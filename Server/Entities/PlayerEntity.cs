@@ -9,6 +9,7 @@ namespace Server.Entities;
 public class PlayerEntity
 {
     public string ConnectionId { get; set; } = string.Empty;
+    public string ConfigId { get; set; } = "char_well_rounded";
     public float X { get; set; }
     public float Y { get; set; }
 
@@ -52,6 +53,7 @@ public class PlayerEntity
     public string CurrentCastingSkillId { get; set; } = string.Empty;
     public float CurrentCastTimer { get; set; }
     public float MaxCastTimer { get; set; }
+    public Dictionary<string, float> DynamicSkillTimers { get; set; } = new();
 
     // Initializes the player with the Master Stat List so it never crashes
     public void Initialize(CharacterConfig config, ConfigManager configManager)

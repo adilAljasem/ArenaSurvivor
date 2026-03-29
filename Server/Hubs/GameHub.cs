@@ -57,7 +57,9 @@ public class GameHub : Hub
             StatsList = _configManager.AllStats, // >>> NEW: Send the master list! <<<
             Effects = _configManager.Effects,         // <<< FIX: Add Effects!
             Projectiles = _configManager.Projectiles,  // <<< FIX: Add Projectiles!
-            Skills = _configManager.Skills
+            Skills = _configManager.Skills,
+            Maps = _configManager.Maps, // <<< FIX: Add Maps!
+            CurrentMapId = "map_forest" // <<< FIX: Send current map ID!
         };
         await Clients.Caller.SendAsync("ReceiveHandshake", handshakePayload);
         await SendPlayerUI(newPlayer);
@@ -247,7 +249,7 @@ public class GameHub : Hub
         // This is intentionally left empty. 
         // The client just needs the server to acknowledge the message to calculate latency!
     }
-    
+
     // Add this helper method right below BuyItem inside GameHub
     private void AddItemToInventory(Server.Entities.PlayerEntity player, Server.Configs.ItemConfig item)
     {

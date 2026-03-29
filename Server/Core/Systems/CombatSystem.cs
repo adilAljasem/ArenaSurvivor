@@ -99,7 +99,7 @@ public static class CombatSystem
         }
     }
 
-    public static void ProcessCollisions(float dt, GameState state, ConfigManager configs, List<DamageEventDto> tickDamageEvents)
+    public static void ProcessCollisions(float dt, GameState state, ConfigManager configs, List<DamageEventDto> tickDamageEvents, List<AoeEventDto> tickAoeEvents)
     {
         var projectilesToRemove = new List<string>();
         var pickupsToRemove = new List<string>();
@@ -176,6 +176,12 @@ public static class CombatSystem
                         enemy.ActionState = "Dead";
                         var gold = new PickupEntity { X = enemy.X, Y = enemy.Y, Value = 1 };
                         state.Pickups.TryAdd(gold.Id, gold);
+
+                        // >>> FIRE DEATH SKILLS <<<
+                        if (configs.Enemies.TryGetValue(enemy.ConfigId, out var eCfg))
+                        {
+                            SkillSystem.FireOnDeathSkills(enemy.Id, enemy.X, enemy.Y, enemy.Team, eCfg.OnDeathSkills, state, configs, tickDamageEvents, tickAoeEvents);
+                        }
                     }
 
                     if (proj.HitEnemies.Count > proj.PierceCount)

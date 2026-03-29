@@ -7,8 +7,9 @@ namespace Server.Entities;
 
 public class EnemyEntity
 {
-    public string Id { get; set; } = Guid.NewGuid().ToString();
-    public string ConfigId { get; set; } = string.Empty;
+    private static int _enemyIdCounter = 0;
+    public string Id { get; set; } = Interlocked.Increment(ref _enemyIdCounter).ToString();
+     public string ConfigId { get; set; } = string.Empty;
     public float X { get; set; }
     public float Y { get; set; }
     public float CurrentHp { get; set; }
@@ -25,6 +26,7 @@ public class EnemyEntity
     public string CurrentCastingSkillId { get; set; } = string.Empty;
     public float CurrentCastTimer { get; set; }
     public float MaxCastTimer { get; set; }
+    public Dictionary<string, float> DynamicSkillTimers { get; set; } = new();
 
     // Initializes the enemy with the Master Stat List so it never crashes
     public void Initialize(Configs.EnemyConfig config, float spawnX, float spawnY, ConfigManager configManager)

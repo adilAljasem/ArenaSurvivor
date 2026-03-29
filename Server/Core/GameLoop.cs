@@ -1,9 +1,13 @@
 using Microsoft.AspNetCore.SignalR;
 using Server.Configs;
-using Server.Core.Systems; // <<< Brings in your new clean systems!
+using Server.Core.Systems;
 using Server.Entities;
 using Server.Hubs;
-using System.Collections.Concurrent;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Server.Core;
 
@@ -14,6 +18,7 @@ public class GameLoop : BackgroundService
     private readonly ConfigManager _configManager;
     private readonly int _tickRateMs = 50; // 20 Ticks Per Second
     private DateTime _lastSpawnTime = DateTime.UtcNow;
+    private Configs.MapConfig _currentMap;
 
     public GameLoop(IHubContext<GameHub> hubContext, GameState gameState, ConfigManager configManager)
     {
@@ -33,7 +38,9 @@ public class GameLoop : BackgroundService
                 items = _configManager.Items,
                 characters = _configManager.Characters,
                 effects = _configManager.Effects,
-                skills = _configManager.Skills
+                skills = _configManager.Skills,
+                maps = _configManager.Maps,
+                currentMapId = "map_forest"
             };
             await _hubContext.Clients.All.SendAsync("ReceiveHandshake", payload);
         };
@@ -73,14 +80,34 @@ public class GameLoop : BackgroundService
             var tickDamageEvents = new List<Server.DTOs.DamageEventDto>();
             var tickAoeEvents = new List<Server.DTOs.AoeEventDto>();
 
+            // Snapshot bullets before physics run
+            var prevProjectiles = _gameState.Projectiles.Keys.ToHashSet();
+
+            // Run all Systems
             MovementSystem.Process(dt, _gameState, _configManager);
-            EffectSystem.Process(dt, _gameState, _configManager, tickDamageEvents);
+            EffectSystem.Process(dt, _gameState, _configManager, tickDamageEvents, tickAoeEvents); // Add tickAoeEvents!
             CombatSystem.ProcessShooting(dt, _gameState, _configManager);
             SkillSystem.Process(dt, _gameState, _configManager, tickDamageEvents, tickAoeEvents);
-            CombatSystem.ProcessCollisions(dt, _gameState, _configManager, tickDamageEvents);
+            CombatSystem.ProcessCollisions(dt, _gameState, _configManager, tickDamageEvents, tickAoeEvents);
+            // Compare bullets after physics to find new & dead ones
+            var currProjectiles = _gameState.Projectiles.Keys.ToHashSet();
+            var newProjIds = currProjectiles.Except(prevProjectiles).ToList();
+            var destroyedProjIds = prevProjectiles.Except(currProjectiles).ToList();
 
-            // 4. Broadcast to Clients
-            await BroadcastStateAsync(tickDamageEvents, tickAoeEvents, stoppingToken);
+            var tickNewProjectiles = newProjIds.Select(id => _gameState.Projectiles[id]).ToList();
+            var tickDestroyedProjectiles = destroyedProjIds;
+
+            // 4. Broadcast to Clients via the cleanly isolated Network System!
+            await NetworkSystem.BroadcastStateAsync(
+                _hubContext,
+                _gameState,
+                _configManager,
+                tickDamageEvents,
+                tickAoeEvents,
+                tickNewProjectiles,
+                tickDestroyedProjectiles,
+                stoppingToken
+            );
 
             // 5. Maintain Tick Rate
             var executionTime = DateTime.UtcNow - currentTickTime;
@@ -98,8 +125,8 @@ public class GameLoop : BackgroundService
         if (_gameState.Phase == GamePhase.WaitingForPlayers && !_gameState.Players.IsEmpty)
         {
             _gameState.Phase = GamePhase.WaveActive;
-            _gameState.PhaseTimer = 60f;
-            _gameState.CurrentWave = 1; // Or whatever wave you are testing on!
+            _gameState.PhaseTimer = 180f;
+            _gameState.CurrentWave = 1;
         }
 
         if (_gameState.Phase != GamePhase.WaitingForPlayers)
@@ -125,7 +152,7 @@ public class GameLoop : BackgroundService
 
         // 2. The Co-Op Loot Sweep
         int totalLootValue = _gameState.Pickups.Values.Sum(p => p.Value);
-        _gameState.Pickups.Clear(); 
+        _gameState.Pickups.Clear();
 
         if (totalLootValue > 0 && !_gameState.Players.IsEmpty)
         {
@@ -185,7 +212,7 @@ public class GameLoop : BackgroundService
     private void StartNextWave()
     {
         _gameState.Phase = GamePhase.WaveActive;
-        _gameState.PhaseTimer = 60f;
+        _gameState.PhaseTimer = 180f;
         _gameState.CurrentWave++;
     }
 
@@ -210,7 +237,6 @@ public class GameLoop : BackgroundService
 
                 if (!bossAlreadySpawend && _gameState.PhaseTimer > 50f)
                 {
-                    // >>> FIX: Check !e.IsSummonOnly for Bosses! <<<
                     var bossConfigs = _configManager.Enemies.Values.Where(e => e.IsBoss && !e.IsSummonOnly && e.Tier <= maxAllowedTier).ToList();
                     if (bossConfigs.Any())
                     {
@@ -225,7 +251,6 @@ public class GameLoop : BackgroundService
             // Regular Spawn Logic
             if (!skipRegularSpawn)
             {
-                // >>> FIX: Check !e.IsSummonOnly for regular enemies/trees! <<<
                 var availableEnemies = _configManager.Enemies.Values.Where(e => !e.IsBoss && !e.IsSummonOnly).ToList();
 
                 int targetTier = maxAllowedTier;
@@ -249,8 +274,19 @@ public class GameLoop : BackgroundService
     private void SpawnEnemy(Configs.EnemyConfig config)
     {
         var newEnemy = new Server.Entities.EnemyEntity();
-        float spawnX = Random.Shared.Next(0, 1280);
-        float spawnY = Random.Shared.Next(0, 720);
+        float spawnX = 0;
+        float spawnY = 0;
+
+        // Use dynamic map size
+        float w = _currentMap?.Width ?? 4000f;
+        float h = _currentMap?.Height ?? 4000f;
+
+        int edge = Random.Shared.Next(4);
+        if (edge == 0) { spawnX = Random.Shared.Next(-200, (int)w + 200); spawnY = Random.Shared.Next(-200, -50); } // Top
+        else if (edge == 1) { spawnX = Random.Shared.Next(-200, (int)w + 200); spawnY = Random.Shared.Next((int)h + 50, (int)h + 200); } // Bottom
+        else if (edge == 2) { spawnX = Random.Shared.Next(-200, -50); spawnY = Random.Shared.Next(-200, (int)h + 200); } // Left
+        else { spawnX = Random.Shared.Next((int)w + 50, (int)w + 200); spawnY = Random.Shared.Next(-200, (int)h + 200); } // Right
+
         newEnemy.Initialize(config, spawnX, spawnY, _configManager);
 
         float waveMultiplier = 1f + ((_gameState.CurrentWave - 1) * 0.2f);
@@ -258,14 +294,13 @@ public class GameLoop : BackgroundService
 
         newEnemy.Stats.AddModifier("maxHp", 0, (waveMultiplier * tierMultiplier) - 1f);
         newEnemy.Stats.AddModifier("meleeDamage", 0, ((_gameState.CurrentWave - 1) * 0.05f) * tierMultiplier);
-
         newEnemy.CurrentHp = newEnemy.GetTotalStat("maxHp", _configManager);
 
         _gameState.Enemies.TryAdd(newEnemy.Id, newEnemy);
     }
 
     // =================================================================================
-    // SHOP HELPERS & NETWORK
+    // SHOP HELPERS
     // =================================================================================
 
     public static void GenerateShopForPlayer(PlayerEntity player, ConfigManager configManager, int currentWave)
@@ -290,70 +325,6 @@ public class GameLoop : BackgroundService
             {
                 var item = availableItems[Random.Shared.Next(availableItems.Count)];
                 player.CurrentShop.Add(new Server.DTOs.ShopItemDto { ConfigId = item.Id, Name = item.Name, Price = 25 });
-            }
-        }
-    }
-
-    private async Task BroadcastStateAsync(List<Server.DTOs.DamageEventDto> tickDamageEvents, List<Server.DTOs.AoeEventDto> tickAoeEvents, CancellationToken stoppingToken)
-    {
-        if (!_gameState.Players.IsEmpty)
-        {
-            // 1. FORMAT PLAYERS
-            var playersDto = _gameState.Players.Values.Select(p => new
-            {
-                p.ConnectionId,
-                p.X,
-                p.Y,
-                p.AimX,
-                p.AimY,
-                p.CurrentHp,
-                MaxHp = p.GetTotalStat("maxHp", _configManager),
-                p.Gold,
-                p.ActionState,            
-                p.CurrentCastingSkillId,  
-                p.CurrentCastTimer,       
-                p.MaxCastTimer,           
-                Weapons = p.Weapons,
-                FiredWeapons = p.FiredWeaponsThisTick.ToList(),
-                ActiveEffects = p.ActiveEffects.Select(e => e.ConfigId).ToList() 
-            });
-
-            // 2. FORMAT ENEMIES
-            var enemiesDto = _gameState.Enemies.Values.Select(e => new
-            {
-                e.Id,
-                e.ConfigId,
-                e.X,
-                e.Y,
-                e.CurrentHp,
-                e.ActionState,
-                e.CurrentCastingSkillId, 
-                e.CurrentCastTimer,      
-                e.MaxCastTimer,          
-                MaxHp = e.GetTotalStat("maxHp", _configManager), 
-                ActiveEffects = e.ActiveEffects.Select(a => a.ConfigId).ToList() 
-            });
-
-            // 3. BUILD THE FINAL PAYLOAD
-            var payload = new
-            {
-                Players = playersDto,
-                Enemies = enemiesDto, 
-                Projectiles = _gameState.Projectiles.Values,
-                Pickups = _gameState.Pickups.Values,
-                DamageEvents = tickDamageEvents,
-                AoeEvents = tickAoeEvents,
-                Phase = _gameState.Phase.ToString(),
-                CurrentWave = _gameState.CurrentWave,
-                TimeRemaining = Math.Max(0, (int)_gameState.PhaseTimer),
-            };
-
-            await _hubContext.Clients.All.SendAsync("UpdateState", payload, cancellationToken: stoppingToken);
-
-            // 4. CLEANUP (Must happen AFTER SendAsync)
-            foreach (var p in _gameState.Players.Values)
-            {
-                p.FiredWeaponsThisTick.Clear();
             }
         }
     }

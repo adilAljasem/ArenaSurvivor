@@ -6,7 +6,7 @@ namespace Server.Core.Systems;
 
 public static class EffectSystem
 {
-    public static void Process(float dt, GameState state, ConfigManager configs, List<DamageEventDto> damageEvents)
+    public static void Process(float dt, GameState state, ConfigManager configs, List<DamageEventDto> damageEvents, List<AoeEventDto> aoeEvents)
     {
         // 1. Process Players
         foreach (var player in state.Players.Values)
@@ -52,6 +52,12 @@ public static class EffectSystem
                         enemy.ActionState = "Dead";
                         var gold = new PickupEntity { X = enemy.X, Y = enemy.Y, Value = 1 };
                         state.Pickups.TryAdd(gold.Id, gold);
+
+                        // >>> FIRE DEATH SKILLS <<<
+                        if (configs.Enemies.TryGetValue(enemy.ConfigId, out var eCfg))
+                        {
+                            SkillSystem.FireOnDeathSkills(enemy.Id, enemy.X, enemy.Y, enemy.Team, eCfg.OnDeathSkills, state, configs, damageEvents, aoeEvents);
+                        }
                     }
                 }
 

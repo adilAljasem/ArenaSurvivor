@@ -2,6 +2,8 @@ import * as Phaser from 'phaser';
 import { HubConnectionBuilder, HubConnectionState } from '@microsoft/signalr';
 import { ShopUI } from './ui/UI';
 import { PlayerRenderer, EnemyRenderer, WorldRenderer } from './RenderSystems';
+import pako from 'pako';
+import { precalculateSpriteTops } from './RenderSystems';
 
 // --- SIGNALR CONNECTION ---
 const connection = new HubConnectionBuilder()
@@ -36,12 +38,11 @@ export interface GameStatePayload {
   phase: string; currentWave: number; timeRemaining: number;
 }
 
-// Global dictionary to store the JSON configs
 let masterConfigs: any = {};
 
 connection.on("ReceiveHandshake", (payload: any) => {
   masterConfigs = payload;
-  console.log("Handshake received. Configs loaded:", masterConfigs);
+  console.log("Handshake received. Configs loaded.");
   window.dispatchEvent(new Event('configsReady'));
 });
 
@@ -55,27 +56,45 @@ class GameScene extends Phaser.Scene {
   private pickupSprites: Map<string, Phaser.GameObjects.Sprite | Phaser.GameObjects.Rectangle> = new Map();
   private targetPositions: Map<string, { x: number, y: number }> = new Map();
 
+  private enemyCache: Map<string, ServerEnemy> = new Map();
+  private pickupCache: Map<string, ServerPickup> = new Map();
+
   private goldUIText!: Phaser.GameObjects.Text;
+  private waveUIText!: Phaser.GameObjects.Text;
+  private shopUIModule!: ShopUI;
+  private perfText!: Phaser.GameObjects.Text;
+
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: any;
   private currentPhase: string = "WaitingForPlayers";
   private previousPhase: string = "WaitingForPlayers";
   private manuallyClosedShop: boolean = false;
-  private shopUIModule!: ShopUI;
-  private waveUIText!: Phaser.GameObjects.Text;
+
+  private hasScannedSprites: boolean = false;
+
+  // Map Variables
+  private isMapInitialized: boolean = false;
+  private mapWidth: number = 4000;
+  private mapHeight: number = 4000;
+
+  private lastInputSendTime: number = 0;
+  private lastSentInput: string = "";
 
   private isDebugMode: boolean = false;
   private debugGraphics!: Phaser.GameObjects.Graphics;
-
-  // >>> NEW: PERFORMANCE TRACKERS <<<
-  private perfText!: Phaser.GameObjects.Text;
   private bytesReceivedSinceLastTick: number = 0;
   private lastBandwidthTime: number = 0;
   private currentKbps: string = "0.00";
-
   private currentDrawCalls: number = 0;
   private maxDrawCalls: number = 0;
   private pingMs: number = 0;
+  private lastNetworkEntitiesCount: number = 0;
+
+  // Replace your old bandwidth variables with these:
+  private compressedBytesReceived: number = 0;
+  private uncompressedBytesReceived: number = 0;
+  private currentCompressedKbps: string = "0.00";
+  private currentUncompressedKbps: string = "0.00";
 
   constructor() { super('GameScene'); }
 
@@ -89,13 +108,43 @@ class GameScene extends Phaser.Scene {
     this.load.spritesheet('items_sheet', 'assets/Enemies/items_sheet.png', { frameWidth: 16, frameHeight: 16 });
     this.load.spritesheet('characters_sheet', 'assets/characters_sheet.png', { frameWidth: 32, frameHeight: 32 });
     this.load.spritesheet('tree', 'assets/obstacles/Tree Lights 02-Sheet.png', { frameWidth: 32, frameHeight: 64 });
+    this.load.spritesheet('effects1', 'assets/Effects/effects1.png', { frameWidth: 64, frameHeight: 64 });
+
   }
 
   create() {
     this.cameras.main.setBackgroundColor('#2d2d2d');
 
-    if (masterConfigs.enemies) this.createAnimations(masterConfigs);
-    window.addEventListener('configsReady', () => { if (this.anims) this.createAnimations(masterConfigs); });
+    // >>> FIX: Map Initialization moved strictly to Handshake Event! <<<
+    window.addEventListener('configsReady', () => {
+      if (this.anims) this.createAnimations(masterConfigs);
+
+      // >>> FIX: Bulletproof map selection! If currentMapId is missing, grab the first map in the JSON! <<<
+      const mapIdToUse = masterConfigs.currentMapId || (masterConfigs.maps ? Object.keys(masterConfigs.maps)[0] : null) || (masterConfigs.Maps ? Object.keys(masterConfigs.Maps)[0] : null);
+
+      if (!this.isMapInitialized && mapIdToUse) {
+        const currentMap = (masterConfigs.maps && masterConfigs.maps[mapIdToUse]) || (masterConfigs.Maps && masterConfigs.Maps[mapIdToUse]);
+
+        if (currentMap) {
+          this.isMapInitialized = true;
+          this.mapWidth = currentMap.width || currentMap.Width;
+          this.mapHeight = currentMap.height || currentMap.Height;
+
+          // 1. Draw Floor Grid
+          this.add.grid(this.mapWidth / 2, this.mapHeight / 2, this.mapWidth, this.mapHeight, 64, 64, 0x1a1a1a, 1, 0x333333, 1).setDepth(-2);
+
+          // 2. Draw Red Glowing Border (Inset by 10 pixels so the camera doesn't clip it!)
+          const border = this.add.graphics();
+          border.lineStyle(16, 0xff0000, 1);
+          border.strokeRect(10, 10, this.mapWidth - 20, this.mapHeight - 20);
+          border.setDepth(-1);
+          border.postFX.addGlow(0xff0000, 6, 0, false, 0.1, 15);
+
+          // 3. Lock Camera
+          this.cameras.main.setBounds(0, 0, this.mapWidth, this.mapHeight);
+        }
+      }
+    });
 
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();
@@ -103,87 +152,63 @@ class GameScene extends Phaser.Scene {
     }
     this.input.mouse?.disableContextMenu();
 
-    this.waveUIText = this.add.text(this.scale.width / 2, 20, 'Connecting...', {
-      fontSize: '32px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 4
-    }).setOrigin(0.5).setDepth(3000);
-
-    this.goldUIText = this.add.text(20, 20, '💰 0', {
-      fontSize: '28px', color: '#ffd700', fontStyle: 'bold', stroke: '#000000', strokeThickness: 4
-    }).setDepth(3000);
-
-    // >>> PERFORMANCE UI <<<
-    this.perfText = this.add.text(10, this.scale.height - 10, '', {
-      fontFamily: "'Segoe UI', Consolas, monospace",
-      fontSize: '14px', color: '#00ff00',
-      backgroundColor: '#000000aa',
-      padding: { x: 8, y: 8 }
-    }).setOrigin(0, 1).setDepth(9999).setVisible(false);
-
-    this.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
-      this.perfText.setPosition(10, gameSize.height - 10);
-    });
-
-
-    // >>> FIX: THE ULTIMATE DRAW CALL TRACKER (WebGL Hook) <<<
     const renderer = this.game.renderer as any;
-    const gl = renderer.gl; // Access the browser's raw WebGL context
-
+    const gl = renderer.gl;
     if (gl && !gl.__isHooked) {
       gl.__isHooked = true;
       let frameDraws = 0;
-
-      // 1. Intercept the GPU's native draw commands
       const originalDrawElements = gl.drawElements;
       const originalDrawArrays = gl.drawArrays;
-
-      gl.drawElements = function () {
-        frameDraws++;
-        return originalDrawElements.apply(this, arguments as any);
-      };
-      gl.drawArrays = function () {
-        frameDraws++;
-        return originalDrawArrays.apply(this, arguments as any);
-      };
-
-      // 2. Reset the counter right before Phaser paints the frame
-      this.game.events.on(Phaser.Core.Events.PRE_RENDER, () => {
-        frameDraws = 0;
-      });
-
-      // 3. Save the final tally right after Phaser finishes
+      gl.drawElements = function () { frameDraws++; return originalDrawElements.apply(this, arguments as any); };
+      gl.drawArrays = function () { frameDraws++; return originalDrawArrays.apply(this, arguments as any); };
+      this.game.events.on(Phaser.Core.Events.PRE_RENDER, () => { frameDraws = 0; });
       this.game.events.on(Phaser.Core.Events.POST_RENDER, () => {
         this.currentDrawCalls = frameDraws;
         if (this.currentDrawCalls > this.maxDrawCalls) this.maxDrawCalls = this.currentDrawCalls;
       });
     }
 
-    // >>> THE PING TRACKER <<<
     setInterval(() => {
       if (connection.state === HubConnectionState.Connected) {
         const startTime = Date.now();
-        connection.invoke("Ping").then(() => {
-          this.pingMs = Date.now() - startTime;
-        }).catch(() => { });
+        connection.invoke("Ping").then(() => { this.pingMs = Date.now() - startTime; }).catch(() => { });
       }
     }, 1000);
+
+    this.waveUIText = this.add.text(this.scale.width / 2, 20, 'Connecting...', {
+      fontSize: '32px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 4
+    }).setOrigin(0.5).setDepth(3000).setScrollFactor(0);
+
+    this.goldUIText = this.add.text(20, 20, '💰 0', {
+      fontSize: '28px', color: '#ffd700', fontStyle: 'bold', stroke: '#000000', strokeThickness: 4
+    }).setDepth(3000).setScrollFactor(0);
+
+    this.perfText = this.add.text(10, this.scale.height - 10, '', {
+      fontFamily: "'Segoe UI', Consolas, monospace", fontSize: '14px', color: '#00ff00',
+      backgroundColor: '#000000aa', padding: { x: 8, y: 8 }
+    }).setOrigin(0, 1).setDepth(9999).setVisible(false).setScrollFactor(0);
 
     this.shopUIModule = new ShopUI(this, connection);
     this.shopUIModule.setDepth(1000);
     this.shopUIModule.setVisible(false);
+    this.shopUIModule.setScrollFactor(0);
     this.add.existing(this.shopUIModule);
+
+    this.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
+      this.perfText.setPosition(10, gameSize.height - 10);
+      this.waveUIText.setPosition(gameSize.width / 2, 20);
+    });
 
     this.input.keyboard?.on('keydown-B', () => {
       this.shopUIModule.setVisible(!this.shopUIModule.visible);
       this.manuallyClosedShop = !this.shopUIModule.visible;
     });
-
     this.input.keyboard?.on('keydown-ESC', () => {
       if (this.shopUIModule.visible) {
         this.shopUIModule.setVisible(false);
         this.manuallyClosedShop = true;
       }
     });
-
     this.input.keyboard?.on('keydown-H', () => {
       this.isDebugMode = !this.isDebugMode;
       this.perfText.setVisible(this.isDebugMode);
@@ -195,69 +220,205 @@ class GameScene extends Phaser.Scene {
       if (this.shopUIModule) this.shopUIModule.updateUIData(uiData, masterConfigs);
     });
 
-    connection.on("UpdateState", (state: any) => {
-      const payloadString = JSON.stringify(state);
-      this.bytesReceivedSinceLastTick += payloadString.length;
+    connection.on("UpdateStateCompressed", (compressedBase64: string) => {
+      // 1. Dual-Tracker Math
+      const compressedSize = compressedBase64.length + 50;
+      this.compressedBytesReceived += compressedSize;
 
-      this.currentPhase = state.phase || state.Phase;
+      // Decode Base64 and Decompress with Pako
+      const binaryString = atob(compressedBase64);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
 
-      const pList = state.players || state.Players || [];
-      const myPlayer = pList.find((p: any) => (p.connectionId || p.ConnectionId) === connection.connectionId);
-      if (myPlayer) this.goldUIText.setText(`💰 ${myPlayer.gold ?? myPlayer.Gold}`);
+      const decompressedBytes = pako.ungzip(bytes);
+      const jsonString = new TextDecoder().decode(decompressedBytes);
+
+      const uncompressedSize = new TextEncoder().encode(jsonString).length + 50;
+      this.uncompressedBytesReceived += uncompressedSize;
+
+      const rawState = JSON.parse(jsonString);
+
+      this.lastNetworkEntitiesCount =
+        (rawState.p?.length || 0) + (rawState.e?.length || 0) +
+        (rawState.me?.length || 0) + (rawState.nb?.length || 0) + (rawState.pk?.length || 0);
+
+      const PhaseMap = ["WaitingForPlayers", "WaveActive", "ShopPhase"];
+      const StateMap = ["Idle", "Moving", "Attacking", "Casting", "Dead"];
+
+      // ==========================================================
+      // >>> 1. FIRE AND FORGET: PROJECTILES <<<
+      // ==========================================================
+      if (rawState.db) {
+        rawState.db.forEach((id: string) => {
+          const sprite = this.projectileSprites.get(id);
+          if (sprite) {
+            sprite.destroy();
+            this.projectileSprites.delete(id);
+          }
+        });
+      }
+
+      if (rawState.nb) {
+        rawState.nb.forEach((b: any[]) => {
+          const id = b[0], configId = b[1], x = b[2], y = b[3], vx = b[4], vy = b[5];
+          const config = masterConfigs.projectiles ? (masterConfigs.projectiles[configId] || masterConfigs.Projectiles?.[configId]) : null;
+
+          let sprite: any;
+          if (config && (config.textureKey || config.TextureKey)) {
+            const tex = config.textureKey || config.TextureKey;
+            const frame = config.iconFrame ?? config.IconFrame ?? 0;
+            sprite = this.add.sprite(x, y, tex, frame);
+            sprite.setScale(config.scale || config.Scale || 1.0);
+            sprite.setRotation(Math.atan2(vy, vx));
+
+            const animKey = `${configId}_fly`;
+            if (this.anims && this.anims.exists(animKey)) {
+              sprite.play(animKey);
+            }
+          } else {
+            sprite = this.add.rectangle(x, y, 10, 10, 0xffff00);
+          }
+          sprite.setDepth(10);
+
+          sprite.setData('vx', vx);
+          sprite.setData('vy', vy);
+          sprite.setData('configId', configId);
+
+          this.projectileSprites.set(id, sprite);
+        });
+      }
+
+      // ==========================================================
+      // >>> 2. DELTA COMPRESSION: ENEMIES & PICKUPS <<<
+      // ==========================================================
+      rawState.de?.forEach((id: string) => this.enemyCache.delete(id));
+      rawState.dpk?.forEach((id: string) => this.pickupCache.delete(id));
+
+      rawState.e?.forEach((e: any[]) => {
+        this.enemyCache.set(e[0], {
+          id: e[0], configId: e[1], x: e[2], y: e[3], currentHp: e[4], maxHp: e[5],
+          actionState: StateMap[e[6]], currentCastingSkillId: e[7], currentCastTimer: e[8],
+          maxCastTimer: e[9], activeEffects: e[10] || []
+        });
+      });
+      rawState.pk?.forEach((pk: any[]) => {
+        this.pickupCache.set(pk[0], { id: pk[0], x: pk[1], y: pk[2], value: pk[3] });
+      });
+
+      rawState.me?.forEach((m: any[]) => {
+        const cached = this.enemyCache.get(m[0]);
+        if (cached) {
+          cached.x = m[1]; cached.y = m[2]; cached.currentHp = m[3]; cached.actionState = StateMap[m[4]];
+
+          // >>> FIX: Update the cache with Casts and Effects! <<<
+          cached.currentCastingSkillId = m[5];
+          cached.currentCastTimer = m[6];
+          cached.maxCastTimer = m[7];
+          cached.activeEffects = m[8] || [];
+        }
+      });
+
+      // ==========================================================
+      // >>> 3. BUILD FINAL STATE FOR RENDERERS <<<
+      // ==========================================================
+      const state: GameStatePayload = {
+        phase: PhaseMap[rawState.ph] || "WaitingForPlayers",
+        currentWave: rawState.w, timeRemaining: rawState.tr,
+        players: rawState.p?.map((p: any[]) => ({
+          connectionId: p[0], x: p[1], y: p[2], aimX: p[3], aimY: p[4],
+          currentHp: p[5], maxHp: p[6], gold: p[7], actionState: StateMap[p[8]],
+          currentCastingSkillId: p[9], currentCastTimer: p[10], maxCastTimer: p[11],
+          weapons: p[12]?.map((w: any[]) => ({ configId: w[0], slotIndex: w[1], level: w[2] })) || [],
+          firedWeapons: p[13] || [], activeEffects: p[14] || [], currentShop: [], stats: {}, ownedItems: {}
+        })) || [],
+
+        enemies: Array.from(this.enemyCache.values()),
+        pickups: Array.from(this.pickupCache.values()),
+        projectiles: [], // Kept empty because Fire-and-Forget physics controls them!
+        damageEvents: rawState.dmg?.map((d: any[]) => ({ x: d[0], y: d[1], amount: d[2] })) || [],
+        aoeEvents: rawState.aoe?.map((a: any[]) => ({ x: a[0], y: a[1], radius: a[2], isFriendly: a[3], configId: a[4] })) || []
+      };
+
+      this.currentPhase = state.phase;
+      this.currentPhase = state.phase;
+      const myPlayer = state.players.find(p => p.connectionId === connection.connectionId);
+      if (myPlayer) this.goldUIText.setText(`💰 ${myPlayer.gold}`);
 
       if (this.currentPhase === "WaveActive") {
-        this.waveUIText.setText(`Wave ${state.currentWave || state.CurrentWave} - 0:${(state.timeRemaining || state.TimeRemaining).toString().padStart(2, '0')}`).setColor('#ffffff');
+        this.waveUIText.setText(`Wave ${state.currentWave} - 0:${state.timeRemaining.toString().padStart(2, '0')}`).setColor('#ffffff');
         if (this.previousPhase !== "WaveActive") { this.shopUIModule.setVisible(false); this.manuallyClosedShop = true; }
       } else if (this.currentPhase === "ShopPhase") {
-        this.waveUIText.setText(`SHOP PHASE - ${state.timeRemaining || state.TimeRemaining}s`).setColor('#00ff00');
+        this.waveUIText.setText(`SHOP PHASE - ${state.timeRemaining}s`).setColor('#00ff00');
         if (this.previousPhase !== "ShopPhase") { this.shopUIModule.setVisible(true); this.manuallyClosedShop = false; }
       }
       this.previousPhase = this.currentPhase;
 
+      state.projectiles = [];
+
       const activePlayers = PlayerRenderer.render(this, state, this.playerSprites, masterConfigs, this.targetPositions);
       const activeEnemies = EnemyRenderer.render(this, state, this.enemySprites, masterConfigs, this.targetPositions);
-      const { activeProjectiles, activePickups } = WorldRenderer.render(this, state, this.projectileSprites, this.pickupSprites, masterConfigs, this.targetPositions);
+
+      // Pass a dummy map to WorldRenderer so it ignores our local bullets
+      const dummyMap = new Map();
+      const { activePickups } = WorldRenderer.render(this, state, dummyMap, this.pickupSprites, masterConfigs, this.targetPositions) as any;
+      const mySprite = this.playerSprites.get(connection.connectionId || "");
+      if (mySprite && !(this.cameras.main as any)._isFollowing) {
+        this.cameras.main.startFollow(mySprite, true, 0.1, 0.1);
+        (this.cameras.main as any)._isFollowing = true;
+      }
 
       this.cleanupSprites(this.playerSprites, activePlayers);
       this.cleanupSprites(this.enemySprites, activeEnemies);
-      this.cleanupSprites(this.projectileSprites, activeProjectiles);
       this.cleanupSprites(this.pickupSprites, activePickups);
     });
   }
 
-  // >>> FIX: Add time and delta parameters to standard Phaser update loop <<<
   update(time: number, delta: number) {
-    this.handleInput();
+    this.handleInput(time);
     this.smoothInterpolateSprites(this.playerSprites, 0.2);
     this.smoothInterpolateSprites(this.enemySprites, 0.2);
-    this.smoothInterpolateSprites(this.projectileSprites, 0.4);
+
+    if (masterConfigs.enemies && !this.hasScannedSprites) {
+      precalculateSpriteTops(this, masterConfigs);
+      this.hasScannedSprites = true;
+      console.log("Sprites scanned successfully!");
+    }
+
+    const dtSeconds = delta / 1000;
+    this.projectileSprites.forEach((sprite) => {
+      const vx = sprite.getData('vx');
+      const vy = sprite.getData('vy');
+      sprite.x += vx * dtSeconds;
+      sprite.y += vy * dtSeconds;
+    });
 
     if (this.isDebugMode) {
-      // Calculate Bandwidth Once Per Second
       if (time - this.lastBandwidthTime > 1000) {
+        // Calculate both metrics!
+        this.currentCompressedKbps = ((this.compressedBytesReceived * 8) / 1000).toFixed(2);
+        this.currentUncompressedKbps = ((this.uncompressedBytesReceived * 8) / 1000).toFixed(2);
 
-        // >>> FIX: Convert Bytes to bits (x8), then bits to Kilobits (/1000) <<<
-        const bits = this.bytesReceivedSinceLastTick * 8;
-        this.currentKbps = (bits / 1000).toFixed(2);
-
-        this.bytesReceivedSinceLastTick = 0;
+        this.compressedBytesReceived = 0;
+        this.uncompressedBytesReceived = 0;
         this.lastBandwidthTime = time;
       }
 
       const fps = Math.round(this.game.loop.actualFps);
       const frameTime = this.game.loop.delta.toFixed(1);
-
-      // >>> NEW: Track exactly how many sprites Phaser tried to render <<<
       const renderedSprites = this.cameras.main.renderList.length;
 
       this.perfText.setText(
         `FPS     : ${fps}\n` +
         `Ping    : ${this.pingMs} ms\n` +
         `Logic   : ${frameTime} ms\n` +
-        `Sprites : ${renderedSprites}\n` +
+        `Sprites : ${renderedSprites} (GPU Visuals)\n` +
+        `Entities: ${this.lastNetworkEntitiesCount} (C# Network)\n` +
         `Draws   : ${this.currentDrawCalls} (Peak: ${this.maxDrawCalls})\n` +
-        `Network : ${this.currentKbps} kbps\n` +
-        `Memory  : ${this.enemySprites.size + this.projectileSprites.size + this.pickupSprites.size} Entities`
+        // >>> THE NEW DUAL TRACKER! <<<
+        `Network : ${this.currentCompressedKbps} kbps (Raw: ${this.currentUncompressedKbps} kbps)`
       );
     }
 
@@ -278,7 +439,7 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  private handleInput() {
+  private handleInput(time: number) {
     if (!this.cursors || !this.wasd || connection.state !== HubConnectionState.Connected) return;
 
     let dirX = 0, dirY = 0;
@@ -288,9 +449,21 @@ class GameScene extends Phaser.Scene {
     if (this.cursors.down.isDown || this.wasd.S.isDown) dirY = 1;
 
     const pointer = this.input.activePointer;
-    connection.invoke("SendInput", {
-      DirX: dirX, DirY: dirY, AimX: pointer.worldX, AimY: pointer.worldY
-    }).catch((err: any) => console.error(err));
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+
+    const inputData = {
+      DirX: dirX,
+      DirY: dirY,
+      AimX: Math.round(worldPoint.x),
+      AimY: Math.round(worldPoint.y)
+    };
+
+    const inputString = JSON.stringify(inputData);
+    if (inputString !== this.lastSentInput || time - this.lastInputSendTime > 100) {
+      connection.invoke("SendInput", inputData).catch((err: any) => console.error(err));
+      this.lastSentInput = inputString;
+      this.lastInputSendTime = time;
+    }
   }
 
   private smoothInterpolateSprites(map: Map<string, any>, speed: number = 0.2) {
@@ -350,15 +523,20 @@ class GameScene extends Phaser.Scene {
         }
       });
     });
-
-    console.log("Automated Animation System Successfully Generated All Animations!");
   }
 }
 
-// --- INITIALIZE PHASER ---
 const config: Phaser.Types.Core.GameConfig = {
-  type: Phaser.WEBGL, // <<< FORCE WEBGL INSTEAD OF AUTO!
-  scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH, width: '100%', height: '100%' },
-  scene: GameScene, parent: 'app', pixelArt: true
+  type: Phaser.WEBGL,
+  scale: {
+    mode: Phaser.Scale.RESIZE,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+    width: 1920,
+    height: 1080
+  },
+  scene: GameScene,
+  parent: 'app',
+  pixelArt: true,
+  backgroundColor: '#2d2d2d'
 };
 new Phaser.Game(config);

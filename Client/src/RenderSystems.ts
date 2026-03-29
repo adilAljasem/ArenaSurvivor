@@ -1,7 +1,7 @@
 import * as Phaser from 'phaser';
 
 export class PlayerRenderer {
-  static render(scene: Phaser.Scene, state: any, sprites: Map<string, Phaser.GameObjects.Container>, configs: any, targets: Map<string, {x: number, y: number}>): Set<string> {
+  static render(scene: Phaser.Scene, state: any, sprites: Map<string, Phaser.GameObjects.Container>, configs: any, targets: Map<string, { x: number, y: number }>): Set<string> {
     const activeIds = new Set<string>();
 
     state.players.forEach((sp: any) => {
@@ -13,33 +13,39 @@ export class PlayerRenderer {
       // 1. CREATE CONTAINER
       if (!sprites.has(safeId)) {
         const container = scene.add.container(sp.x || sp.X, sp.y || sp.Y);
-        
+
         const castCircle = scene.add.ellipse(0, 16, 40, 15, 0x00ffff, 0.4);
         castCircle.setStrokeStyle(2, 0x00ffff, 1);
         castCircle.setVisible(false);
 
-        let body;
+        let bodySprite; 
         if (configs.characters && configs.characters["char_well_rounded"] && scene.textures.exists(configs.characters["char_well_rounded"].textureKey)) {
           const charCfg = configs.characters["char_well_rounded"];
-          body = scene.add.sprite(0, 0, charCfg.textureKey, charCfg.iconFrame);
+          bodySprite = scene.add.sprite(0, 0, charCfg.textureKey, charCfg.iconFrame);
         } else {
-          body = scene.add.rectangle(0, 0, 32, 32, 0x000000).setStrokeStyle(2, 0x00ff00);
+          bodySprite = scene.add.rectangle(0, 0, 32, 32, 0x000000).setStrokeStyle(2, 0x00ff00) as any;
         }
 
-        const hpBg = scene.add.rectangle(0, -24, 32, 6, 0x000000);
-        const hpFill = scene.add.rectangle(-16, -24, 32, 6, 0x00ff00).setOrigin(0, 0.5);
+        const uiWidth = 32; 
+        const hpBg = scene.add.rectangle(0, 0, uiWidth, 6, 0x000000);
+        const hpFill = scene.add.rectangle(-uiWidth / 2, 0, uiWidth, 6, 0x00ff00).setOrigin(0, 0.5);
+
+        const hpMarkers = scene.add.graphics();
         const weaponsContainer = scene.add.container(0, 0);
 
-        const castBarBg = scene.add.rectangle(0, 24, 40, 6, 0x000000).setOrigin(0.5, 0.5);
+        const castBarBg = scene.add.rectangle(0, 0, 40, 6, 0x000000).setOrigin(0.5, 0.5);
         castBarBg.setStrokeStyle(1, 0x555555);
-        const castBarFill = scene.add.rectangle(-20, 24, 40, 6, 0xffd700).setOrigin(0, 0.5);
+        const castBarFill = scene.add.rectangle(-20, 0, 40, 6, 0xffd700).setOrigin(0, 0.5);
         castBarBg.setVisible(false);
         castBarFill.setVisible(false);
 
-        container.add([castCircle, body, hpBg, hpFill, weaponsContainer, castBarBg, castBarFill]);
-        
-        container.setData('bodySprite', body);
+        container.add([castCircle, bodySprite, hpBg, hpFill, hpMarkers, weaponsContainer, castBarBg, castBarFill]);
+
+        container.setData('bodySprite', bodySprite);
+        container.setData('hpBg', hpBg);
         container.setData('hpFill', hpFill);
+        container.setData('hpMarkers', hpMarkers);
+        container.setData('baseWidth', uiWidth); 
         container.setData('weaponsContainer', weaponsContainer);
         container.setData('castCircle', castCircle);
         container.setData('castBarBg', castBarBg);
@@ -50,18 +56,62 @@ export class PlayerRenderer {
 
       // 2. UPDATE UI BARS
       const pContainer = sprites.get(safeId)!;
+      const body = pContainer.getData('bodySprite') as Phaser.GameObjects.Sprite;
+      const configId = sp.configId || sp.ConfigId || "char_well_rounded";
+      const config = configs.characters ? configs.characters[configId] : null;
+
+      let topY = -16;
+      const scale = config?.scale || 1.0;
+
+      if (config?.calculatedTopOffset !== undefined) {
+        topY = (config.calculatedTopOffset * scale) - 12;
+      } else {
+        const bodyHalfHeight = (body && body.displayHeight) ? body.displayHeight / 2 : 16;
+        topY = -bodyHalfHeight - 12;
+      }
+      const bottomY = (body && body.displayHeight) ? body.displayHeight / 2 : 16;
+
+      const pHpBg = pContainer.getData('hpBg') as Phaser.GameObjects.Rectangle;
       const pHpFill = pContainer.getData('hpFill') as Phaser.GameObjects.Rectangle;
+      const hpMarkers = pContainer.getData('hpMarkers') as Phaser.GameObjects.Graphics;
+      const pBaseW = pContainer.getData('baseWidth') as number ?? 32;
+
+      pHpBg.y = topY;
+      pHpFill.y = topY;
+      hpMarkers.y = topY;
+
       const currentHp = sp.currentHp ?? sp.CurrentHp ?? 0;
       const maxHp = sp.maxHp ?? sp.MaxHp ?? 1;
-      pHpFill.width = 32 * Math.max(0, currentHp / maxHp);
+      pHpFill.width = pBaseW * Math.max(0, currentHp / maxHp);
+
+      hpMarkers.clear();
+      if (maxHp > 50) {
+        hpMarkers.lineStyle(2, 0x000000, 1.0); 
+        const segments = Math.floor(maxHp / 50);
+        const pixelsPer50 = pBaseW / (maxHp / 50); 
+
+        for (let i = 1; i <= segments; i++) {
+          const lineX = -(pBaseW / 2) + (i * pixelsPer50);
+          if (lineX >= (pBaseW / 2) - 1.5) continue;
+
+          hpMarkers.beginPath();
+          hpMarkers.moveTo(lineX, -4); 
+          hpMarkers.lineTo(lineX, 4);
+          hpMarkers.strokePath();
+        }
+      }
 
       const pActionState = sp.actionState || sp.ActionState || "Idle";
       const currentCast = sp.currentCastTimer || sp.CurrentCastTimer || 0;
       const maxCast = sp.maxCastTimer || sp.MaxCastTimer || 0;
-      
+
       const castBarBg = pContainer.getData('castBarBg') as Phaser.GameObjects.Rectangle;
       const castBarFill = pContainer.getData('castBarFill') as Phaser.GameObjects.Rectangle;
       const castCircle = pContainer.getData('castCircle') as Phaser.GameObjects.Ellipse;
+
+      castBarBg.y = bottomY + 6;
+      castBarFill.y = bottomY + 6;
+      castCircle.y = bottomY;
 
       if (pActionState === "Casting" && maxCast > 0) {
         castBarBg.setVisible(true);
@@ -78,10 +128,6 @@ export class PlayerRenderer {
       }
 
       // 3. ANIMATIONS & TINTING
-      const body = pContainer.getData('bodySprite') as Phaser.GameObjects.Sprite;
-      const configId = sp.configId || sp.ConfigId || "char_well_rounded";
-      const config = configs.characters ? configs.characters[configId] : null;
-
       if (body && body.type === 'Sprite' && config) {
         let targetAnim = `${config.id}_idle`;
 
@@ -95,39 +141,24 @@ export class PlayerRenderer {
 
         if (!isCorrectAnim || isFinishedAttacking) body.play(targetAnim);
 
-        // FLIPPING
         const isDefaultRight = config.defaultFacingRight !== false;
         const velX = sp.velX ?? sp.VelX ?? ((sp.x || sp.X) - pContainer.x);
         if (velX > 0.5) body.setFlipX(!isDefaultRight);
         else if (velX < -0.5) body.setFlipX(isDefaultRight);
 
-        // CASTING VISUALS (Wind-Up + Pulse)
         if (pActionState === "Casting") {
-          if (body.anims.isPlaying) body.anims.pause(); 
-          const pulse = Math.abs(Math.sin(scene.time.now / 150)); 
-          const tintColor = Phaser.Display.Color.Interpolate.ColorWithColor(
-              Phaser.Display.Color.ValueToColor(0xffffff), 
-              Phaser.Display.Color.ValueToColor(0x00ffff), 
-              1, pulse
-          );
-          body.setTint(Phaser.Display.Color.GetColor(tintColor.r, tintColor.g, tintColor.b));
+          if (body.anims.isPlaying) body.anims.pause();
         } else {
           if (!body.anims.isPlaying && pActionState !== "Dead") body.anims.resume();
-
-          let appliedTint = false;
-          const activeList = sp.activeEffects || sp.ActiveEffects || [];
-          if (activeList.length > 0 && configs.effects) {
-            for (const effectId of activeList) {
-              const effectConfig = configs.effects[effectId] || (configs.Effects && configs.Effects[effectId]);
-              if (effectConfig && effectConfig.colorTint) {
-                const safeHex = String(effectConfig.colorTint).replace('0x', '#');
-                body.setTint(Phaser.Display.Color.HexStringToColor(safeHex).color);
-                appliedTint = true; break;
-              }
-            }
-          }
-          if (!appliedTint) body.clearTint();
         }
+
+        const prevHp = pContainer.getData('prevHp');
+        if (prevHp !== undefined && currentHp < prevHp) {
+          pContainer.setData('flashTimer', scene.time.now + 150);
+        }
+        pContainer.setData('prevHp', currentHp);
+
+        applyVisualFX(scene, pContainer, body as Phaser.GameObjects.Sprite, sp, configs, topY); 
       }
 
       // 4. WEAPONS
@@ -139,26 +170,26 @@ export class PlayerRenderer {
         const slotIndex = w.slotIndex ?? w.SlotIndex;
         const wConfigId = w.configId || w.ConfigId;
         activeWeaponSlots.add(slotIndex);
-        
+
         let wx = 0, wy = 0; const offset = 26;
         if (slotIndex === 0) { wx = offset; wy = 0; }
         else if (slotIndex === 1) { wx = -offset; wy = 0; }
         else if (slotIndex === 2) { wx = 0; wy = -offset; }
         else if (slotIndex === 3) { wx = 0; wy = offset; }
 
-        const config = configs.weapons ? (configs.weapons[wConfigId] || (configs.Weapons && configs.Weapons[wConfigId])) : null;
+        const wConfig = configs.weapons ? (configs.weapons[wConfigId] || (configs.Weapons && configs.Weapons[wConfigId])) : null;
         let sprite = weaponsContainer.getByName(`weapon_${slotIndex}`) as Phaser.GameObjects.Sprite;
 
-        if (!sprite && config && config.textureKey && scene.textures.exists(config.textureKey)) {
-            sprite = scene.add.sprite(wx, wy, config.textureKey);
-            if (config.iconFrame !== undefined) sprite.setFrame(config.iconFrame);
-            sprite.setName(`weapon_${slotIndex}`);
-            sprite.setScale(config.scale || 1.0);
-            if (config.defaultFacingRight === false) sprite.setFlipX(true);
-            weaponsContainer.add(sprite);
+        if (!sprite && wConfig && wConfig.textureKey && scene.textures.exists(wConfig.textureKey)) {
+          sprite = scene.add.sprite(wx, wy, wConfig.textureKey);
+          if (wConfig.iconFrame !== undefined) sprite.setFrame(wConfig.iconFrame);
+          sprite.setName(`weapon_${slotIndex}`);
+          sprite.setScale(wConfig.scale || 1.0);
+          if (wConfig.defaultFacingRight === false) sprite.setFlipX(true);
+          weaponsContainer.add(sprite);
         }
 
-        if (sprite && config) {
+        if (sprite && wConfig) {
           const aimX = sp.aimX ?? sp.AimX ?? sp.x ?? sp.X;
           const aimY = sp.aimY ?? sp.AimY ?? sp.y ?? sp.Y;
           const angle = Math.atan2(aimY - (sp.y ?? sp.Y), aimX - (sp.x ?? sp.X));
@@ -167,7 +198,7 @@ export class PlayerRenderer {
 
           const firedList = sp.firedWeapons || sp.FiredWeapons || [];
           if (firedList.includes(slotIndex) && !scene.tweens.isTweening(sprite)) {
-            const animType = config.attackAnimType || "recoil";
+            const animType = wConfig.attackAnimType || "recoil";
             if (animType === "stab") {
               scene.tweens.add({ targets: sprite, x: wx + Math.cos(angle) * 20, y: wy + Math.sin(angle) * 20, yoyo: true, duration: 100, ease: 'Power2' });
             } else if (animType === "recoil") {
@@ -191,7 +222,7 @@ export class PlayerRenderer {
 }
 
 export class EnemyRenderer {
-  static render(scene: Phaser.Scene, state: any, sprites: Map<string, Phaser.GameObjects.Container>, configs: any, targets: Map<string, {x: number, y: number}>): Set<string> {
+  static render(scene: Phaser.Scene, state: any, sprites: Map<string, Phaser.GameObjects.Container>, configs: any, targets: Map<string, { x: number, y: number }>): Set<string> {
     const activeIds = new Set<string>();
 
     state.enemies.forEach((se: any) => {
@@ -206,36 +237,43 @@ export class EnemyRenderer {
       if (!sprites.has(safeId)) {
         const container = scene.add.container(se.x || se.X, se.y || se.Y);
 
-        const castCircle = scene.add.ellipse(0, 16, 40, 15, 0xffa500, 0.4); 
+        const castCircle = scene.add.ellipse(0, 0, 40, 15, 0xffa500, 0.4);
         castCircle.setStrokeStyle(2, 0xffa500, 1);
         castCircle.setVisible(false);
 
-        let body;
+        let bodySprite; 
         if (config && config.textureKey && scene.textures.exists(config.textureKey)) {
-          body = scene.add.sprite(0, 0, config.textureKey);
-          body.setScale(config.scale || 1.0);
-          if (config.animIdle && scene.anims.exists(`${config.id}_idle`)) body.play(`${config.id}_idle`);
-          else if (config.iconFrame !== undefined) body.setFrame(config.iconFrame);
+          bodySprite = scene.add.sprite(0, 0, config.textureKey);
+          bodySprite.setScale(config.scale || 1.0);
+          if (config.animIdle && scene.anims.exists(`${config.id}_idle`)) bodySprite.play(`${config.id}_idle`);
+          else if (config.iconFrame !== undefined) bodySprite.setFrame(config.iconFrame);
         } else {
-          body = scene.add.rectangle(0, 0, 32, 32, 0x000000).setStrokeStyle(2, 0x00ff00) as any;
+          bodySprite = scene.add.rectangle(0, 0, 32, 32, 0x000000).setStrokeStyle(2, 0x00ff00) as any;
         }
 
-        const hpBg = scene.add.rectangle(0, -24, 32, 4, 0x000000);
-        const hpFill = scene.add.rectangle(-16, -24, 32, 4, 0x00ff00).setOrigin(0, 0.5);
+        const uiWidth = config?.isBoss ? 80 : 32; 
+        const hpBg = scene.add.rectangle(0, 0, uiWidth, 6, 0x000000);
+        const hpFill = scene.add.rectangle(-uiWidth / 2, 0, uiWidth, 6, 0x00ff00).setOrigin(0, 0.5);
 
-        const castBarBg = scene.add.rectangle(0, 24, 40, 6, 0x000000).setOrigin(0.5, 0.5);
+        const hpMarkers = scene.add.graphics();
+        const weaponsContainer = scene.add.container(0, 0);
+
+        const castBarBg = scene.add.rectangle(0, 0, 40, 6, 0x000000).setOrigin(0.5, 0.5);
         castBarBg.setStrokeStyle(1, 0x555555);
-        const castBarFill = scene.add.rectangle(-20, 24, 40, 6, 0xffd700).setOrigin(0, 0.5);
+        const castBarFill = scene.add.rectangle(-20, 0, 40, 6, 0xffd700).setOrigin(0, 0.5);
         castBarBg.setVisible(false);
         castBarFill.setVisible(false);
 
-        container.add([castCircle, body, hpBg, hpFill, castBarBg, castBarFill]);
-        
-        container.setData('bodySprite', body);
+        container.add([castCircle, bodySprite, hpBg, hpFill, hpMarkers, weaponsContainer, castBarBg, castBarFill]);
+
+        container.setData('bodySprite', bodySprite);
+        container.setData('hpBg', hpBg);
         container.setData('hpFill', hpFill);
-        container.setData('baseWidth', 32 * (config?.scale || 1.0));
+        container.setData('hpMarkers', hpMarkers);
+        container.setData('baseWidth', uiWidth); 
+        container.setData('weaponsContainer', weaponsContainer);
         container.setData('castCircle', castCircle);
-        container.setData('castBarBg', castBarBg); 
+        container.setData('castBarBg', castBarBg);
         container.setData('castBarFill', castBarFill);
 
         sprites.set(safeId, container);
@@ -243,15 +281,52 @@ export class EnemyRenderer {
 
       // 2. UPDATE UI BARS
       const eContainer = sprites.get(safeId)!;
+      const body = eContainer.getData('bodySprite') as Phaser.GameObjects.Sprite;
+
+      let topY = -16;
+      const scale = config?.scale || 1.0;
+
+      if (config?.calculatedTopOffset !== undefined) {
+        topY = (config.calculatedTopOffset * scale) - 12;
+      } else {
+        const bodyHalfHeight = (body && body.displayHeight) ? body.displayHeight / 2 : 16;
+        topY = -bodyHalfHeight - 12;
+      }
+
+      const bottomY = (body && body.displayHeight) ? body.displayHeight / 3 : 16;
+
+      const eHpBg = eContainer.getData('hpBg') as Phaser.GameObjects.Rectangle;
       const eHpFill = eContainer.getData('hpFill') as Phaser.GameObjects.Rectangle;
-      const eBaseW = eContainer.getData('baseWidth') as number;
+      const hpMarkers = eContainer.getData('hpMarkers') as Phaser.GameObjects.Graphics;
+      const eBaseW = eContainer.getData('baseWidth') as number ?? 32;
+
+      eHpBg.y = topY;
+      eHpFill.y = topY;
+      hpMarkers.y = topY;
 
       const currentHp = se.currentHp ?? se.CurrentHp ?? 0;
       const maxHp = se.maxHp ?? se.MaxHp ?? 1;
       const hpPercent = Math.max(0, currentHp / maxHp);
-      
+
       eHpFill.width = eBaseW * hpPercent;
-      eHpFill.fillColor = hpPercent < 0.2 ? 0xff0000 : (hpPercent < 0.5 ? 0xffff00 : 0x00ff00);
+      eHpFill.fillColor = 0xff0000;
+
+      hpMarkers.clear();
+      if (maxHp > 50) {
+        hpMarkers.lineStyle(2, 0x000000, 1.0); 
+        const segments = Math.floor(maxHp / 50);
+        const pixelsPer50 = eBaseW / (maxHp / 50); 
+
+        for (let i = 1; i <= segments; i++) {
+          const lineX = -(eBaseW / 2) + (i * pixelsPer50);
+          if (lineX >= (eBaseW / 2) - 1.5) continue;
+
+          hpMarkers.beginPath();
+          hpMarkers.moveTo(lineX, -4); 
+          hpMarkers.lineTo(lineX, 4);
+          hpMarkers.strokePath();
+        }
+      }
 
       const eActionState = se.actionState || se.ActionState || "Idle";
       const currentCast = se.currentCastTimer || se.CurrentCastTimer || 0;
@@ -260,6 +335,10 @@ export class EnemyRenderer {
       const castBarBg = eContainer.getData('castBarBg') as Phaser.GameObjects.Rectangle;
       const castBarFill = eContainer.getData('castBarFill') as Phaser.GameObjects.Rectangle;
       const castCircle = eContainer.getData('castCircle') as Phaser.GameObjects.Ellipse;
+
+      castBarBg.y = bottomY + 6;
+      castBarFill.y = bottomY + 6;
+      castCircle.y = bottomY;
 
       if (eActionState === "Casting" && maxCast > 0) {
         castBarBg.setVisible(true);
@@ -275,79 +354,61 @@ export class EnemyRenderer {
         castCircle.setVisible(false);
       }
 
-      // 3. ANIMATIONS & TINTING (INCLUDING OBSTACLE LOGIC!)
-      const body = eContainer.getData('bodySprite') as Phaser.GameObjects.Sprite;
-      
+      // 3. ANIMATIONS & TINTING
       if (body && body.type === 'Sprite' && config) {
-        // Find base stats dynamically based on case
         const baseStats = config.baseStats || config.BaseStats;
         const isObstacle = baseStats && baseStats.speed === 0;
-        
+
+        const targetX = se.x || se.X;
+        const targetY = se.y || se.Y;
+        const velX = se.velX ?? (targetX - eContainer.x);
+        const velY = se.velY ?? (targetY - eContainer.y);
+        const isActuallyMoving = Math.abs(velX) > 0.5 || Math.abs(velY) > 0.5;
+
         let targetAnim = '';
 
         if (eActionState === "Dead" && config.animDeath) {
-            targetAnim = `${config.id}_death`;
+          targetAnim = `${config.id}_death`;
         } else if (eActionState === "Casting") {
-            // >>> NEW: If it's an obstacle, fallback to idle or icon!
-            if (isObstacle) {
-                targetAnim = config.animIdle ? `${config.id}_idle` : '';
-            } else {
-                targetAnim = config.animAttack ? `${config.id}_attack` : (config.animIdle ? `${config.id}_idle` : '');
-            }
+          if (isObstacle) {
+            targetAnim = config.animIdle ? `${config.id}_idle` : '';
+          } else {
+            targetAnim = config.animAttack ? `${config.id}_attack` : (config.animIdle ? `${config.id}_idle` : '');
+          }
         } else if (eActionState === "Attacking" && config.animAttack) {
-            targetAnim = `${config.id}_attack`;
-        } else if (eActionState === "Moving" && config.animMove) {
-            targetAnim = `${config.id}_move`;
+          targetAnim = `${config.id}_attack`;
+        } else if (eActionState === "Moving" && isActuallyMoving && config.animMove) {
+          targetAnim = `${config.id}_move`;
         } else if (config.animIdle) {
-            targetAnim = `${config.id}_idle`;
+          targetAnim = `${config.id}_idle`;
         }
 
-        // Apply Animation or Static Frame
         if (targetAnim !== '') {
-            const isCorrectAnim = body.anims?.currentAnim?.key === targetAnim;
-            const isFinishedAttacking = !body.anims?.isPlaying && eActionState === "Attacking";
-            if (!isCorrectAnim || isFinishedAttacking) body.play(targetAnim);
+          const isCorrectAnim = body.anims?.currentAnim?.key === targetAnim;
+          const isFinishedAttacking = !body.anims?.isPlaying && eActionState === "Attacking";
+          if (!isCorrectAnim || isFinishedAttacking) body.play(targetAnim);
         } else {
-            if (body.anims?.isPlaying) body.anims.stop();
-            if (config.iconFrame !== undefined) body.setFrame(config.iconFrame);
+          if (body.anims?.isPlaying) body.anims.stop();
+          if (config.iconFrame !== undefined) body.setFrame(config.iconFrame);
         }
 
-        // FLIPPING
         const isDefaultRight = config.defaultFacingRight !== false;
-        const velX = se.velX ?? se.VelX ?? ((se.x || se.X) - eContainer.x);
         if (velX > 0.1) body.setFlipX(!isDefaultRight);
         else if (velX < -0.1) body.setFlipX(isDefaultRight);
 
-        // CASTING VISUALS (Wind-Up + Pulse)
         if (eActionState === "Casting") {
-          
-          // >>> NEW: Don't freeze Obstacles! Let the trees sway while they cast!
-          if (!isObstacle && body.anims?.isPlaying) body.anims.pause(); 
-          
-          const pulse = Math.abs(Math.sin(scene.time.now / 150));
-          const tintColor = Phaser.Display.Color.Interpolate.ColorWithColor(
-              Phaser.Display.Color.ValueToColor(0xffffff),
-              Phaser.Display.Color.ValueToColor(0xffa500), 
-              1, pulse
-          );
-          body.setTint(Phaser.Display.Color.GetColor(tintColor.r, tintColor.g, tintColor.b));
+          if (!isObstacle && body.anims?.isPlaying) body.anims.pause();
         } else {
           if (!body.anims?.isPlaying && eActionState !== "Dead" && targetAnim !== '') body.anims?.resume();
-
-          let appliedTint = false;
-          const activeList = se.activeEffects || se.ActiveEffects || [];
-          if (activeList.length > 0 && configs.effects) {
-            for (const effectId of activeList) {
-              const effectConfig = configs.effects[effectId] || (configs.Effects && configs.Effects[effectId]);
-              if (effectConfig && effectConfig.colorTint) {
-                const safeHex = String(effectConfig.colorTint).replace('0x', '#');
-                body.setTint(Phaser.Display.Color.HexStringToColor(safeHex).color);
-                appliedTint = true; break;
-              }
-            }
-          }
-          if (!appliedTint) body.clearTint();
         }
+
+        const prevHp = eContainer.getData('prevHp');
+        if (prevHp !== undefined && currentHp < prevHp) {
+          eContainer.setData('flashTimer', scene.time.now + 150);
+        }
+        eContainer.setData('prevHp', currentHp);
+
+        applyVisualFX(scene, eContainer, body as Phaser.GameObjects.Sprite, se, configs, topY); 
       }
     });
 
@@ -356,7 +417,7 @@ export class EnemyRenderer {
 }
 
 export class WorldRenderer {
-  static render(scene: Phaser.Scene, state: any, projectiles: Map<string, any>, pickups: Map<string, any>, configs: any, targets: Map<string, {x: number, y: number}>): { activeProjectiles: Set<string>, activePickups: Set<string> } {
+  static render(scene: Phaser.Scene, state: any, projectiles: Map<string, any>, pickups: Map<string, any>, configs: any, targets: Map<string, { x: number, y: number }>): { activeProjectiles: Set<string>, activePickups: Set<string> } {
     const activeProjectiles = new Set<string>();
     const activePickups = new Set<string>();
 
@@ -410,7 +471,7 @@ export class WorldRenderer {
       const startY = (de.y || de.Y) - 16 + Phaser.Math.Between(-10, 10);
       const amt = de.amount ?? de.Amount ?? 0;
       const isHeal = amt < 0;
-      
+
       const floatingText = scene.add.text(startX, startY, isHeal ? `+${Math.round(Math.abs(amt))}` : Math.round(amt).toString(), {
         fontFamily: "'Segoe UI', Tahoma, sans-serif", fontSize: '20px', color: isHeal ? '#00ff00' : '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 4
       }).setOrigin(0.5).setDepth(20).setScale(0.5);
@@ -423,13 +484,183 @@ export class WorldRenderer {
 
     const aoeList = state.aoeEvents || state.AoeEvents || [];
     aoeList.forEach((aoe: any) => {
-      const color = aoe.isFriendly || aoe.IsFriendly ? 0x88ff88 : 0xff4444;
-      const ring = scene.add.circle(aoe.x || aoe.X, aoe.y || aoe.Y, aoe.radius || aoe.Radius, color, 0.2);
-      ring.setStrokeStyle(2, color, 0.8).setDepth(15).setScale(0.1);
+      const configId = aoe.configId || aoe.ConfigId;
+      const skillConfig = configs.skills ? (configs.skills[configId] || configs.Skills?.[configId]) : null;
 
-      scene.tweens.add({ targets: ring, scale: 1.0, alpha: 0, duration: 500, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
+      let rendered = false;
+      const radius = aoe.radius || aoe.Radius;
+      const x = aoe.x || aoe.X;
+      const y = aoe.y || aoe.Y;
+
+      if (skillConfig) {
+        const animArray = skillConfig.animSkill || skillConfig.AnimSkill;
+        const textureKey = skillConfig.textureKey || skillConfig.TextureKey;
+        const iconFrame = skillConfig.iconFrame ?? skillConfig.IconFrame;
+        const colorTint = skillConfig.colorTint || skillConfig.ColorTint;
+        const frameRate = skillConfig.animFrameRate || skillConfig.AnimFrameRate || 15;
+
+        // Fallback 1: PLAY ANIMATION
+        if (animArray && animArray.length === 2 && textureKey) {
+          const fxSprite = scene.add.sprite(x, y, textureKey).setDepth(15);
+          const animKey = `${skillConfig.id || skillConfig.Id}_anim`;
+
+          if (!scene.anims.exists(animKey)) {
+            scene.anims.create({
+              key: animKey,
+              frames: scene.anims.generateFrameNumbers(textureKey, { start: animArray[0], end: animArray[1] }),
+              frameRate: frameRate,
+              repeat: 0 
+            });
+          }
+
+          fxSprite.setScale((radius * 2) / (fxSprite.width || 64));
+          fxSprite.play(animKey);
+          fxSprite.once('animationcomplete', () => fxSprite.destroy());
+          rendered = true;
+        }
+        // Fallback 2: EXPANDING ICON
+        else if (iconFrame !== undefined && textureKey) {
+          const fxSprite = scene.add.sprite(x, y, textureKey, iconFrame).setDepth(15);
+          scene.tweens.add({
+            targets: fxSprite,
+            scale: (radius * 2) / (fxSprite.width || 64),
+            alpha: 0,
+            duration: 500,
+            ease: 'Cubic.easeOut',
+            onComplete: () => fxSprite.destroy()
+          });
+          rendered = true;
+        }
+        // Fallback 3: CUSTOM COLORED RING (Boosted Opacity for High Visibility)
+        else if (colorTint) {
+          const color = parseInt(colorTint.replace('#', '0x'), 16);
+          const ring = scene.add.circle(x, y, radius, color, 0.8);
+          ring.setStrokeStyle(10, color, 1).setDepth(15).setScale(0.1);
+          scene.tweens.add({ targets: ring, scale: 1.0, alpha: 0, duration: 600, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
+          rendered = true;
+        }
+      }
+
+      // Default Fallback
+      if (!rendered) {
+        const isFriendly = aoe.isFriendly ?? aoe.IsFriendly;
+        const color = isFriendly ? 0x00ff00 : 0xff0000;
+        const ring = scene.add.circle(x, y, radius, color, 0.8);
+        ring.setStrokeStyle(10, color, 1).setDepth(15).setScale(0.1);
+        scene.tweens.add({ targets: ring, scale: 1.0, alpha: 0, duration: 600, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
+      }
     });
 
     return { activeProjectiles, activePickups };
   }
+}
+
+export function applyVisualFX(scene: Phaser.Scene, container: Phaser.GameObjects.Container, mainSprite: Phaser.GameObjects.Sprite, entity: any, masterConfigs: any, topY: number = -40) {
+
+  const currentFxState = `${entity.actionState}_${entity.currentCastingSkillId || ''}_${(entity.activeEffects || []).join(',')}`;
+  const isFlashing = scene.time.now < (container.getData('flashTimer') || 0);
+
+  if (container.getData('lastFxState') === currentFxState && container.getData('wasFlashing') === isFlashing) return;
+  container.setData('lastFxState', currentFxState);
+  container.setData('wasFlashing', isFlashing);
+
+  container.list.filter(c => c.name === 'overhead_fx').forEach(c => c.destroy());
+
+  if (isFlashing) mainSprite.setTintFill(0xffffff);
+  else mainSprite.clearTint();
+
+  let yOffset = topY - 12;
+
+  const renderConfig = (config: any, isSkill: boolean) => {
+    const animArray = isSkill ? (config.animSkill || config.AnimSkill) : (config.animEffect || config.AnimEffect);
+    const textureKey = config.textureKey || config.TextureKey;
+    const iconFrame = config.iconFrame ?? config.IconFrame;
+    const colorTint = config.colorTint || config.ColorTint;
+    const isRepeated = config.isRepeated ?? config.IsRepeated ?? true;
+    const frameRate = config.animFrameRate || config.AnimEffectFrameRate || config.AnimFrameRate || 15;
+
+    if (animArray && animArray.length === 2 && textureKey) {
+      const fxSprite = scene.add.sprite(0, yOffset, textureKey).setName('overhead_fx');
+      container.add(fxSprite);
+      const animKey = `${config.id || config.Id}_anim`;
+      if (!scene.anims.exists(animKey)) {
+        scene.anims.create({ key: animKey, frames: scene.anims.generateFrameNumbers(textureKey, { start: animArray[0], end: animArray[1] }), frameRate: frameRate, repeat: isRepeated ? -1 : 0 });
+      }
+      fxSprite.play(animKey);
+      yOffset -= 24;
+    }
+    else if (iconFrame !== undefined && textureKey) {
+      const fxSprite = scene.add.sprite(0, yOffset, textureKey, iconFrame).setName('overhead_fx');
+      container.add(fxSprite);
+      yOffset -= 24;
+    }
+    else if (colorTint && !isFlashing) {
+      const tintValue = parseInt(colorTint.replace('#', '0x'), 16);
+      mainSprite.setTint(tintValue);
+    }
+  };
+
+  if (entity.actionState === 'Casting' && entity.currentCastingSkillId) {
+    const skillConfig = masterConfigs.skills ? (masterConfigs.skills[entity.currentCastingSkillId] || masterConfigs.Skills?.[entity.currentCastingSkillId]) : null;
+    if (skillConfig) renderConfig(skillConfig, true);
+  }
+
+  if (entity.activeEffects && entity.activeEffects.length > 0) {
+    entity.activeEffects.forEach((effectId: string) => {
+      const effectConfig = masterConfigs.effects ? (masterConfigs.effects[effectId] || masterConfigs.Effects?.[effectId]) : null;
+      if (effectConfig) renderConfig(effectConfig, false);
+    });
+  }
+}
+
+export function precalculateSpriteTops(scene: Phaser.Scene, masterConfigs: any) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return;
+
+  const processConfigs = (configGroup: any) => {
+    if (!configGroup) return;
+
+    for (const key in configGroup) {
+      const config = configGroup[key];
+      if (!config.textureKey || !scene.textures.exists(config.textureKey)) continue;
+      if (config.calculatedTopOffset !== undefined) continue;
+
+      const texture = scene.textures.get(config.textureKey);
+      const frame = texture.get(config.iconFrame || 0);
+
+      canvas.width = frame.cutWidth;
+      canvas.height = frame.cutHeight;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const sourceImage = texture.getSourceImage() as HTMLImageElement | HTMLCanvasElement;
+      ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 0, 0, frame.cutWidth, frame.cutHeight);
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+
+      let topY = 0;
+      let foundTop = false;
+
+      for (let y = 0; y < canvas.height; y++) {
+        for (let x = 0; x < canvas.width; x++) {
+          const alpha = data[(y * canvas.width + x) * 4 + 3]; 
+          if (alpha > 10) { 
+            topY = y;
+            foundTop = true;
+            break;
+          }
+        }
+        if (foundTop) break;
+      }
+
+      const centerY = frame.cutHeight / 2;
+      config.calculatedTopOffset = topY - centerY;
+
+      console.log(`[Pixel Scanner] ${config.id || config.Id} head offset is ${config.calculatedTopOffset}px`);
+    }
+  };
+
+  processConfigs(masterConfigs.characters);
+  processConfigs(masterConfigs.enemies);
 }
