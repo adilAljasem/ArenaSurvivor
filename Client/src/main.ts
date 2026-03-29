@@ -1,7 +1,9 @@
 import * as Phaser from 'phaser';
 import { HubConnectionBuilder, HubConnectionState } from '@microsoft/signalr';
 import { ShopUI } from './ui/UI';
+import { EscMenu } from './ui/EscMenu';
 import { PlayerRenderer, EnemyRenderer, WorldRenderer, precalculateSpriteTops } from './RenderSystems';
+import { AudioManager } from './AudioManager';
 import pako from 'pako';
 
 // --- SIGNALR CONNECTION ---
@@ -61,6 +63,7 @@ class GameScene extends Phaser.Scene {
   private goldUIText!: Phaser.GameObjects.Text;
   private waveUIText!: Phaser.GameObjects.Text;
   private shopUIModule!: ShopUI;
+  private escMenu!: EscMenu;
   private perfText!: Phaser.GameObjects.Text;
 
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -113,6 +116,9 @@ class GameScene extends Phaser.Scene {
 
   create() {
     this.cameras.main.setBackgroundColor('#2d2d2d');
+
+    // Initialise the global AudioManager with this scene's sound system
+    AudioManager.getInstance().init(this);
 
     // >>> FIX: Map Initialization moved strictly to Handshake Event! <<<
     window.addEventListener('configsReady', () => {
@@ -195,9 +201,14 @@ class GameScene extends Phaser.Scene {
     this.shopUIModule.setScrollFactor(0);
     this.add.existing(this.shopUIModule);
 
+    // ESC Menu (appears when pressing ESC while no other panel is open)
+    this.escMenu = new EscMenu(this);
+    this.escMenu.setVisible(false);
+
     this.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
       this.perfText.setPosition(10, gameSize.height - 10);
       this.waveUIText.setPosition(gameSize.width / 2, 20);
+      this.escMenu.reposition(gameSize.width, gameSize.height);
     });
 
     this.input.keyboard?.on('keydown-B', () => {
@@ -206,8 +217,15 @@ class GameScene extends Phaser.Scene {
     });
     this.input.keyboard?.on('keydown-ESC', () => {
       if (this.shopUIModule.visible) {
+        // First priority: close the shop
         this.shopUIModule.setVisible(false);
         this.manuallyClosedShop = true;
+      } else if (this.escMenu.visible) {
+        // Second priority: close the ESC menu
+        this.escMenu.setVisible(false);
+      } else {
+        // Nothing open → open the ESC menu
+        this.escMenu.setVisible(true);
       }
     });
     this.input.keyboard?.on('keydown-H', () => {
@@ -256,6 +274,12 @@ class GameScene extends Phaser.Scene {
         rawState.db.forEach((id: string) => {
           const sprite = this.projectileSprites.get(id);
           if (sprite) {
+            // Store this projectile's hit sound so renderers can play it on HP drop
+            const configId = (sprite as any).getData('configId') as string | undefined;
+            if (configId) {
+              const projCfg = masterConfigs.projectiles?.[configId] ?? masterConfigs.Projectiles?.[configId];
+              if (projCfg?.soundHit) AudioManager.getInstance().setLastProjectileHitSound(projCfg.soundHit);
+            }
             sprite.destroy();
             this.projectileSprites.delete(id);
           }

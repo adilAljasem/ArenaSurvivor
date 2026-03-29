@@ -1,4 +1,5 @@
 import * as Phaser from 'phaser';
+import { AudioManager } from './AudioManager';
 
 export class PlayerRenderer {
   static render(scene: Phaser.Scene, state: any, sprites: Map<string, Phaser.GameObjects.Container>, configs: any, targets: Map<string, { x: number, y: number }>): Set<string> {
@@ -152,9 +153,24 @@ export class PlayerRenderer {
           if (!body.anims.isPlaying && pActionState !== "Dead") body.anims.resume();
         }
 
+        // Detect skill cast completion: Casting → non-Casting transition
+        const prevActionState = pContainer.getData('prevActionState');
+        const prevCastSkillId = pContainer.getData('prevCastSkillId') as string | undefined;
+        if (prevActionState === 'Casting' && pActionState !== 'Casting' && prevCastSkillId) {
+          const skillCfg = (configs.skills || configs.Skills)?.[prevCastSkillId];
+          if (skillCfg?.soundCast) AudioManager.getInstance().playSfx(skillCfg.soundCast);
+        }
+        pContainer.setData('prevActionState', pActionState);
+        if (pActionState === 'Casting') {
+          const castingSkillId = sp.currentCastingSkillId || sp.CurrentCastingSkillId;
+          if (castingSkillId) pContainer.setData('prevCastSkillId', castingSkillId);
+        }
+
         const prevHp = pContainer.getData('prevHp');
         if (prevHp !== undefined && currentHp < prevHp) {
           pContainer.setData('flashTimer', scene.time.now + 150);
+          // Play the hit sound of the most recently destroyed projectile
+          AudioManager.getInstance().playLastProjectileHitSound();
         }
         pContainer.setData('prevHp', currentHp);
 
@@ -206,6 +222,8 @@ export class PlayerRenderer {
             } else if (animType === "swing") {
               scene.tweens.add({ targets: sprite, angle: sprite.angle + 360, duration: 150, ease: 'Linear' });
             }
+            // Play weapon fire sound
+            if (wConfig.soundFire) AudioManager.getInstance().playSfx(wConfig.soundFire);
           }
 
           if (!scene.tweens.isTweening(sprite)) { sprite.x = wx; sprite.y = wy; }
@@ -436,9 +454,24 @@ export class EnemyRenderer {
           if (!body.anims?.isPlaying && eActionState !== "Dead" && targetAnim !== '') body.anims?.resume();
         }
 
+        // Detect skill cast completion: Casting → non-Casting transition
+        const prevActionState = eContainer.getData('prevActionState');
+        const prevCastSkillId = eContainer.getData('prevCastSkillId') as string | undefined;
+        if (prevActionState === 'Casting' && eActionState !== 'Casting' && prevCastSkillId) {
+          const skillCfg = (configs.skills || configs.Skills)?.[prevCastSkillId];
+          if (skillCfg?.soundCast) AudioManager.getInstance().playSfx(skillCfg.soundCast);
+        }
+        eContainer.setData('prevActionState', eActionState);
+        if (eActionState === 'Casting') {
+          const castingSkillId = se.currentCastingSkillId || se.CurrentCastingSkillId;
+          if (castingSkillId) eContainer.setData('prevCastSkillId', castingSkillId);
+        }
+
         const prevHp = eContainer.getData('prevHp');
         if (prevHp !== undefined && currentHp < prevHp) {
           eContainer.setData('flashTimer', scene.time.now + 150);
+          // Play the hit sound of the most recently destroyed projectile
+          AudioManager.getInstance().playLastProjectileHitSound();
         }
         eContainer.setData('prevHp', currentHp);
 
@@ -520,6 +553,9 @@ export class WorldRenderer {
     aoeList.forEach((aoe: any) => {
       const configId = aoe.configId || aoe.ConfigId;
       const skillConfig = (configs.skills || configs.Skills)?.[configId] ?? null;
+
+      // Play skill hit sound when an AoE event is received
+      if (skillConfig?.soundHit) AudioManager.getInstance().playSfx(skillConfig.soundHit);
 
       let rendered = false;
       const radius = aoe.radius ?? aoe.Radius;

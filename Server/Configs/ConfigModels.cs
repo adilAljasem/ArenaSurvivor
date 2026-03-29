@@ -119,6 +119,9 @@ public class WeaponConfig
     public string ProjectileId { get; set; } = string.Empty;
     public float ProjectileSpeed { get; set; }
 
+    // --- Audio ---
+    public string SoundFire { get; set; } = string.Empty;
+
     // --- Scaling & Mechanics ---
     public Dictionary<string, float> Mechanics { get; set; } = new();     // "critChance", "knockback"
     public Dictionary<string, float> StatBonuses { get; set; } = new();   // "maxHp", "speed"
@@ -166,6 +169,9 @@ public class ProjectileConfig
     public int PierceCount { get; set; } = 0;
     public int BounceCount { get; set; } = 0;
     public List<string> ApplyEffectsOnHit { get; set; } = new();
+
+    // --- Audio ---
+    public string SoundHit { get; set; } = string.Empty;
 }
 
 public class LevelUpCardConfig
@@ -234,6 +240,10 @@ public class SkillConfig
     public float Lifespan { get; set; } = 0f;
     public List<string> ApplyEffects { get; set; } = new();
     public bool StopMoving { get; set; } = true; // By default, casting roots the player in place!
+
+    // --- Audio ---
+    public string SoundCast { get; set; } = string.Empty;
+    public string SoundHit { get; set; } = string.Empty;
 }
 
 public class DynamicSkillTrigger

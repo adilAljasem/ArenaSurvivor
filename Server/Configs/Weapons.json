@@ -13,6 +13,7 @@
     "iconFrame": 7,
     "defaultFacingRight": true,
     "attackAnimType": "recoil",
+    "soundFire": "sfx_pistol_fire",
     "statBonuses": {
       "speedPercent": 0.05
     },
@@ -37,6 +38,7 @@
     "iconFrame": 11,
     "defaultFacingRight": true,
     "attackAnimType": "recoil",
+    "soundFire": "sfx_smg_fire",
     "statBonuses": {},
     "damageScaling": {
       "rangedDamage": 0.25
@@ -59,6 +61,7 @@
     "iconFrame": 2,
     "defaultFacingRight": true,
     "attackAnimType": "recoil",
+    "soundFire": "sfx_shotgun_fire",
     "statBonuses": {
       "maxHp": 2
     },
@@ -80,6 +83,7 @@
     "iconFrame": 3,
     "defaultFacingRight": true,
     "attackAnimType": "recoil",
+    "soundFire": "sfx_sniper_fire",
     "statBonuses": {
       "speed": -0.05
     },
@@ -101,6 +105,7 @@
     "iconFrame": 4,
     "defaultFacingRight": true,
     "attackAnimType": "recoil",
+    "soundFire": "sfx_rocket_fire",
     "statBonuses": {
       "armor": -1
     },
@@ -123,6 +128,7 @@
     "iconFrame": 5,
     "defaultFacingRight": true,
     "attackAnimType": "stab",
+    "soundFire": "sfx_stick_swing",
     "statBonuses": {
       "maxHp": 5
     },
@@ -144,6 +150,7 @@
     "iconFrame": 6,
     "defaultFacingRight": true,
     "attackAnimType": "swing",
+    "soundFire": "sfx_sword_swing",
     "statBonuses": {
       "speedPercent": 0.02
     },
@@ -165,6 +172,7 @@
     "iconFrame": 3,
     "defaultFacingRight": true,
     "attackAnimType": "swing",
+    "soundFire": "sfx_hammer_swing",
     "statBonuses": {
       "armor": 2,
       "speed": -10
@@ -187,6 +195,7 @@
     "iconFrame": 36,
     "defaultFacingRight": true,
     "attackAnimType": "recoil",
+    "soundFire": "sfx_wand_cast",
     "statBonuses": {
       "elementalDamage": 2
     },
@@ -208,6 +217,7 @@
     "iconFrame": 9,
     "defaultFacingRight": true,
     "attackAnimType": "recoil",
+    "soundFire": "sfx_potato_throw",
     "statBonuses": {
       "hpRegen": 2
     },
