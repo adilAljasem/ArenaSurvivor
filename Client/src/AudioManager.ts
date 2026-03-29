@@ -42,14 +42,7 @@ export class AudioManager {
    * Silently skips if the audio key has not been loaded into the cache.
    */
   playSfx(key: string, baseVolume: number = 1.0): void {
-    if (!this._scene || !key) return;
-    const volume = baseVolume * this.masterSfxVolume;
-    if (volume <= 0) return;
-    try {
-      if (this._scene.cache.audio.has(key)) {
-        this._scene.sound.play(key, { volume });
-      }
-    } catch (_) { /* silently ignore any playback errors */ }
+    this._play(key, baseVolume * this.masterSfxVolume, false);
   }
 
   /**
@@ -58,12 +51,14 @@ export class AudioManager {
    * Silently skips if the audio key has not been loaded into the cache.
    */
   playMusic(key: string, baseVolume: number = 1.0): void {
-    if (!this._scene || !key) return;
-    const volume = baseVolume * this.masterMusicVolume;
-    if (volume <= 0) return;
+    this._play(key, baseVolume * this.masterMusicVolume, true);
+  }
+
+  private _play(key: string, volume: number, loop: boolean): void {
+    if (!this._scene || !key || volume <= 0) return;
     try {
       if (this._scene.cache.audio.has(key)) {
-        this._scene.sound.play(key, { volume, loop: true });
+        this._scene.sound.play(key, { volume, loop });
       }
     } catch (_) { /* silently ignore any playback errors */ }
   }
