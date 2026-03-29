@@ -355,6 +355,39 @@ export class EnemyRenderer {
         castCircle.setVisible(false);
       }
 
+      // 2.5 CLIENT-SIDE DEATH SKILL AoE VISUAL
+      const wasDead = eContainer.getData('wasDead') || false;
+      if (eActionState === 'Dead' && !wasDead) {
+        eContainer.setData('wasDead', true);
+        const deathX = se.x ?? se.X;
+        const deathY = se.y ?? se.Y;
+        const eConfig = (configs.enemies || configs.Enemies)?.[configId];
+        const deathSkills = eConfig?.onDeathSkills || eConfig?.OnDeathSkills;
+        if (deathSkills && deathSkills.length > 0) {
+          const skillConfigs = configs.skills || configs.Skills;
+          deathSkills.forEach((skillId: string) => {
+            const skill = skillConfigs?.[skillId];
+            if (!skill) return;
+            const aType = skill.actionType || skill.ActionType;
+            if (aType === 'AoE' || aType === 1) {
+              const r = skill.radius || skill.Radius || 200;
+              let color = 0xff4444;
+              const tint = skill.colorTint || skill.ColorTint;
+              if (tint && tint.length > 0) {
+                const parsed = parseInt(tint.replace(/^#|^0x/i, ''), 16);
+                if (!isNaN(parsed)) color = parsed;
+              }
+              const ring = scene.add.circle(deathX, deathY, r, color, 0.7);
+              ring.setStrokeStyle(8, color, 1).setDepth(15).setScale(0.1);
+              scene.tweens.add({
+                targets: ring, scale: 1.0, alpha: 0, duration: 800,
+                ease: 'Cubic.easeOut', onComplete: () => ring.destroy()
+              });
+            }
+          });
+        }
+      }
+
       // 3. ANIMATIONS & TINTING
       if (body && body.type === 'Sprite' && config) {
         const baseStats = config.baseStats || config.BaseStats;
@@ -534,7 +567,7 @@ export class WorldRenderer {
         }
         // Fallback 3: CUSTOM COLORED RING (Boosted Opacity for High Visibility)
         else if (colorTint) {
-          const color = parseInt(colorTint.replace('#', '0x'), 16);
+          const color = parseInt(colorTint.replace(/^#|^0x/i, ''), 16);
           const ring = scene.add.circle(x, y, radius, color, 0.8);
           ring.setStrokeStyle(10, color, 1).setDepth(15).setScale(0.1);
           scene.tweens.add({ targets: ring, scale: 1.0, alpha: 0, duration: 600, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
