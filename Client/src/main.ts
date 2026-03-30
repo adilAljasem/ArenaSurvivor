@@ -204,8 +204,6 @@ class GameScene extends Phaser.Scene {
     this.shopUIModule = new ShopUI(this, connection);
     this.shopUIModule.setDepth(1000);
     this.shopUIModule.setVisible(false);
-    this.shopUIModule.setScrollFactor(0);
-    this.add.existing(this.shopUIModule);
 
     // ESC Menu (appears when pressing ESC while no other panel is open)
     this.escMenu = new EscMenu(this);

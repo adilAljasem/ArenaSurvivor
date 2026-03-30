@@ -90,6 +90,8 @@ export class Tooltip extends Phaser.GameObjects.Container {
             const dynamicModifiers = config.dynamicModifiers ?? config.DynamicModifiers;
             const effectsOnPurchase = config.effectsOnPurchase ?? config.EffectsOnPurchase;
             const traits = config.traits ?? config.Traits;
+            const onHitEffects = config.applyEffectsOnHit ?? config.ApplyEffectsOnHit;
+            const grantedSkills = config.grantedSkills ?? config.GrantedSkills;
 
             if (meleeDmg || rangedDmg || elemDmg || cooldown || range) {
                 if (meleeDmg) posStr += `🗡️ Melee Dmg: ${meleeDmg * stackCount}\n`;
@@ -98,9 +100,16 @@ export class Tooltip extends Phaser.GameObjects.Container {
                 if (cooldown) posStr += `⏱️ CD: ${cooldown}s\n`;
                 if (range) posStr += `📏 Range: ${range}\n`;
                 if (scaling) {
-                    const scales = Object.entries(scaling).map(([k, v]) => `${(v as number) * 100}% of ${UIHelpers.getStatInfo(k).n}`);
+                    const scales = Object.entries(scaling).map(([k, v]) => `${Math.round((v as number) * 100)}% of ${UIHelpers.getStatInfo(k).n}`);
                     if (scales.length > 0) posStr += `📈 Scales: ${scales.join(', ')}\n`;
                 }
+                if (onHitEffects && onHitEffects.length > 0) {
+                    onHitEffects.forEach((e: string) => posStr += `💊 On Hit: ${e}\n`);
+                }
+            }
+
+            if (grantedSkills && grantedSkills.length > 0) {
+                grantedSkills.forEach((skillId: string) => posStr += `⭐ Skill: ${skillId}\n`);
             }
 
             if (mechanics) {
@@ -359,7 +368,13 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
 // =========================================================================
 // MAIN SHOP UI
 // =========================================================================
-export class ShopUI extends Phaser.GameObjects.Container {
+// NOTE: ShopUI is a plain manager class (NOT a Container) to avoid Phaser 3's
+// known issue where Container children's input hit-areas ignore the parent
+// Container's scrollFactor when the game camera is scrolled.  Every inner
+// container is added directly to the scene and has setScrollFactor(0) set
+// explicitly, matching the pattern used by EscMenu.
+export class ShopUI {
+    private scene: Phaser.Scene;
     private statDisplay: StatDisplay;
     private inventoryDisplay: InventoryDisplay;
     private shopCardsContainer: Phaser.GameObjects.Container;
@@ -369,59 +384,95 @@ export class ShopUI extends Phaser.GameObjects.Container {
     private rerollText: Phaser.GameObjects.Text;
     private connection: HubConnection;
     private tooltip: Tooltip;
+    private overlay: Phaser.GameObjects.Rectangle;
+
+    // All top-level scene objects owned by this UI (for setVisible / setDepth)
+    private _elements: (Phaser.GameObjects.GameObject & { setVisible(v: boolean): any; setDepth(d: number): any })[] = [];
+    private _visible: boolean = false;
+    private _depth: number = 1000;
 
     constructor(scene: Phaser.Scene, connection: HubConnection) {
-        super(scene, 0, 0);
+        this.scene = scene;
         this.connection = connection;
+        const D = this._depth;
 
-        const overlay = scene.add.rectangle(0, 0, scene.scale.width, scene.scale.height, 0x07090c, 0.90).setOrigin(0, 0).setInteractive();
-        this.add(overlay);
+        // Full-screen overlay – blocks clicks reaching the game world beneath
+        this.overlay = scene.add.rectangle(0, 0, scene.scale.width, scene.scale.height, 0x07090c, 0.90)
+            .setOrigin(0, 0).setScrollFactor(0).setDepth(D).setInteractive();
+        this._elements.push(this.overlay);
 
-        this.headerText = scene.add.text(0, 0, 'Shop', { fontFamily: UIHelpers.FONT, fontSize: '32px', color: '#ffffff', fontStyle: 'bold', resolution: 3 });
-        this.add(this.headerText);
+        this.headerText = scene.add.text(0, 0, 'Shop', {
+            fontFamily: UIHelpers.FONT, fontSize: '32px', color: '#ffffff', fontStyle: 'bold', resolution: 3
+        }).setScrollFactor(0).setDepth(D + 1);
+        this._elements.push(this.headerText);
 
-        this.rerollButtonContainer = scene.add.container(0, 0);
+        // Reroll button (its own Container so internal layout stays relative)
+        this.rerollButtonContainer = scene.add.container(0, 0).setScrollFactor(0).setDepth(D + 1);
         const rerollBg = scene.add.graphics();
         rerollBg.fillStyle(0x1a1e24, 1);
         rerollBg.fillRoundedRect(-80, -22.5, 160, 45, 8);
-        rerollBg.lineStyle(2, 0xd84315, 1); 
+        rerollBg.lineStyle(2, 0xd84315, 1);
         rerollBg.strokeRoundedRect(-80, -22.5, 160, 45, 8);
-        
-        this.rerollText = scene.add.text(0, 0, 'REROLL 💰 2', { fontFamily: UIHelpers.FONT, fontSize: '16px', color: '#ffffff', fontStyle: 'bold', resolution: 3 }).setOrigin(0.5);
 
-        const rerollHitbox = scene.add.rectangle(0, 0, 160, 45, 0x000000, 0).setInteractive({ useHandCursor: true });
+        this.rerollText = scene.add.text(0, 0, 'REROLL 💰 2', {
+            fontFamily: UIHelpers.FONT, fontSize: '16px', color: '#ffffff', fontStyle: 'bold', resolution: 3
+        }).setOrigin(0.5);
+
+        const rerollHitbox = scene.add.rectangle(0, 0, 160, 45, 0x000000, 0)
+            .setScrollFactor(0).setInteractive({ useHandCursor: true });
         rerollHitbox.on('pointerdown', () => this.connection.invoke("RerollShop").catch((err: any) => console.error(err)));
         rerollHitbox.on('pointerover', () => { rerollBg.clear(); rerollBg.fillStyle(0xd84315, 1); rerollBg.fillRoundedRect(-80, -22.5, 160, 45, 8); });
-        rerollHitbox.on('pointerout', () => { rerollBg.clear(); rerollBg.fillStyle(0x1a1e24, 1); rerollBg.fillRoundedRect(-80, -22.5, 160, 45, 8); rerollBg.lineStyle(2, 0xd84315, 1); rerollBg.strokeRoundedRect(-80, -22.5, 160, 45, 8);});
-        
+        rerollHitbox.on('pointerout', () => { rerollBg.clear(); rerollBg.fillStyle(0x1a1e24, 1); rerollBg.fillRoundedRect(-80, -22.5, 160, 45, 8); rerollBg.lineStyle(2, 0xd84315, 1); rerollBg.strokeRoundedRect(-80, -22.5, 160, 45, 8); });
+
         this.rerollButtonContainer.add([rerollBg, this.rerollText, rerollHitbox]);
-        this.add(this.rerollButtonContainer);
+        this._elements.push(this.rerollButtonContainer);
 
         this.tooltip = new Tooltip(scene);
+
         this.statDisplay = new StatDisplay(scene, 0, 0);
+        this.statDisplay.setScrollFactor(0).setDepth(D + 1);
+        this._elements.push(this.statDisplay as any);
+
         this.inventoryDisplay = new InventoryDisplay(scene, 0, 0, this.tooltip);
-        this.add([this.statDisplay, this.inventoryDisplay]);
+        this.inventoryDisplay.setScrollFactor(0).setDepth(D + 1);
+        this._elements.push(this.inventoryDisplay as any);
 
-        this.shopCardsContainer = scene.add.container(0, 0);
-        this.levelUpContainer = scene.add.container(0, 0);
-        this.add([this.shopCardsContainer, this.levelUpContainer]);
-
-        scene.add.existing(this);
+        // Card containers are direct scene objects (not nested inside another Container)
+        this.shopCardsContainer = scene.add.container(0, 0).setScrollFactor(0).setDepth(D + 1);
+        this.levelUpContainer = scene.add.container(0, 0).setScrollFactor(0).setDepth(D + 1);
+        this._elements.push(this.shopCardsContainer);
+        this._elements.push(this.levelUpContainer);
 
         this.updateLayout(scene.scale.width, scene.scale.height);
         scene.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
-            overlay.setSize(gameSize.width, gameSize.height);
+            this.overlay.setSize(gameSize.width, gameSize.height);
             this.updateLayout(gameSize.width, gameSize.height);
         });
     }
 
-    // >>> THE FIX: Ensure tooltip is hidden if shop is forced closed, preventing ghost hitboxes! <<<
+    get visible(): boolean { return this._visible; }
+
     public setVisible(value: boolean): this {
-        if (!value && this.tooltip) {
-            this.tooltip.hide();
-        }
-        return super.setVisible(value);
+        this._visible = value;
+        if (!value && this.tooltip) this.tooltip.hide();
+        this._elements.forEach(el => el.setVisible(value));
+        return this;
     }
+
+    public setDepth(depth: number): this {
+        this._depth = depth;
+        this.overlay.setDepth(depth);
+        this.headerText.setDepth(depth + 1);
+        this.rerollButtonContainer.setDepth(depth + 1);
+        this.statDisplay.setDepth(depth + 1);
+        this.inventoryDisplay.setDepth(depth + 1);
+        this.shopCardsContainer.setDepth(depth + 1);
+        this.levelUpContainer.setDepth(depth + 1);
+        return this;
+    }
+
+    // No-op: every element has its scrollFactor set individually in the constructor
+    public setScrollFactor(_value: number): this { return this; }
 
     private updateLayout(width: number, height: number) {
         let scale = Math.min(width / 1280, height / 720);
@@ -470,8 +521,8 @@ export class ShopUI extends Phaser.GameObjects.Container {
 
             this.shopCardsContainer.removeAll(true);
             this.levelUpContainer.removeAll(true);
-            
-            // Just in case a tooltip was hovering before the wipe
+
+            // Hide any lingering tooltip from the previous render
             this.tooltip.hide();
 
             // =========================================================
@@ -487,14 +538,16 @@ export class ShopUI extends Phaser.GameObjects.Container {
 
                 uiData.levelUpChoices.forEach((card: any, index: number) => {
                     const cardX = index * 280;
-                    
+
                     const bgGraphics = this.scene.add.graphics();
                     bgGraphics.fillStyle(0x161920, 1);
                     bgGraphics.fillRoundedRect(cardX, 0, 240, 320, 12);
                     bgGraphics.lineStyle(2, UIHelpers.getTierColorHex(card.tier || card.Tier || 1), 1);
                     bgGraphics.strokeRoundedRect(cardX, 0, 240, 320, 12);
 
-                    const hitbox = this.scene.add.rectangle(cardX + 120, 160, 240, 320, 0x000000, 0).setInteractive({ useHandCursor: true });
+                    // hitbox added AFTER bgGraphics so it sits above it in z-order
+                    const hitbox = this.scene.add.rectangle(cardX + 120, 160, 240, 320, 0x000000, 0)
+                        .setScrollFactor(0).setInteractive({ useHandCursor: true });
                     hitbox.on('pointerdown', () => this.connection.invoke("SelectLevelUpStat", card.id || card.Id).catch((err: any) => console.error(err)));
                     hitbox.on('pointerover', () => { bgGraphics.lineStyle(4, 0xffffff, 1); bgGraphics.strokeRoundedRect(cardX, 0, 240, 320, 12); });
                     hitbox.on('pointerout', () => { bgGraphics.lineStyle(2, UIHelpers.getTierColorHex(card.tier || card.Tier || 1), 1); bgGraphics.strokeRoundedRect(cardX, 0, 240, 320, 12); });
@@ -504,14 +557,13 @@ export class ShopUI extends Phaser.GameObjects.Container {
 
                     const statName = card.statName || card.StatName || "";
                     const amount = card.amount ?? card.Amount;
-
                     const info = UIHelpers.getStatInfo(statName);
                     const isPct = statName.toLowerCase().includes('percent') || statName === 'lifeSteal' || statName === 'dodge';
                     const valStr = isPct ? `+${Math.round(amount * 100)}%` : `+${amount}`;
-
                     const statText = this.scene.add.text(cardX + 120, 160, `${info.e} ${info.n}: ${valStr}`, { fontFamily: UIHelpers.FONT, fontSize: '20px', color: '#00ff00', fontStyle: 'bold', align: 'center', resolution: 3 }).setOrigin(0.5);
 
-                    this.levelUpContainer.add([bgGraphics, hitbox, nameText, tierText, statText]);
+                    // Visual elements first, interactive hitbox last (highest z-order)
+                    this.levelUpContainer.add([bgGraphics, nameText, tierText, statText, hitbox]);
                 });
                 return;
             }
@@ -533,8 +585,8 @@ export class ShopUI extends Phaser.GameObjects.Container {
 
             uiData.currentShop.forEach((item: any, index: number) => {
                 const cardX = index * 280;
-                
-                let config = undefined;
+
+                let config: any = undefined;
                 let isWeapon = false;
 
                 const configId = item.configId || item.ConfigId;
@@ -550,6 +602,7 @@ export class ShopUI extends Phaser.GameObjects.Container {
                 const tier = config?.tier || config?.Tier || 1;
                 const tierColor = isLocked ? 0x888888 : UIHelpers.getTierColorHex(tier);
 
+                // ---- Card background ----
                 const cardBg = this.scene.add.graphics();
                 cardBg.fillStyle(0x161920, 1);
                 cardBg.fillRoundedRect(cardX, 0, 240, 480, 12);
@@ -557,6 +610,7 @@ export class ShopUI extends Phaser.GameObjects.Container {
                 cardBg.strokeRoundedRect(cardX, 0, 240, 480, 12);
                 this.shopCardsContainer.add(cardBg);
 
+                // ---- Icon ----
                 const tex = config?.textureKey || config?.TextureKey;
                 if (tex && tex.trim() !== "" && this.scene.textures.exists(tex)) {
                     const icon = this.scene.add.sprite(cardX + 120, 75, tex);
@@ -566,11 +620,13 @@ export class ShopUI extends Phaser.GameObjects.Container {
                     this.shopCardsContainer.add(icon);
                 }
 
+                // ---- Name / type header ----
                 const nameText = this.scene.add.text(cardX + 120, 135, item.name || item.Name || "Unknown", { fontFamily: UIHelpers.FONT, fontSize: '18px', color: UIHelpers.getTierColorStr(tier), fontStyle: 'bold', resolution: 3 }).setOrigin(0.5);
-                const typeStr = isWeapon ? "Weapon" : "Item";
+                const typeStr = isWeapon ? "⚔️ Weapon" : "🎒 Item";
                 const typeText = this.scene.add.text(cardX + 120, 155, typeStr, { fontFamily: UIHelpers.FONT, fontSize: '12px', color: '#8892a0', fontStyle: 'italic', resolution: 3 }).setOrigin(0.5);
                 const divider = this.scene.add.rectangle(cardX + 120, 170, 200, 2, 0x3a4454).setOrigin(0.5);
 
+                // ---- Stat text construction ----
                 let baseStatsStr = '';
                 let randomStatsStr = '';
                 let skillsStr = '';
@@ -581,11 +637,23 @@ export class ShopUI extends Phaser.GameObjects.Container {
                     const rangedDmg = config.rangedDamage ?? config.RangedDamage;
                     const elemDmg = config.elementalDamage ?? config.ElementalDamage;
                     const cooldown = config.cooldownSeconds ?? config.CooldownSeconds;
+                    const range = config.range ?? config.Range;
+                    const scaling = config.damageScaling ?? config.DamageScaling;
+                    const onHitEffects = config.applyEffectsOnHit ?? config.ApplyEffectsOnHit;
+                    const grantedSkills = config.grantedSkills ?? config.GrantedSkills;
 
                     if (meleeDmg) baseStatsStr += `🗡️ Melee Dmg: ${meleeDmg}\n`;
                     if (rangedDmg) baseStatsStr += `🏹 Ranged Dmg: ${rangedDmg}\n`;
                     if (elemDmg) baseStatsStr += `🔥 Elem Dmg: ${elemDmg}\n`;
                     if (cooldown) baseStatsStr += `⏱️ Cooldown: ${cooldown}s\n`;
+                    if (range) baseStatsStr += `📏 Range: ${range}\n`;
+                    if (scaling) {
+                        const scales = Object.entries(scaling).map(([k, v]) => `${Math.round((v as number) * 100)}% ${UIHelpers.getStatInfo(k).n}`);
+                        if (scales.length > 0) baseStatsStr += `📈 Scales: ${scales.join(', ')}\n`;
+                    }
+                    if (onHitEffects && onHitEffects.length > 0) {
+                        onHitEffects.forEach((e: string) => baseStatsStr += `💊 On Hit: ${e}\n`);
+                    }
 
                     const statBonuses = config.statBonuses ?? config.StatBonuses;
                     if (statBonuses) {
@@ -610,7 +678,7 @@ export class ShopUI extends Phaser.GameObjects.Container {
                     }
 
                     const effectsAtWaveEnd = config.effectsAtWaveEnd ?? config.EffectsAtWaveEnd;
-                    if (effectsAtWaveEnd) {
+                    if (effectsAtWaveEnd && effectsAtWaveEnd.length > 0) {
                         effectsAtWaveEnd.forEach((e: any) => {
                             const statName = e.statName ?? e.StatName ?? "";
                             const amount = e.amount ?? e.Amount;
@@ -621,7 +689,16 @@ export class ShopUI extends Phaser.GameObjects.Container {
                     }
 
                     const effectsOnPurchase = config.effectsOnPurchase ?? config.EffectsOnPurchase;
-                    if (effectsOnPurchase) effectsOnPurchase.forEach((e: string) => baseStatsStr += `🔹 Grants: ${e}\n`);
+                    if (effectsOnPurchase && effectsOnPurchase.length > 0) {
+                        effectsOnPurchase.forEach((e: string) => baseStatsStr += `🔹 Grants: ${e}\n`);
+                    }
+
+                    if (grantedSkills && grantedSkills.length > 0) {
+                        grantedSkills.forEach((skillId: string) => {
+                            const s = (atlasConfigs?.skills || atlasConfigs?.Skills)?.[skillId];
+                            skillsStr += `⭐ ${s ? (s.name || s.Name) : skillId}\n`;
+                        });
+                    }
 
                     const traits = config.traits ?? config.Traits;
                     if (traits) {
@@ -632,6 +709,7 @@ export class ShopUI extends Phaser.GameObjects.Container {
                     }
                 }
 
+                // Rolled bonus stats (random rolls applied by server)
                 const rolledStats = item.rolledStats || item.RolledStats;
                 if (rolledStats && Object.keys(rolledStats).length > 0) {
                     Object.entries(rolledStats).forEach(([k, v]) => {
@@ -642,6 +720,7 @@ export class ShopUI extends Phaser.GameObjects.Container {
                     });
                 }
 
+                // Rolled weapon skills
                 const rolledSkills = item.weaponSkills || item.WeaponSkills;
                 if (rolledSkills && rolledSkills.length > 0) {
                     rolledSkills.forEach((skillId: string) => {
@@ -652,49 +731,53 @@ export class ShopUI extends Phaser.GameObjects.Container {
 
                 let finalPosStr = '';
                 if (baseStatsStr) finalPosStr += `[ 📊 Base Stats ]\n${baseStatsStr}`;
-                if (randomStatsStr) finalPosStr += `\n[ 🎲 Random Stats ]\n${randomStatsStr}`;
+                if (randomStatsStr) finalPosStr += `\n[ 🎲 Random Rolls ]\n${randomStatsStr}`;
                 if (skillsStr) finalPosStr += `\n[ 🌟 Skills ]\n${skillsStr}`;
 
                 const posTextObj = this.scene.add.text(cardX + 15, 180, finalPosStr.trim(), { fontFamily: UIHelpers.FONT, fontSize: '12px', color: '#dddddd', lineSpacing: 2, resolution: 3 }).setOrigin(0, 0);
                 const negTextObj = this.scene.add.text(cardX + 15, 180 + posTextObj.height + 4, negStr.trim(), { fontFamily: UIHelpers.FONT, fontSize: '12px', color: '#ff4444', lineSpacing: 2, resolution: 3 }).setOrigin(0, 0);
 
-                // BUY BUTTON
+                // ---- Buy button ----
                 const buyBtnBg = this.scene.add.graphics();
-                buyBtnBg.fillStyle(0x2e7d32, 1); 
+                buyBtnBg.fillStyle(0x2e7d32, 1);
                 buyBtnBg.fillRoundedRect(cardX + 30, 390, 180, 40, 20);
                 const buyText = this.scene.add.text(cardX + 120, 410, `BUY 💰 ${item.price || item.Price}`, { fontFamily: UIHelpers.FONT, fontSize: '16px', fontStyle: 'bold', color: '#ffffff', resolution: 3 }).setOrigin(0.5);
-                
-                const buyHitbox = this.scene.add.rectangle(cardX + 120, 410, 180, 40, 0x000000, 0).setInteractive({ useHandCursor: true });
+
+                const buyHitbox = this.scene.add.rectangle(cardX + 120, 410, 180, 40, 0x000000, 0)
+                    .setScrollFactor(0).setInteractive({ useHandCursor: true });
                 buyHitbox.on('pointerdown', () => this.connection.invoke("BuyItem", configId).catch((err: any) => console.error(err)));
                 buyHitbox.on('pointerover', () => { buyBtnBg.clear(); buyBtnBg.fillStyle(0x4caf50, 1); buyBtnBg.fillRoundedRect(cardX + 30, 390, 180, 40, 20); });
                 buyHitbox.on('pointerout', () => { buyBtnBg.clear(); buyBtnBg.fillStyle(0x2e7d32, 1); buyBtnBg.fillRoundedRect(cardX + 30, 390, 180, 40, 20); });
 
-                // LOCK BUTTON
+                // ---- Lock button ----
                 const lockBtnBg = this.scene.add.graphics();
                 lockBtnBg.fillStyle(isLocked ? 0x443300 : 0x2a303a, 1);
                 lockBtnBg.fillRoundedRect(cardX + 70, 440, 100, 26, 13);
                 const lockText = this.scene.add.text(cardX + 120, 453, isLocked ? '🔒 LOCKED' : '🔓 Lock', { fontFamily: UIHelpers.FONT, fontSize: '12px', color: isLocked ? '#ffb300' : '#8892a0', resolution: 3 }).setOrigin(0.5);
-                
-                const lockHitbox = this.scene.add.rectangle(cardX + 120, 453, 100, 26, 0x000000, 0).setInteractive({ useHandCursor: true });
+
+                const lockHitbox = this.scene.add.rectangle(cardX + 120, 453, 100, 26, 0x000000, 0)
+                    .setScrollFactor(0).setInteractive({ useHandCursor: true });
                 lockHitbox.on('pointerdown', () => this.connection.invoke("ToggleLock", configId).catch((err: any) => console.error(err)));
 
-                // TOOLTIP HOVER
-                const cardHitbox = this.scene.add.rectangle(cardX + 120, 240, 240, 480, 0x000000, 0).setInteractive();
+                // ---- Whole-card hover hitbox for tooltip (visual elements first, then action hitboxes on top) ----
+                const cardHitbox = this.scene.add.rectangle(cardX + 120, 240, 240, 480, 0x000000, 0)
+                    .setScrollFactor(0).setInteractive();
                 cardHitbox.on('pointerover', (p: Phaser.Input.Pointer) => {
                     cardBg.lineStyle(3, 0xffffff, 1); cardBg.strokeRoundedRect(cardX, 0, 240, 480, 12);
-                    
-                    const tooltipData = config ? { ...config } : {};
+
+                    const tooltipData: any = config ? { ...config } : {};
                     tooltipData.tier = tier;
                     tooltipData.name = item.name || item.Name;
-                    if (item.rolledStats || item.RolledStats) tooltipData.statBonuses = { ...(tooltipData.statBonuses || {}), ...(item.rolledStats || item.RolledStats) };
-                    
+                    if (item.rolledStats || item.RolledStats) {
+                        tooltipData.statBonuses = { ...(tooltipData.statBonuses || {}), ...(item.rolledStats || item.RolledStats) };
+                    }
                     const skillsList = item.weaponSkills || item.WeaponSkills;
                     if (skillsList && skillsList.length > 0) {
                         const skillNames = skillsList.map((id: string) => {
                             const s = (atlasConfigs?.skills || atlasConfigs?.Skills)?.[id];
                             return s ? (s.name || s.Name) : id;
                         });
-                        tooltipData.effectsOnPurchase = [ ...(tooltipData.effectsOnPurchase || []), ...skillNames.map((n:string) => `${n}`) ];
+                        tooltipData.effectsOnPurchase = [...(tooltipData.effectsOnPurchase || []), ...skillNames];
                     }
                     this.tooltip.show(tooltipData, p.x, p.y, 1);
                 });
@@ -704,7 +787,14 @@ export class ShopUI extends Phaser.GameObjects.Container {
                     this.tooltip.hide();
                 });
 
-                this.shopCardsContainer.add([cardHitbox, divider, nameText, typeText, posTextObj, negTextObj, buyBtnBg, buyText, buyHitbox, lockBtnBg, lockText, lockHitbox]);
+                // Order: visuals first → cardHitbox → buy/lock on top (highest z = first processed for input)
+                this.shopCardsContainer.add([
+                    divider, nameText, typeText, posTextObj, negTextObj,
+                    buyBtnBg, buyText, lockBtnBg, lockText,
+                    cardHitbox,   // covers whole card for tooltip (below buy/lock)
+                    buyHitbox,    // buy button (above cardHitbox)
+                    lockHitbox    // lock button (topmost → first for input)
+                ]);
             });
 
         } catch (err) {
