@@ -138,7 +138,6 @@ public class GameHub : Hub
             // 1. IS IT AN ITEM?
             if (_configManager.Items.TryGetValue(configId, out var itemConfig))
             {
-                // >>> FIX: Check if they are at the 5 unique item limit! <<<
                 if (!player.OwnedItems.ContainsKey(itemConfig.Id) && player.OwnedItems.Count >= 5)
                 {
                     return; // Inventory full, abort purchase (gold is saved)
@@ -162,33 +161,62 @@ public class GameHub : Hub
                 return;
             }
 
-            // 2. IS IT A WEAPON?
+           // 2. IS IT A WEAPON?
             if (_configManager.Weapons.TryGetValue(configId, out var weaponConfig))
             {
+                // >>> FIX: Reconstruct the weapon using the exact stats we rolled in the shop! <<<
+                var newlyBoughtWeapon = new Server.Entities.EquippedWeapon
+                {
+                    ConfigId = configId,
+                    Level = 1,
+                    SlotIndex = 0,
+                    RolledStats = shopItem.RolledStats ?? new Dictionary<string, float>()
+                };
+
+                if (shopItem.WeaponSkills != null)
+                {
+                    foreach (var skillId in shopItem.WeaponSkills)
+                    {
+                        if (_configManager.Skills.TryGetValue(skillId, out var sCfg))
+                        {
+                            newlyBoughtWeapon.WeaponSkills.Add(new Server.Entities.ActiveSkill { ConfigId = skillId, CurrentCooldown = sCfg.CooldownSeconds });
+                        }
+                    }
+                }
+
                 var existingWeapon = player.Weapons.FirstOrDefault(w => w.ConfigId == configId);
 
-                // If they already have it, upgrade it (bypasses max slot limit)
                 if (existingWeapon != null)
                 {
                     player.Gold -= shopItem.Price;
-                    existingWeapon.Level++;
-                    player.CurrentShop.Remove(shopItem);
-                    await SendPlayerUI(player);
-                    return;
+                    
+                    // Merge using our pre-generated stats
+                    var upgradedWeapon = Server.Core.Systems.WeaponGenerator.MergeWeapons(existingWeapon, newlyBoughtWeapon, _configManager);
+                    
+                    player.Weapons.Remove(existingWeapon);
+                    player.Weapons.Add(upgradedWeapon);
                 }
-
-                // >>> FIX: Only deduct gold if they have an empty weapon slot! <<<
-                if (player.Weapons.Count < 4)
+                else
                 {
-                    var usedSlots = player.Weapons.Select(w => w.SlotIndex).ToList();
-                    int nextSlot = 0;
-                    while (usedSlots.Contains(nextSlot)) nextSlot++;
+                    if (player.Weapons.Count < 4)
+                    {
+                        player.Gold -= shopItem.Price;
+                        
+                        var usedSlots = player.Weapons.Select(w => w.SlotIndex).ToList();
+                        int nextSlot = 0;
+                        while (usedSlots.Contains(nextSlot)) nextSlot++;
 
-                    player.Gold -= shopItem.Price;
-                    player.Weapons.Add(new Server.Entities.EquippedWeapon { ConfigId = configId, SlotIndex = nextSlot, Level = 1 });
-                    player.CurrentShop.Remove(shopItem);
-                    await SendPlayerUI(player);
+                        newlyBoughtWeapon.SlotIndex = nextSlot;
+                        player.Weapons.Add(newlyBoughtWeapon);
+                    }
+                    else
+                    {
+                        return; // Inventory full, gold is saved.
+                    }
                 }
+
+                player.CurrentShop.Remove(shopItem);
+                await SendPlayerUI(player);
             }
         }
     }

@@ -129,7 +129,16 @@ public static class NetworkSystem
                 p.ConnectionId, (int)p.X, (int)p.Y, (int)p.AimX, (int)p.AimY,
                 (int)p.CurrentHp, (int)p.GetTotalStat("maxHp", configManager), p.Gold, GetStateId(p.ActionState),
                 p.CurrentCastingSkillId, Math.Round(p.CurrentCastTimer, 1), Math.Round(p.MaxCastTimer, 1),
-                p.Weapons.Select(w => new object[] { w.ConfigId, w.SlotIndex, w.Level }).ToList(),
+                
+                // >>> THE FIX: We now send the RolledStats and Skills to the client! <<<
+                p.Weapons.Select(w => new object[] { 
+                    w.ConfigId, 
+                    w.SlotIndex, 
+                    w.Level, 
+                    w.RolledStats ?? new Dictionary<string, float>(), 
+                    w.WeaponSkills != null ? w.WeaponSkills.Select(s => s.ConfigId).ToList() : new List<string>() 
+                }).ToList(),
+
                 p.FiredWeaponsThisTick.ToList(), p.ActiveEffects.Select(e => e.ConfigId).ToList()
             }).ToList(),
 

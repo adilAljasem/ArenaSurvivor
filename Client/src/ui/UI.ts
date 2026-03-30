@@ -7,23 +7,39 @@ import { HubConnection } from '@microsoft/signalr';
 export const UIHelpers = {
     FONT: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
 
-    getLabel: (key: string): string => {
-        const labels: Record<string, string> = {
-            maxHp: "❤️ Max HP", hpRegen: "🩹 HP Regen", lifeSteal: "🧛 % Life Steal",
-            speed: "💨 Speed", meleeDamage: "🗡️ Melee Dmg",
-            rangedDamage: "🏹 Ranged Dmg", elementalDamage: "🔥 Elemental Dmg",
-            engineering: "🔧 Engineering", armor: "🛡️ Armor", luck: "🍀 Luck",
-            harvesting: "🌾 Harvesting", dodge: "👻 % Dodge", critChance: "💥 Crit Chance",
-            critMultiplier: "✖️ Crit Multiplier", knockback: "💨 Knockback",
-            pierceCount: "🏹 Pierces", bounceCount: "🪃 Bounces",
-            attackSpeedPercent: "⚡ % Attack Speed", xpGainPercent: "🧠 % XP Gain",
-            damagePercent: "💥 % Damage"
+    getTierColorStr: (tier: number): string => {
+        if (tier <= 2) return '#c0c0c0'; // Silver
+        if (tier <= 4) return '#00aaff'; // Blue
+        if (tier <= 6) return '#aa00ff'; // Purple
+        return '#ffd700'; // Gold
+    },
+
+    getTierColorHex: (tier: number): number => {
+        if (tier <= 2) return 0xc0c0c0;
+        if (tier <= 4) return 0x00aaff;
+        if (tier <= 6) return 0xaa00ff;
+        return 0xffd700;
+    },
+
+    getStatInfo: (key: string): { e: string, n: string } => {
+        if (!key) return { e: "❓", n: "Unknown" };
+        const map: Record<string, { e: string, n: string }> = {
+            maxHp: { e: "❤️", n: "Max HP" }, hpRegen: { e: "🩹", n: "HP Regen" }, lifeSteal: { e: "🧛", n: "Life Steal" },
+            speed: { e: "💨", n: "Speed" }, haste: { e: "⏳", n: "Haste" }, meleeDamage: { e: "🗡️", n: "Melee Dmg" },
+            rangedDamage: { e: "🏹", n: "Ranged Dmg" }, elementalDamage: { e: "🔥", n: "Elem Dmg" },
+            engineering: { e: "🔧", n: "Engineering" }, armor: { e: "🛡️", n: "Armor" }, luck: { e: "🍀", n: "Luck" },
+            harvesting: { e: "🌾", n: "Harvesting" }, dodge: { e: "👻", n: "Dodge" }, critChance: { e: "💥", n: "Crit Chance" },
+            critMultiplier: { e: "✖️", n: "Crit Mult" }, knockback: { e: "💨", n: "Knockback" },
+            pierceCount: { e: "🏹", n: "Pierces" }, bounceCount: { e: "🪃", n: "Bounces" },
+            attackSpeedPercent: { e: "⚡", n: "Attack Speed" }, xpGainPercent: { e: "🧠", n: "XP Gain" },
+            damagePercent: { e: "💥", n: "Damage %" }, projectileSpeedPercent: { e: "☄️", n: "Proj Speed" }
         };
-        return labels[key] || `❓ ${key}`;
+        return map[key] || { e: "❓", n: key.charAt(0).toUpperCase() + key.slice(1) };
     },
 
     formatVal: (key: string, val: number): string => {
-        const isPct = key.toLowerCase().includes('percent') || key === 'lifeSteal' || key === 'dodge';
+        if (!key) return `${val}`;
+        const isPct = key.toLowerCase().includes('percent') || key === 'lifeSteal' || key === 'dodge' || key === 'critChance';
         return isPct ? `${Math.round(val * 100)}%` : `${val}`;
     }
 };
@@ -32,7 +48,7 @@ export const UIHelpers = {
 // TOOLTIP
 // =========================================================================
 export class Tooltip extends Phaser.GameObjects.Container {
-    private bg: Phaser.GameObjects.Rectangle;
+    private bg: Phaser.GameObjects.Graphics;
     private titleText: Phaser.GameObjects.Text;
     private descText: Phaser.GameObjects.Text;
     private negativeText: Phaser.GameObjects.Text;
@@ -42,12 +58,11 @@ export class Tooltip extends Phaser.GameObjects.Container {
         this.setDepth(5000);
         this.setVisible(false);
 
-        this.bg = scene.add.rectangle(0, 0, 240, 100, 0x111111, 0.95).setStrokeStyle(2, 0x555555).setOrigin(0, 0);
-
-        // >>> RESOLUTION: 3 APPLIED EVERYWHERE <<<
-        this.titleText = scene.add.text(10, 10, '', { fontFamily: UIHelpers.FONT, fontSize: '18px', color: '#ffd700', fontStyle: 'bold', resolution: 3 });
-        this.descText = scene.add.text(10, 35, '', { fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#aaaaaa', wordWrap: { width: 220 }, resolution: 3 });
-        this.negativeText = scene.add.text(10, 35, '', { fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#ff4444', wordWrap: { width: 220 }, resolution: 3 });
+        this.bg = scene.add.graphics();
+        
+        this.titleText = scene.add.text(12, 12, '', { fontFamily: UIHelpers.FONT, fontSize: '18px', fontStyle: 'bold', resolution: 3 });
+        this.descText = scene.add.text(12, 38, '', { fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#dddddd', wordWrap: { width: 240 }, lineSpacing: 3, resolution: 3 });
+        this.negativeText = scene.add.text(12, 38, '', { fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#ff4444', wordWrap: { width: 240 }, lineSpacing: 3, resolution: 3 });
 
         this.add([this.bg, this.titleText, this.descText, this.negativeText]);
         scene.add.existing(this);
@@ -55,73 +70,105 @@ export class Tooltip extends Phaser.GameObjects.Container {
 
     public show(config: any, x: number, y: number, stackCount: number = 1) {
         if (!config) return;
-        this.titleText.setText(config.name);
+        
+        try {
+            const tier = config.tier ?? config.Tier ?? 1;
+            this.titleText.setText(config.name ?? config.Name).setColor(UIHelpers.getTierColorStr(tier));
 
-        let posStr = `Tier: ${config.tier || 1}\n`;
-        let negStr = '';
+            let posStr = `[ Tier ${tier} ]\n`;
+            let negStr = '';
 
-        if (config.meleeDamage || config.rangedDamage || config.elementalDamage) {
-            if (config.meleeDamage) posStr += `🗡️ Base Melee: ${config.meleeDamage * stackCount}\n`;
-            if (config.rangedDamage) posStr += `🏹 Base Ranged: ${config.rangedDamage * stackCount}\n`;
-            if (config.elementalDamage) posStr += `🔥 Base Elemental: ${config.elementalDamage * stackCount}\n`;
+            const meleeDmg = config.meleeDamage ?? config.MeleeDamage;
+            const rangedDmg = config.rangedDamage ?? config.RangedDamage;
+            const elemDmg = config.elementalDamage ?? config.ElementalDamage;
+            const cooldown = config.cooldownSeconds ?? config.CooldownSeconds;
+            const range = config.range ?? config.Range;
+            const scaling = config.damageScaling ?? config.DamageScaling;
+            const mechanics = config.mechanics ?? config.Mechanics;
+            const statBonuses = config.statBonuses ?? config.StatBonuses;
+            const effectsAtWaveEnd = config.effectsAtWaveEnd ?? config.EffectsAtWaveEnd;
+            const dynamicModifiers = config.dynamicModifiers ?? config.DynamicModifiers;
+            const effectsOnPurchase = config.effectsOnPurchase ?? config.EffectsOnPurchase;
+            const traits = config.traits ?? config.Traits;
 
-            if (config.damageScaling) {
-                const scales = Object.entries(config.damageScaling).map(([k, v]) => `${(v as number) * 100}% of ${UIHelpers.getLabel(k)}`);
-                if (scales.length > 0) posStr += `📈 Scales with: ${scales.join(', ')}\n`;
+            if (meleeDmg || rangedDmg || elemDmg || cooldown || range) {
+                if (meleeDmg) posStr += `🗡️ Melee Dmg: ${meleeDmg * stackCount}\n`;
+                if (rangedDmg) posStr += `🏹 Ranged Dmg: ${rangedDmg * stackCount}\n`;
+                if (elemDmg) posStr += `🔥 Elem Dmg: ${elemDmg * stackCount}\n`;
+                if (cooldown) posStr += `⏱️ CD: ${cooldown}s\n`;
+                if (range) posStr += `📏 Range: ${range}\n`;
+                if (scaling) {
+                    const scales = Object.entries(scaling).map(([k, v]) => `${(v as number) * 100}% of ${UIHelpers.getStatInfo(k).n}`);
+                    if (scales.length > 0) posStr += `📈 Scales: ${scales.join(', ')}\n`;
+                }
             }
-            posStr += `⏱️ CD: ${config.cooldownSeconds}s\n`;
-            if (config.range) posStr += `📏 Range: ${config.range}\n`;
-        }
 
-        if (config.mechanics) Object.entries(config.mechanics).forEach(([k, v]) => posStr += `${UIHelpers.getLabel(k)}: ${UIHelpers.formatVal(k, (v as number) * stackCount)}\n`);
+            if (mechanics) {
+                Object.entries(mechanics).forEach(([k, v]) => {
+                    const info = UIHelpers.getStatInfo(k);
+                    posStr += `${info.e} ${info.n}: ${UIHelpers.formatVal(k, (v as number) * stackCount)}\n`;
+                });
+            }
 
-        if (config.statBonuses) {
-            Object.entries(config.statBonuses).forEach(([k, v]) => {
-                const num = (v as number) * stackCount;
-                if (num >= 0) posStr += `+${UIHelpers.formatVal(k, num)} ${UIHelpers.getLabel(k)}\n`;
-                else negStr += `${UIHelpers.formatVal(k, num)} ${UIHelpers.getLabel(k)}\n`;
+            if (statBonuses) {
+                Object.entries(statBonuses).forEach(([k, v]) => {
+                    const num = (v as number) * stackCount;
+                    const info = UIHelpers.getStatInfo(k);
+                    if (num > 0) posStr += `${info.e} ${info.n}: +${UIHelpers.formatVal(k, num)}\n`;
+                    else if (num < 0) negStr += `${info.e} ${info.n}: ${UIHelpers.formatVal(k, num)}\n`;
+                });
+            }
+
+            if (effectsAtWaveEnd) {
+                effectsAtWaveEnd.forEach((e: any) => {
+                    const statName = e.statName ?? e.StatName ?? "";
+                    const amount = (e.amount ?? e.Amount) * stackCount;
+                    const info = UIHelpers.getStatInfo(statName);
+                    const prefix = amount > 0 ? '+' : '';
+                    posStr += `🌊 Wave End: ${info.n} ${prefix}${UIHelpers.formatVal(statName, amount)}\n`;
+                });
+            }
+            
+            if (dynamicModifiers) {
+                dynamicModifiers.forEach((m: any) => {
+                    const targetStat = m.targetStat ?? m.TargetStat ?? "";
+                    const amount = m.amount ?? m.Amount;
+                    const conditionThreshold = m.conditionThreshold ?? m.ConditionThreshold;
+                    const info = UIHelpers.getStatInfo(targetStat);
+                    const prefix = amount > 0 ? '+' : '';
+                    posStr += `⚡ ${info.n}: ${prefix}${UIHelpers.formatVal(targetStat, amount)} / ${Math.round(conditionThreshold * 100)}% missing HP\n`;
+                });
+            }
+
+            if (effectsOnPurchase) effectsOnPurchase.forEach((e: string) => posStr += `🔹 Grants: ${e}\n`);
+            if (traits) traits.forEach((t: string) => {
+                if (t === "CannotHeal") negStr += `⚠️ Cannot Heal\n`;
+                else posStr += `🔹 ${t}\n`;
             });
+
+            this.descText.setText(posStr.trim());
+            this.negativeText.setText(negStr.trim());
+            this.negativeText.setY(this.descText.y + this.descText.displayHeight + (posStr ? 8 : 0));
+
+            const totalTextHeight = this.descText.displayHeight + (negStr ? this.negativeText.displayHeight + 8 : 0);
+            const bgHeight = Math.max(80, 45 + totalTextHeight + 15);
+
+            this.bg.clear();
+            this.bg.fillStyle(0x111317, 0.95);
+            this.bg.fillRoundedRect(0, 0, 260, bgHeight, 8);
+            this.bg.lineStyle(2, UIHelpers.getTierColorHex(tier), 1);
+            this.bg.strokeRoundedRect(0, 0, 260, bgHeight, 8);
+
+            let targetX = x + 15;
+            let targetY = y + 15;
+            if (targetX + 260 > this.scene.scale.width) targetX = x - 265;
+            if (targetY + bgHeight > this.scene.scale.height) targetY = y - bgHeight - 5;
+
+            this.setPosition(targetX, targetY);
+            this.setVisible(true);
+        } catch (err) {
+            console.error("Safely caught a Tooltip formatting error:", err);
         }
-
-        if (config.effectsAtWaveEnd) {
-            config.effectsAtWaveEnd.forEach((e: any) => {
-                const isPct = e.statName.toLowerCase().includes('percent') || e.statName === 'lifeSteal' || e.statName === 'dodge';
-                const val = e.amount * stackCount;
-                const valStr = isPct ? `${Math.round(val * 100)}%` : `${val}`;
-                const prefix = val > 0 ? '+' : '';
-                posStr += `${prefix}${valStr} ${UIHelpers.getLabel(e.statName)} at wave end\n`;
-            });
-        }
-
-        if (config.dynamicModifiers) {
-            config.dynamicModifiers.forEach((m: any) => {
-                const isPct = m.targetStat.toLowerCase().includes('percent') || m.targetStat === 'lifeSteal' || m.targetStat === 'dodge';
-                const valStr = isPct ? `${Math.round(m.amount * 100)}%` : `${m.amount}`;
-                const prefix = m.amount > 0 ? '+' : '';
-                posStr += `${prefix}${valStr} ${UIHelpers.getLabel(m.targetStat)} per ${Math.round(m.conditionThreshold * 100)}% ${m.conditionType.replace('MissingHealthPercent', 'missing HP')}\n`;
-            });
-        }
-
-        if (config.effectsOnPurchase) config.effectsOnPurchase.forEach((e: string) => posStr += `🔹 ${e}\n`);
-        if (config.traits) config.traits.forEach((t: string) => {
-            if (t === "CannotHeal") negStr += `(You can't heal in any way)\n`;
-            else posStr += `🔹 ${t}\n`;
-        });
-
-        this.descText.setText(posStr.trim());
-        this.negativeText.setText(negStr.trim());
-        this.negativeText.setY(this.descText.y + this.descText.displayHeight + (posStr ? 5 : 0));
-
-        const totalTextHeight = this.descText.displayHeight + (negStr ? this.negativeText.displayHeight + 5 : 0);
-        this.bg.height = Math.max(80, 40 + totalTextHeight + 10);
-
-        let targetX = x + 15;
-        let targetY = y + 15;
-        if (targetX + this.bg.width > this.scene.scale.width) targetX = x - this.bg.width - 5;
-        if (targetY + this.bg.height > this.scene.scale.height) targetY = y - this.bg.height - 5;
-
-        this.setPosition(targetX, targetY);
-        this.setVisible(true);
     }
 
     public hide() { this.setVisible(false); }
@@ -136,10 +183,15 @@ export class StatDisplay extends Phaser.GameObjects.Container {
 
     constructor(scene: Phaser.Scene, x: number, y: number) {
         super(scene, x, y);
-        const bg = scene.add.rectangle(0, 0, 240, 560, 0x1a1a1a, 0.95).setOrigin(0, 0).setStrokeStyle(2, 0x555555);
-        const title = scene.add.text(120, 15, 'Stats', { fontFamily: UIHelpers.FONT, fontSize: '26px', color: '#ffffff', fontStyle: 'bold', resolution: 3 }).setOrigin(0.5, 0);
+        
+        const bg = scene.add.graphics();
+        bg.fillStyle(0x161920, 0.95);
+        bg.fillRoundedRect(0, 0, 240, 560, 12);
+        bg.lineStyle(2, 0x3a4454, 1);
+        bg.strokeRoundedRect(0, 0, 240, 560, 12);
 
-        this.levelText = scene.add.text(120, 45, 'Level: 1', { fontFamily: UIHelpers.FONT, fontSize: '18px', color: '#ffd700', fontStyle: 'bold', resolution: 3 }).setOrigin(0.5, 0);
+        const title = scene.add.text(120, 15, 'Character Stats', { fontFamily: UIHelpers.FONT, fontSize: '22px', color: '#ffffff', fontStyle: 'bold', resolution: 3 }).setOrigin(0.5, 0);
+        this.levelText = scene.add.text(120, 45, 'Level: 1', { fontFamily: UIHelpers.FONT, fontSize: '16px', color: '#ffb300', fontStyle: 'bold', resolution: 3 }).setOrigin(0.5, 0);
 
         this.add([bg, title, this.levelText]);
         scene.add.existing(this);
@@ -153,8 +205,9 @@ export class StatDisplay extends Phaser.GameObjects.Container {
         if (this.statTexts.size === 0) {
             let index = 0;
             Object.keys(statsPayload).forEach(key => {
-                const labelText = this.scene.add.text(15, 80 + (index * 24), UIHelpers.getLabel(key), { fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#aaaaaa', resolution: 3 });
-                const valueText = this.scene.add.text(220, 80 + (index * 24), '0', { fontFamily: UIHelpers.FONT, fontSize: '14px', color: '#00ff00', fontStyle: 'bold', resolution: 3 }).setOrigin(1, 0);
+                const info = UIHelpers.getStatInfo(key);
+                const labelText = this.scene.add.text(15, 85 + (index * 24), `${info.e} ${info.n}`, { fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#aaaaaa', resolution: 3 });
+                const valueText = this.scene.add.text(220, 85 + (index * 24), '0', { fontFamily: UIHelpers.FONT, fontSize: '14px', color: '#ffffff', fontStyle: 'bold', resolution: 3 }).setOrigin(1, 0);
                 this.add([labelText, valueText]);
                 this.statTexts.set(key, valueText);
                 index++;
@@ -163,7 +216,14 @@ export class StatDisplay extends Phaser.GameObjects.Container {
 
         Object.entries(statsPayload).forEach(([key, val]) => {
             if (this.statTexts.has(key)) {
-                this.statTexts.get(key)!.setText(UIHelpers.formatVal(key, val as number));
+                const textObj = this.statTexts.get(key)!;
+                const numVal = val as number;
+                
+                textObj.setText(UIHelpers.formatVal(key, numVal));
+                
+                if (numVal > 0) textObj.setColor('#00ff00');
+                else if (numVal < 0) textObj.setColor('#ff4444');
+                else textObj.setColor('#ffffff');
             }
         });
     }
@@ -182,11 +242,11 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
         this.tooltip = tooltip;
 
         this.itemGrid = scene.add.container(0, 0);
-        const itemTitle = scene.add.text(0, -25, 'Items', { fontFamily: UIHelpers.FONT, fontSize: '18px', color: '#ffffff', fontStyle: 'bold', resolution: 3 });
+        const itemTitle = scene.add.text(0, -25, 'Items', { fontFamily: UIHelpers.FONT, fontSize: '16px', color: '#a0abbc', fontStyle: 'bold', resolution: 3 });
         this.itemGrid.add(itemTitle);
 
         this.weaponGrid = scene.add.container(320, 0);
-        const weaponTitle = scene.add.text(0, -25, 'Weapons', { fontFamily: UIHelpers.FONT, fontSize: '18px', color: '#ffffff', fontStyle: 'bold', resolution: 3 });
+        const weaponTitle = scene.add.text(0, -25, 'Weapons', { fontFamily: UIHelpers.FONT, fontSize: '16px', color: '#a0abbc', fontStyle: 'bold', resolution: 3 });
         this.weaponGrid.add(weaponTitle);
 
         this.add([this.itemGrid, this.weaponGrid]);
@@ -194,8 +254,6 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
     }
 
     public updateLayout(availableWidth: number) {
-        // Push the weapon grid to the right edge.
-        // Shift it UP by 80 pixels so its bottom row perfectly aligns with the Items row!
         this.weaponGrid.setPosition(availableWidth - 180, -80);
     }
 
@@ -203,10 +261,13 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
         this.itemGrid.list.filter(child => child.type !== 'Text').forEach(c => c.destroy());
         this.weaponGrid.list.filter(child => child.type !== 'Text').forEach(c => c.destroy());
 
-        // --- 1. ITEMS ROW ---
         for (let i = 0; i < 5; i++) {
-            const slotX = i * 80; // Spread them out more
-            const slotBg = this.scene.add.rectangle(slotX, 0, 70, 70, 0x111111).setStrokeStyle(2, 0x555555).setOrigin(0, 0);
+            const slotX = i * 75; 
+            const slotBg = this.scene.add.graphics();
+            slotBg.fillStyle(0x161920, 1);
+            slotBg.fillRoundedRect(slotX, 0, 65, 65, 8);
+            slotBg.lineStyle(2, 0x3a4454, 1);
+            slotBg.strokeRoundedRect(slotX, 0, 65, 65, 8);
             this.itemGrid.add(slotBg);
 
             if (items && items[i]) {
@@ -214,41 +275,48 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                 let config = atlasConfigs?.items ? atlasConfigs.items[itemData.configId] : null;
                 const stackCount = itemData.count || 1;
 
-                let icon;
-                if (config && config.textureKey && config.textureKey.trim() !== "" && this.scene.textures.exists(config.textureKey)) {
-                    icon = this.scene.add.sprite(slotX + 35, 35, config.textureKey); // Center at 35, 35
-                    if (config.iconFrame !== undefined) icon.setFrame(config.iconFrame);
+                if (config) {
+                    slotBg.lineStyle(2, UIHelpers.getTierColorHex(config.tier || config.Tier || 1), 1);
+                    slotBg.strokeRoundedRect(slotX, 0, 65, 65, 8);
+                }
 
-                    // Force the image to elegantly fill 60 pixels of the 70 pixel box
-                    const scaleToFit = Math.min(60 / icon.width, 60 / icon.height);
-                    icon.setScale(scaleToFit);
+                let icon;
+                if (config && (config.textureKey || config.TextureKey) && this.scene.textures.exists(config.textureKey || config.TextureKey)) {
+                    icon = this.scene.add.sprite(slotX + 32.5, 32.5, config.textureKey || config.TextureKey);
+                    const frame = config.iconFrame ?? config.IconFrame;
+                    if (frame !== undefined) icon.setFrame(frame);
+                    icon.setScale(Math.min(50 / icon.width, 50 / icon.height));
                 } else {
-                    icon = this.scene.add.rectangle(slotX + 35, 35, 40, 40, 0x000000).setStrokeStyle(2, 0x00ff00);
+                    icon = this.scene.add.rectangle(slotX + 32.5, 32.5, 40, 40, 0x000000).setStrokeStyle(2, 0x00ff00);
                 }
                 this.itemGrid.add(icon);
 
+                const hitbox = this.scene.add.rectangle(slotX + 32.5, 32.5, 65, 65, 0x000000, 0).setInteractive({ useHandCursor: true });
                 if (config) {
-                    slotBg.setInteractive({ useHandCursor: true });
-                    slotBg.on('pointerover', (p: Phaser.Input.Pointer) => this.tooltip.show(config, p.x, p.y, stackCount));
-                    slotBg.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip.setPosition(p.x + 15, p.y + 15));
-                    slotBg.on('pointerout', () => this.tooltip.hide());
+                    hitbox.on('pointerover', (p: Phaser.Input.Pointer) => this.tooltip.show(config, p.x, p.y, stackCount));
+                    hitbox.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip.setPosition(p.x + 15, p.y + 15));
+                    hitbox.on('pointerout', () => this.tooltip.hide());
                 }
+                this.itemGrid.add(hitbox);
 
                 if (stackCount > 1) {
-                    const countTxt = this.scene.add.text(slotX + 65, 65, `x${stackCount}`, { fontFamily: UIHelpers.FONT, fontSize: '14px', color: '#fff', stroke: '#000', strokeThickness: 3, resolution: 3 }).setOrigin(1, 1);
+                    const countTxt = this.scene.add.text(slotX + 60, 60, `x${stackCount}`, { fontFamily: UIHelpers.FONT, fontSize: '14px', color: '#fff', stroke: '#000', strokeThickness: 3, resolution: 3 }).setOrigin(1, 1);
                     this.itemGrid.add(countTxt);
                 }
             }
         }
 
-        // --- 2. WEAPONS 2x2 GRID ---
         for (let i = 0; i < 4; i++) {
             const col = i % 2;
             const row = Math.floor(i / 2);
-            const slotX = col * 80;
-            const slotY = row * 80;
+            const slotX = col * 75;
+            const slotY = row * 75;
 
-            const slotBg = this.scene.add.rectangle(slotX, slotY, 70, 70, 0x111111).setStrokeStyle(2, 0x555555).setOrigin(0, 0);
+            const slotBg = this.scene.add.graphics();
+            slotBg.fillStyle(0x161920, 1);
+            slotBg.fillRoundedRect(slotX, slotY, 65, 65, 8);
+            slotBg.lineStyle(2, 0x3a4454, 1);
+            slotBg.strokeRoundedRect(slotX, slotY, 65, 65, 8);
             this.weaponGrid.add(slotBg);
 
             if (weapons && weapons[i]) {
@@ -256,27 +324,32 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                 let config = atlasConfigs?.weapons ? atlasConfigs.weapons[weaponData.configId] : null;
                 const wLevel = weaponData.level || 1;
 
-                let icon;
-                if (config && config.textureKey && config.textureKey.trim() !== "" && this.scene.textures.exists(config.textureKey)) {
-                    icon = this.scene.add.sprite(slotX + 35, slotY + 35, config.textureKey); // Center at 35, 35
-                    if (config.iconFrame !== undefined) icon.setFrame(config.iconFrame);
+                if (config) {
+                    slotBg.lineStyle(2, UIHelpers.getTierColorHex(wLevel), 1);
+                    slotBg.strokeRoundedRect(slotX, slotY, 65, 65, 8);
+                }
 
-                    // Force the image to elegantly fill 60 pixels of the 70 pixel box
-                    const scaleToFit = Math.min(60 / icon.width, 60 / icon.height);
-                    icon.setScale(scaleToFit);
+                let icon;
+                if (config && (config.textureKey || config.TextureKey) && this.scene.textures.exists(config.textureKey || config.TextureKey)) {
+                    icon = this.scene.add.sprite(slotX + 32.5, slotY + 32.5, config.textureKey || config.TextureKey);
+                    const frame = config.iconFrame ?? config.IconFrame;
+                    if (frame !== undefined) icon.setFrame(frame);
+                    icon.setScale(Math.min(50 / icon.width, 50 / icon.height));
                 } else {
-                    icon = this.scene.add.rectangle(slotX + 35, slotY + 35, 40, 40, 0x000000).setStrokeStyle(2, 0x00ff00);
+                    icon = this.scene.add.rectangle(slotX + 32.5, slotY + 32.5, 40, 40, 0x000000).setStrokeStyle(2, 0x00ff00);
                 }
                 this.weaponGrid.add(icon);
 
+                const hitbox = this.scene.add.rectangle(slotX + 32.5, slotY + 32.5, 65, 65, 0x000000, 0).setInteractive({ useHandCursor: true });
                 if (config) {
-                    slotBg.setInteractive({ useHandCursor: true });
-                    slotBg.on('pointerover', (p: Phaser.Input.Pointer) => this.tooltip.show(config, p.x, p.y, wLevel));
-                    slotBg.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip.setPosition(p.x + 15, p.y + 15));
-                    slotBg.on('pointerout', () => this.tooltip.hide());
+                    const toolTipConfig = { ...config, tier: wLevel }; 
+                    hitbox.on('pointerover', (p: Phaser.Input.Pointer) => this.tooltip.show(toolTipConfig, p.x, p.y, 1));
+                    hitbox.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip.setPosition(p.x + 15, p.y + 15));
+                    hitbox.on('pointerout', () => this.tooltip.hide());
                 }
+                this.weaponGrid.add(hitbox);
 
-                const lvlTxt = this.scene.add.text(slotX + 65, slotY + 65, `Lv.${wLevel}`, { fontFamily: UIHelpers.FONT, fontSize: '14px', color: '#00ff00', stroke: '#000', strokeThickness: 2, resolution: 3 }).setOrigin(1, 1);
+                const lvlTxt = this.scene.add.text(slotX + 60, slotY + 60, `Lv.${wLevel}`, { fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#ffffff', stroke: '#000', strokeThickness: 3, resolution: 3 }).setOrigin(1, 1);
                 this.weaponGrid.add(lvlTxt);
             }
         }
@@ -301,21 +374,27 @@ export class ShopUI extends Phaser.GameObjects.Container {
         super(scene, 0, 0);
         this.connection = connection;
 
-        const overlay = scene.add.rectangle(0, 0, scene.scale.width, scene.scale.height, 0x000000, 0.90).setOrigin(0, 0);
+        const overlay = scene.add.rectangle(0, 0, scene.scale.width, scene.scale.height, 0x07090c, 0.90).setOrigin(0, 0).setInteractive();
         this.add(overlay);
 
-        this.headerText = scene.add.text(0, 0, 'Shop (Wave 1)', { fontFamily: UIHelpers.FONT, fontSize: '32px', color: '#ffffff', fontStyle: 'bold', resolution: 3 });
+        this.headerText = scene.add.text(0, 0, 'Shop', { fontFamily: UIHelpers.FONT, fontSize: '32px', color: '#ffffff', fontStyle: 'bold', resolution: 3 });
         this.add(this.headerText);
 
         this.rerollButtonContainer = scene.add.container(0, 0);
-        const rerollBg = scene.add.rectangle(0, 0, 160, 45, 0x222222).setStrokeStyle(2, 0xffffff);
-        this.rerollText = scene.add.text(0, 0, 'REROLL - 💰 2', { fontFamily: UIHelpers.FONT, fontSize: '18px', color: '#ffffff', fontStyle: 'bold', resolution: 3 }).setOrigin(0.5);
+        const rerollBg = scene.add.graphics();
+        rerollBg.fillStyle(0x1a1e24, 1);
+        rerollBg.fillRoundedRect(-80, -22.5, 160, 45, 8);
+        rerollBg.lineStyle(2, 0xd84315, 1); 
+        rerollBg.strokeRoundedRect(-80, -22.5, 160, 45, 8);
+        
+        this.rerollText = scene.add.text(0, 0, 'REROLL 💰 2', { fontFamily: UIHelpers.FONT, fontSize: '16px', color: '#ffffff', fontStyle: 'bold', resolution: 3 }).setOrigin(0.5);
 
-        rerollBg.setInteractive({ useHandCursor: true });
-        rerollBg.on('pointerdown', () => this.connection.invoke("RerollShop").catch((err: any) => console.error(err)));
-        rerollBg.on('pointerover', () => rerollBg.setFillStyle(0x444444));
-        rerollBg.on('pointerout', () => rerollBg.setFillStyle(0x222222));
-        this.rerollButtonContainer.add([rerollBg, this.rerollText]);
+        const rerollHitbox = scene.add.rectangle(0, 0, 160, 45, 0x000000, 0).setInteractive({ useHandCursor: true });
+        rerollHitbox.on('pointerdown', () => this.connection.invoke("RerollShop").catch((err: any) => console.error(err)));
+        rerollHitbox.on('pointerover', () => { rerollBg.clear(); rerollBg.fillStyle(0xd84315, 1); rerollBg.fillRoundedRect(-80, -22.5, 160, 45, 8); });
+        rerollHitbox.on('pointerout', () => { rerollBg.clear(); rerollBg.fillStyle(0x1a1e24, 1); rerollBg.fillRoundedRect(-80, -22.5, 160, 45, 8); rerollBg.lineStyle(2, 0xd84315, 1); rerollBg.strokeRoundedRect(-80, -22.5, 160, 45, 8);});
+        
+        this.rerollButtonContainer.add([rerollBg, this.rerollText, rerollHitbox]);
         this.add(this.rerollButtonContainer);
 
         this.tooltip = new Tooltip(scene);
@@ -336,6 +415,14 @@ export class ShopUI extends Phaser.GameObjects.Container {
         });
     }
 
+    // >>> THE FIX: Ensure tooltip is hidden if shop is forced closed, preventing ghost hitboxes! <<<
+    public setVisible(value: boolean): this {
+        if (!value && this.tooltip) {
+            this.tooltip.hide();
+        }
+        return super.setVisible(value);
+    }
+
     private updateLayout(width: number, height: number) {
         let scale = Math.min(width / 1280, height / 720);
         scale = Phaser.Math.Clamp(scale, 0.5, 3.0);
@@ -345,40 +432,29 @@ export class ShopUI extends Phaser.GameObjects.Container {
         this.statDisplay.setScale(scale);
         this.inventoryDisplay.setScale(scale);
 
-        // --- STATS PANEL ---
         const statsWidth = 240 * scale;
         this.statDisplay.setPosition(width - statsWidth, Math.max(20, (height - (560 * scale)) / 2));
-
-        // --- INVENTORY BOTTOM PIN ---
-        // Push the inventory down to the absolute bottom edge of the screen
         this.inventoryDisplay.setPosition(40 * scale, height - (90 * scale));
 
         const availableWidth = width - statsWidth - (40 * scale);
         this.inventoryDisplay.updateLayout(availableWidth / scale);
 
-        // --- SHOP CARDS SAFE ZONE ---
         const rawCardsWidth = 3 * 280;
-        const rawCardsHeight = 460;
-
-        // Protect the top (Header) and bottom (Weapons Grid) zones from being overlapped
+        const rawCardsHeight = 480;
         const headerBottom = 100 * scale;
         const inventoryTop = height - (210 * scale);
         const availableHeightForCards = inventoryTop - headerBottom;
 
-        // Force the cards to shrink if the screen is too short!
         let cardScale = Math.min(scale, availableWidth / rawCardsWidth, availableHeightForCards / rawCardsHeight);
 
         this.shopCardsContainer.setScale(cardScale);
         this.levelUpContainer.setScale(cardScale);
 
-        // --- POSITIONING ---
         this.headerText.setPosition(40 * scale, 50 * scale).setOrigin(0, 0.5);
         this.rerollButtonContainer.setPosition(availableWidth / 2, 50 * scale);
 
         const cardsActualWidth = rawCardsWidth * cardScale;
         const centerX = (availableWidth - cardsActualWidth) / 2;
-
-        // Center the cards perfectly inside the vertical Safe Zone!
         const centerY = headerBottom + ((availableHeightForCards - (rawCardsHeight * cardScale)) / 2);
 
         this.shopCardsContainer.setPosition(centerX + (120 * cardScale), centerY);
@@ -388,157 +464,251 @@ export class ShopUI extends Phaser.GameObjects.Container {
     public updateUIData(uiData: any, atlasConfigs: any) {
         if (!uiData) return;
 
-        this.statDisplay.updateStats(uiData.stats, uiData.level || 1);
-        this.inventoryDisplay.updateInventory(uiData.weapons, uiData.ownedItems, atlasConfigs);
+        try {
+            this.statDisplay.updateStats(uiData.stats, uiData.level || 1);
+            this.inventoryDisplay.updateInventory(uiData.weapons, uiData.ownedItems, atlasConfigs);
 
-        this.shopCardsContainer.removeAll(true);
-        this.levelUpContainer.removeAll(true);
+            this.shopCardsContainer.removeAll(true);
+            this.levelUpContainer.removeAll(true);
+            
+            // Just in case a tooltip was hovering before the wipe
+            this.tooltip.hide();
 
-        if (uiData.pendingLevelUps > 0) {
-            this.shopCardsContainer.setVisible(false);
-            this.rerollButtonContainer.setVisible(false);
-            this.levelUpContainer.setVisible(true);
+            // =========================================================
+            // LEVEL UP CARDS RENDERER
+            // =========================================================
+            if (uiData.pendingLevelUps > 0) {
+                this.shopCardsContainer.setVisible(false);
+                this.rerollButtonContainer.setVisible(false);
+                this.levelUpContainer.setVisible(true);
 
-            this.headerText.setText(`LEVEL UP! (x${uiData.pendingLevelUps})`);
-            this.headerText.setColor('#00ff00');
+                this.headerText.setText(`LEVEL UP! (x${uiData.pendingLevelUps})`);
+                this.headerText.setColor('#ffb300');
 
-            uiData.levelUpChoices.forEach((card: any, index: number) => {
-                const cardX = index * 280;
-                const cardBg = this.scene.add.rectangle(cardX, 0, 240, 320, 0x1a1a1a).setOrigin(0, 0).setStrokeStyle(3, 0xffd700);
-                cardBg.setInteractive({ useHandCursor: true });
-                cardBg.on('pointerdown', () => this.connection.invoke("SelectLevelUpStat", card.id).catch((err: any) => console.error(err)));
-                cardBg.on('pointerover', () => cardBg.setStrokeStyle(3, 0xffffff));
-                cardBg.on('pointerout', () => cardBg.setStrokeStyle(3, 0xffd700));
+                uiData.levelUpChoices.forEach((card: any, index: number) => {
+                    const cardX = index * 280;
+                    
+                    const bgGraphics = this.scene.add.graphics();
+                    bgGraphics.fillStyle(0x161920, 1);
+                    bgGraphics.fillRoundedRect(cardX, 0, 240, 320, 12);
+                    bgGraphics.lineStyle(2, UIHelpers.getTierColorHex(card.tier || card.Tier || 1), 1);
+                    bgGraphics.strokeRoundedRect(cardX, 0, 240, 320, 12);
 
-                const nameText = this.scene.add.text(cardX + 120, 50, card.name, { fontFamily: UIHelpers.FONT, fontSize: '24px', color: '#fff', fontStyle: 'bold', resolution: 3 }).setOrigin(0.5);
-                const tierText = this.scene.add.text(cardX + 120, 80, `Tier ${card.tier}`, { fontFamily: UIHelpers.FONT, fontSize: '16px', color: '#aaa', resolution: 3 }).setOrigin(0.5);
+                    const hitbox = this.scene.add.rectangle(cardX + 120, 160, 240, 320, 0x000000, 0).setInteractive({ useHandCursor: true });
+                    hitbox.on('pointerdown', () => this.connection.invoke("SelectLevelUpStat", card.id || card.Id).catch((err: any) => console.error(err)));
+                    hitbox.on('pointerover', () => { bgGraphics.lineStyle(4, 0xffffff, 1); bgGraphics.strokeRoundedRect(cardX, 0, 240, 320, 12); });
+                    hitbox.on('pointerout', () => { bgGraphics.lineStyle(2, UIHelpers.getTierColorHex(card.tier || card.Tier || 1), 1); bgGraphics.strokeRoundedRect(cardX, 0, 240, 320, 12); });
 
-                const isPct = card.statName.toLowerCase().includes('percent') || card.statName === 'lifeSteal' || card.statName === 'dodge';
-                const valStr = isPct ? `+${Math.round(card.amount * 100)}%` : `+${card.amount}`;
+                    const nameText = this.scene.add.text(cardX + 120, 50, card.name || card.Name, { fontFamily: UIHelpers.FONT, fontSize: '22px', color: '#fff', fontStyle: 'bold', resolution: 3 }).setOrigin(0.5);
+                    const tierText = this.scene.add.text(cardX + 120, 80, `Tier ${card.tier || card.Tier || 1}`, { fontFamily: UIHelpers.FONT, fontSize: '14px', color: UIHelpers.getTierColorStr(card.tier || card.Tier || 1), resolution: 3 }).setOrigin(0.5);
 
-                const statText = this.scene.add.text(cardX + 120, 160, `${valStr}\n${UIHelpers.getLabel(card.statName)}`, { fontFamily: UIHelpers.FONT, fontSize: '22px', color: '#00ff00', fontStyle: 'bold', align: 'center', resolution: 3 }).setOrigin(0.5);
+                    const statName = card.statName || card.StatName || "";
+                    const amount = card.amount ?? card.Amount;
 
-                this.levelUpContainer.add([cardBg, nameText, tierText, statText]);
-            });
-            return;
-        }
+                    const info = UIHelpers.getStatInfo(statName);
+                    const isPct = statName.toLowerCase().includes('percent') || statName === 'lifeSteal' || statName === 'dodge';
+                    const valStr = isPct ? `+${Math.round(amount * 100)}%` : `+${amount}`;
 
-        this.levelUpContainer.setVisible(false);
-        this.shopCardsContainer.setVisible(true);
-        this.rerollButtonContainer.setVisible(true);
+                    const statText = this.scene.add.text(cardX + 120, 160, `${info.e} ${info.n}: ${valStr}`, { fontFamily: UIHelpers.FONT, fontSize: '20px', color: '#00ff00', fontStyle: 'bold', align: 'center', resolution: 3 }).setOrigin(0.5);
 
-        this.headerText.setText(`Shop (Wave ${uiData.currentWave})`);
-        this.headerText.setColor('#ffffff');
-        const cost = uiData.currentRerollCost || 2;
-        this.rerollText.setText(`REROLL - 💰 ${cost}`);
-        this.rerollText.setColor(uiData.gold >= cost ? '#ffffff' : '#ff0000');
-
-        if (!uiData.currentShop) return;
-
-        uiData.currentShop.forEach((item: any, index: number) => {
-            const cardX = index * 280;
-            const cardBg = this.scene.add.rectangle(cardX, 0, 240, 460, 0x1a1a1a).setOrigin(0, 0).setStrokeStyle(3, item.isLocked ? 0xffd700 : 0x555555);
-            cardBg.setInteractive({ useHandCursor: true });
-
-            this.shopCardsContainer.add(cardBg);
-
-            let config = undefined;
-            let isWeapon = false;
-
-            if (atlasConfigs?.items && atlasConfigs.items[item.configId]) {
-                config = atlasConfigs.items[item.configId];
-            } else if (atlasConfigs?.weapons && atlasConfigs.weapons[item.configId]) {
-                config = atlasConfigs.weapons[item.configId];
-                isWeapon = true;
-            }
-
-            if (config && config.textureKey && config.textureKey.trim() !== "" && this.scene.textures.exists(config.textureKey)) {
-                const icon = this.scene.add.sprite(cardX + 120, 65, config.textureKey);
-                if (config.iconFrame !== undefined) icon.setFrame(config.iconFrame);
-
-                // >>> FIX: Force the image to fit inside a 64x64 box! <<<
-                const scaleToFit = Math.min(64 / icon.width, 64 / icon.height);
-                icon.setScale(scaleToFit);
-
-                this.shopCardsContainer.add(icon);
-            } else {
-                const icon = this.scene.add.rectangle(cardX + 120, 65, 48, 48, 0x000000).setStrokeStyle(2, 0x00ff00);
-                this.shopCardsContainer.add(icon);
-            }
-
-            const nameText = this.scene.add.text(cardX + 120, 115, item.name || "Unknown", { fontFamily: UIHelpers.FONT, fontSize: '20px', color: '#fff', fontStyle: 'bold', resolution: 3 }).setOrigin(0.5);
-            const typeStr = isWeapon ? "Weapon" : "Item";
-            const typeColor = isWeapon ? '#ffaaaa' : '#aaaaff';
-            const typeText = this.scene.add.text(cardX + 120, 135, typeStr, { fontFamily: UIHelpers.FONT, fontSize: '14px', color: typeColor, fontStyle: 'italic', resolution: 3 }).setOrigin(0.5);
-            const divider = this.scene.add.rectangle(cardX + 120, 150, 200, 2, 0x333333).setOrigin(0.5);
-
-            let posStr = `Tier: ${config?.tier || 1}\n`;
-            let negStr = '';
-
-            if (config) {
-                if (config.meleeDamage || config.rangedDamage || config.elementalDamage) {
-                    if (config.meleeDamage) posStr += `🗡️ Base Melee: ${config.meleeDamage}\n`;
-                    if (config.rangedDamage) posStr += `🏹 Base Ranged: ${config.rangedDamage}\n`;
-                    if (config.elementalDamage) posStr += `🔥 Base Elemental: ${config.elementalDamage}\n`;
-
-                    if (config.damageScaling) {
-                        const scales = Object.entries(config.damageScaling).map(([k, v]) => `${(v as number) * 100}% of ${UIHelpers.getLabel(k)}`);
-                        if (scales.length > 0) posStr += `📈 Scales with: ${scales.join(', ')}\n`;
-                    }
-                    posStr += `⏱️ CD: ${config.cooldownSeconds}s\n`;
-                    if (config.range) posStr += `📏 Range: ${config.range}\n`;
-                }
-
-                if (config.mechanics) Object.entries(config.mechanics).forEach(([k, v]) => posStr += `${UIHelpers.getLabel(k)}: ${UIHelpers.formatVal(k, v as number)}\n`);
-
-                if (config.statBonuses) {
-                    Object.entries(config.statBonuses).forEach(([k, v]) => {
-                        const num = v as number;
-                        if (num >= 0) posStr += `+${UIHelpers.formatVal(k, num)} ${UIHelpers.getLabel(k)}\n`;
-                        else negStr += `${UIHelpers.formatVal(k, num)} ${UIHelpers.getLabel(k)}\n`;
-                    });
-                }
-                if (config.effectsAtWaveEnd) {
-                    config.effectsAtWaveEnd.forEach((e: any) => {
-                        const isPct = e.statName.toLowerCase().includes('percent') || e.statName === 'lifeSteal' || e.statName === 'dodge';
-                        const valStr = isPct ? `${Math.round(e.amount * 100)}%` : `${e.amount}`;
-                        const prefix = e.amount > 0 ? '+' : '';
-                        posStr += `${prefix}${valStr} ${UIHelpers.getLabel(e.statName)} at wave end\n`;
-                    });
-                }
-                if (config.dynamicModifiers) {
-                    config.dynamicModifiers.forEach((m: any) => {
-                        const isPct = m.targetStat.toLowerCase().includes('percent') || m.targetStat === 'lifeSteal' || m.targetStat === 'dodge';
-                        const valStr = isPct ? `${Math.round(m.amount * 100)}%` : `${m.amount}`;
-                        const prefix = m.amount > 0 ? '+' : '';
-                        posStr += `${prefix}${valStr} ${UIHelpers.getLabel(m.targetStat)} per ${Math.round(m.conditionThreshold * 100)}% ${m.conditionType.replace('MissingHealthPercent', 'missing HP')}\n`;
-                    });
-                }
-                if (config.effectsOnPurchase) config.effectsOnPurchase.forEach((e: string) => posStr += `🔹 ${e}\n`);
-                if (config.traits) config.traits.forEach((t: string) => {
-                    if (t === "CannotHeal") negStr += `(You can't heal in any way)\n`;
-                    else posStr += `🔹 ${t}\n`;
+                    this.levelUpContainer.add([bgGraphics, hitbox, nameText, tierText, statText]);
                 });
+                return;
             }
 
-            const posTextObj = this.scene.add.text(cardX + 15, 165, posStr.trim(), { fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#bbbbbb', wordWrap: { width: 210 }, lineSpacing: 4, resolution: 3 }).setOrigin(0, 0);
-            const negTextObj = this.scene.add.text(cardX + 15, 165 + posTextObj.height + 6, negStr.trim(), { fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#ff4444', wordWrap: { width: 210 }, lineSpacing: 4, resolution: 3 }).setOrigin(0, 0);
+            // =========================================================
+            // SHOP CARDS RENDERER
+            // =========================================================
+            this.levelUpContainer.setVisible(false);
+            this.shopCardsContainer.setVisible(true);
+            this.rerollButtonContainer.setVisible(true);
 
-            const buyBtnBg = this.scene.add.rectangle(cardX + 120, 380, 160, 45, 0x44aa44).setOrigin(0.5);
-            const buyText = this.scene.add.text(cardX + 120, 380, `BUY - 💰 ${item.price}`, { fontFamily: UIHelpers.FONT, fontSize: '18px', fontStyle: 'bold', resolution: 3 }).setOrigin(0.5);
+            this.headerText.setText(`Shop (Wave ${uiData.currentWave})`);
+            this.headerText.setColor('#ffffff');
+            const cost = uiData.currentRerollCost || 2;
+            this.rerollText.setText(`REROLL 💰 ${cost}`);
+            this.rerollText.setColor(uiData.gold >= cost ? '#ffffff' : '#ff4444');
 
-            buyBtnBg.setInteractive({ useHandCursor: true });
-            buyBtnBg.on('pointerdown', () => this.connection.invoke("BuyItem", item.configId).catch((err: any) => console.error(err)));
+            if (!uiData.currentShop) return;
 
-            const lockBtnBg = this.scene.add.rectangle(cardX + 120, 435, 100, 25, 0x333333).setOrigin(0.5).setStrokeStyle(1, 0x777777);
-            const lockText = this.scene.add.text(cardX + 120, 435, item.isLocked ? '🔒 LOCKED' : '🔓 Lock', { fontFamily: UIHelpers.FONT, fontSize: '13px', color: item.isLocked ? '#ffd700' : '#ffffff', resolution: 3 }).setOrigin(0.5);
-            lockBtnBg.setInteractive({ useHandCursor: true });
-            lockBtnBg.on('pointerdown', () => this.connection.invoke("ToggleLock", item.configId).catch((err: any) => console.error(err)));
+            uiData.currentShop.forEach((item: any, index: number) => {
+                const cardX = index * 280;
+                
+                let config = undefined;
+                let isWeapon = false;
 
-            cardBg.on('pointerover', () => cardBg.setStrokeStyle(3, 0xffffff));
-            cardBg.on('pointerout', () => cardBg.setStrokeStyle(3, item.isLocked ? 0xffd700 : 0x555555));
+                const configId = item.configId || item.ConfigId;
+                const isLocked = item.isLocked ?? item.IsLocked;
 
-            this.shopCardsContainer.add([divider, nameText, typeText, posTextObj, negTextObj, buyBtnBg, buyText, lockBtnBg, lockText]);
-        });
+                if (atlasConfigs?.items && atlasConfigs.items[configId]) {
+                    config = atlasConfigs.items[configId];
+                } else if (atlasConfigs?.weapons && atlasConfigs.weapons[configId]) {
+                    config = atlasConfigs.weapons[configId];
+                    isWeapon = true;
+                }
+
+                const tier = config?.tier || config?.Tier || 1;
+                const tierColor = isLocked ? 0x888888 : UIHelpers.getTierColorHex(tier);
+
+                const cardBg = this.scene.add.graphics();
+                cardBg.fillStyle(0x161920, 1);
+                cardBg.fillRoundedRect(cardX, 0, 240, 480, 12);
+                cardBg.lineStyle(2, tierColor, 1);
+                cardBg.strokeRoundedRect(cardX, 0, 240, 480, 12);
+                this.shopCardsContainer.add(cardBg);
+
+                const tex = config?.textureKey || config?.TextureKey;
+                if (tex && tex.trim() !== "" && this.scene.textures.exists(tex)) {
+                    const icon = this.scene.add.sprite(cardX + 120, 75, tex);
+                    const frame = config.iconFrame ?? config.IconFrame;
+                    if (frame !== undefined) icon.setFrame(frame);
+                    icon.setScale(Math.min(64 / icon.width, 64 / icon.height));
+                    this.shopCardsContainer.add(icon);
+                }
+
+                const nameText = this.scene.add.text(cardX + 120, 135, item.name || item.Name || "Unknown", { fontFamily: UIHelpers.FONT, fontSize: '18px', color: UIHelpers.getTierColorStr(tier), fontStyle: 'bold', resolution: 3 }).setOrigin(0.5);
+                const typeStr = isWeapon ? "Weapon" : "Item";
+                const typeText = this.scene.add.text(cardX + 120, 155, typeStr, { fontFamily: UIHelpers.FONT, fontSize: '12px', color: '#8892a0', fontStyle: 'italic', resolution: 3 }).setOrigin(0.5);
+                const divider = this.scene.add.rectangle(cardX + 120, 170, 200, 2, 0x3a4454).setOrigin(0.5);
+
+                let baseStatsStr = '';
+                let randomStatsStr = '';
+                let skillsStr = '';
+                let negStr = '';
+
+                if (config) {
+                    const meleeDmg = config.meleeDamage ?? config.MeleeDamage;
+                    const rangedDmg = config.rangedDamage ?? config.RangedDamage;
+                    const elemDmg = config.elementalDamage ?? config.ElementalDamage;
+                    const cooldown = config.cooldownSeconds ?? config.CooldownSeconds;
+
+                    if (meleeDmg) baseStatsStr += `🗡️ Melee Dmg: ${meleeDmg}\n`;
+                    if (rangedDmg) baseStatsStr += `🏹 Ranged Dmg: ${rangedDmg}\n`;
+                    if (elemDmg) baseStatsStr += `🔥 Elem Dmg: ${elemDmg}\n`;
+                    if (cooldown) baseStatsStr += `⏱️ Cooldown: ${cooldown}s\n`;
+
+                    const statBonuses = config.statBonuses ?? config.StatBonuses;
+                    if (statBonuses) {
+                        Object.entries(statBonuses).forEach(([k, v]) => {
+                            const num = v as number;
+                            const info = UIHelpers.getStatInfo(k);
+                            if (num > 0) baseStatsStr += `${info.e} ${info.n}: +${UIHelpers.formatVal(k, num)}\n`;
+                            else if (num < 0) negStr += `${info.e} ${info.n}: ${UIHelpers.formatVal(k, num)}\n`;
+                        });
+                    }
+
+                    const dynamicModifiers = config.dynamicModifiers ?? config.DynamicModifiers;
+                    if (dynamicModifiers) {
+                        dynamicModifiers.forEach((m: any) => {
+                            const targetStat = m.targetStat ?? m.TargetStat ?? "";
+                            const amount = m.amount ?? m.Amount;
+                            const conditionThreshold = m.conditionThreshold ?? m.ConditionThreshold;
+                            const info = UIHelpers.getStatInfo(targetStat);
+                            const prefix = amount > 0 ? '+' : '';
+                            baseStatsStr += `⚡ ${info.n}: ${prefix}${UIHelpers.formatVal(targetStat, amount)} / ${Math.round(conditionThreshold * 100)}% missing HP\n`;
+                        });
+                    }
+
+                    const effectsAtWaveEnd = config.effectsAtWaveEnd ?? config.EffectsAtWaveEnd;
+                    if (effectsAtWaveEnd) {
+                        effectsAtWaveEnd.forEach((e: any) => {
+                            const statName = e.statName ?? e.StatName ?? "";
+                            const amount = e.amount ?? e.Amount;
+                            const info = UIHelpers.getStatInfo(statName);
+                            const prefix = amount > 0 ? '+' : '';
+                            baseStatsStr += `🌊 Wave End: ${info.n} ${prefix}${UIHelpers.formatVal(statName, amount)}\n`;
+                        });
+                    }
+
+                    const effectsOnPurchase = config.effectsOnPurchase ?? config.EffectsOnPurchase;
+                    if (effectsOnPurchase) effectsOnPurchase.forEach((e: string) => baseStatsStr += `🔹 Grants: ${e}\n`);
+
+                    const traits = config.traits ?? config.Traits;
+                    if (traits) {
+                        traits.forEach((t: string) => {
+                            if (t === "CannotHeal") negStr += `⚠️ Cannot Heal\n`;
+                            else baseStatsStr += `🔹 ${t}\n`;
+                        });
+                    }
+                }
+
+                const rolledStats = item.rolledStats || item.RolledStats;
+                if (rolledStats && Object.keys(rolledStats).length > 0) {
+                    Object.entries(rolledStats).forEach(([k, v]) => {
+                        const num = v as number;
+                        const info = UIHelpers.getStatInfo(k);
+                        if (num > 0) randomStatsStr += `${info.e} ${info.n}: +${UIHelpers.formatVal(k, num)}\n`;
+                        else if (num < 0) negStr += `${info.e} ${info.n}: ${UIHelpers.formatVal(k, num)}\n`;
+                    });
+                }
+
+                const rolledSkills = item.weaponSkills || item.WeaponSkills;
+                if (rolledSkills && rolledSkills.length > 0) {
+                    rolledSkills.forEach((skillId: string) => {
+                        const s = (atlasConfigs?.skills || atlasConfigs?.Skills)?.[skillId];
+                        skillsStr += `✨ ${s ? (s.name || s.Name) : skillId}\n`;
+                    });
+                }
+
+                let finalPosStr = '';
+                if (baseStatsStr) finalPosStr += `[ 📊 Base Stats ]\n${baseStatsStr}`;
+                if (randomStatsStr) finalPosStr += `\n[ 🎲 Random Stats ]\n${randomStatsStr}`;
+                if (skillsStr) finalPosStr += `\n[ 🌟 Skills ]\n${skillsStr}`;
+
+                const posTextObj = this.scene.add.text(cardX + 15, 180, finalPosStr.trim(), { fontFamily: UIHelpers.FONT, fontSize: '12px', color: '#dddddd', lineSpacing: 2, resolution: 3 }).setOrigin(0, 0);
+                const negTextObj = this.scene.add.text(cardX + 15, 180 + posTextObj.height + 4, negStr.trim(), { fontFamily: UIHelpers.FONT, fontSize: '12px', color: '#ff4444', lineSpacing: 2, resolution: 3 }).setOrigin(0, 0);
+
+                // BUY BUTTON
+                const buyBtnBg = this.scene.add.graphics();
+                buyBtnBg.fillStyle(0x2e7d32, 1); 
+                buyBtnBg.fillRoundedRect(cardX + 30, 390, 180, 40, 20);
+                const buyText = this.scene.add.text(cardX + 120, 410, `BUY 💰 ${item.price || item.Price}`, { fontFamily: UIHelpers.FONT, fontSize: '16px', fontStyle: 'bold', color: '#ffffff', resolution: 3 }).setOrigin(0.5);
+                
+                const buyHitbox = this.scene.add.rectangle(cardX + 120, 410, 180, 40, 0x000000, 0).setInteractive({ useHandCursor: true });
+                buyHitbox.on('pointerdown', () => this.connection.invoke("BuyItem", configId).catch((err: any) => console.error(err)));
+                buyHitbox.on('pointerover', () => { buyBtnBg.clear(); buyBtnBg.fillStyle(0x4caf50, 1); buyBtnBg.fillRoundedRect(cardX + 30, 390, 180, 40, 20); });
+                buyHitbox.on('pointerout', () => { buyBtnBg.clear(); buyBtnBg.fillStyle(0x2e7d32, 1); buyBtnBg.fillRoundedRect(cardX + 30, 390, 180, 40, 20); });
+
+                // LOCK BUTTON
+                const lockBtnBg = this.scene.add.graphics();
+                lockBtnBg.fillStyle(isLocked ? 0x443300 : 0x2a303a, 1);
+                lockBtnBg.fillRoundedRect(cardX + 70, 440, 100, 26, 13);
+                const lockText = this.scene.add.text(cardX + 120, 453, isLocked ? '🔒 LOCKED' : '🔓 Lock', { fontFamily: UIHelpers.FONT, fontSize: '12px', color: isLocked ? '#ffb300' : '#8892a0', resolution: 3 }).setOrigin(0.5);
+                
+                const lockHitbox = this.scene.add.rectangle(cardX + 120, 453, 100, 26, 0x000000, 0).setInteractive({ useHandCursor: true });
+                lockHitbox.on('pointerdown', () => this.connection.invoke("ToggleLock", configId).catch((err: any) => console.error(err)));
+
+                // TOOLTIP HOVER
+                const cardHitbox = this.scene.add.rectangle(cardX + 120, 240, 240, 480, 0x000000, 0).setInteractive();
+                cardHitbox.on('pointerover', (p: Phaser.Input.Pointer) => {
+                    cardBg.lineStyle(3, 0xffffff, 1); cardBg.strokeRoundedRect(cardX, 0, 240, 480, 12);
+                    
+                    const tooltipData = config ? { ...config } : {};
+                    tooltipData.tier = tier;
+                    tooltipData.name = item.name || item.Name;
+                    if (item.rolledStats || item.RolledStats) tooltipData.statBonuses = { ...(tooltipData.statBonuses || {}), ...(item.rolledStats || item.RolledStats) };
+                    
+                    const skillsList = item.weaponSkills || item.WeaponSkills;
+                    if (skillsList && skillsList.length > 0) {
+                        const skillNames = skillsList.map((id: string) => {
+                            const s = (atlasConfigs?.skills || atlasConfigs?.Skills)?.[id];
+                            return s ? (s.name || s.Name) : id;
+                        });
+                        tooltipData.effectsOnPurchase = [ ...(tooltipData.effectsOnPurchase || []), ...skillNames.map((n:string) => `${n}`) ];
+                    }
+                    this.tooltip.show(tooltipData, p.x, p.y, 1);
+                });
+                cardHitbox.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip.setPosition(p.x + 15, p.y + 15));
+                cardHitbox.on('pointerout', () => {
+                    cardBg.lineStyle(2, tierColor, 1); cardBg.strokeRoundedRect(cardX, 0, 240, 480, 12);
+                    this.tooltip.hide();
+                });
+
+                this.shopCardsContainer.add([cardHitbox, divider, nameText, typeText, posTextObj, negTextObj, buyBtnBg, buyText, buyHitbox, lockBtnBg, lockText, lockHitbox]);
+            });
+
+        } catch (err) {
+            console.error("Safely caught UI Update error to prevent game freeze:", err);
+        }
     }
 }

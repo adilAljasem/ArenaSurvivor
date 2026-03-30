@@ -8,6 +8,7 @@
     "elementalDamage",
     "speed",
     "range",
+    "haste",
     "engineering",
     "armor",
     "dodge",
@@ -15,5 +16,6 @@
     "harvesting",
     "attackSpeedPercent",
     "xpGainPercent",
-    "projectileSpeedPercent"
+    "projectileSpeedPercent",
+    "critChance"
 ]

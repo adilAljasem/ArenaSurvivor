@@ -128,6 +128,17 @@ public class WeaponConfig
     public Dictionary<string, float> DamageScaling { get; set; } = new();
     public List<string> Traits { get; set; } = new();
     public List<string> ApplyEffectsOnHit { get; set; } = new();                   // "ExplodesOnImpact", "Homing"
+    // --- Granted Skills ---
+    public List<string> GrantedSkills { get; set; } = new();
+
+    // --- Random Generation Limits ---
+    public float StatRollChance { get; set; } = 0.50f; // 50% base chance
+    public int MaxRandomStats { get; set; } = 2;
+    public List<string> AllowedRandomStats { get; set; } = new();
+
+    public float SkillRollChance { get; set; } = 0.15f; // 15% base chance
+    public int MaxRandomSkills { get; set; } = 1;
+    public List<string> AllowedRandomSkills { get; set; } = new();
 }
 
 public class ItemConfig

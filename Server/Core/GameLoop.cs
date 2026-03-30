@@ -310,7 +310,7 @@ public class GameLoop : BackgroundService
     // SHOP HELPERS
     // =================================================================================
 
-    public static void GenerateShopForPlayer(PlayerEntity player, ConfigManager configManager, int currentWave)
+   public static void GenerateShopForPlayer(PlayerEntity player, ConfigManager configManager, int currentWave)
     {
         int maxAllowedTier = (currentWave / 5) + 1;
         var availableWeapons = configManager.Weapons.Values.Where(w => w.Tier <= maxAllowedTier).ToList();
@@ -326,7 +326,17 @@ public class GameLoop : BackgroundService
             if (spawnWeapon && availableWeapons.Count > 0)
             {
                 var w = availableWeapons[Random.Shared.Next(availableWeapons.Count)];
-                player.CurrentShop.Add(new Server.DTOs.ShopItemDto { ConfigId = w.Id, Name = w.Name, Price = w.Tier * 15 });
+                
+                // >>> FIX: Generate the weapon NOW so we can see the random stats in the shop! <<<
+                var previewWeapon = WeaponGenerator.GenerateWeapon(w.Id, player, configManager, 1);
+
+                player.CurrentShop.Add(new Server.DTOs.ShopItemDto { 
+                    ConfigId = w.Id, 
+                    Name = w.Name, 
+                    Price = w.Tier * 15,
+                    RolledStats = previewWeapon.RolledStats,
+                    WeaponSkills = previewWeapon.WeaponSkills.Select(s => s.ConfigId).ToList()
+                });
             }
             else if (availableItems.Count > 0)
             {

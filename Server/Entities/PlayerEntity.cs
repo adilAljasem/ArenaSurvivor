@@ -96,6 +96,7 @@ public class PlayerEntity
     {
         float baseStat = Stats.GetFinalStat(statName);
         float dynamicFlat = 0f; // All stats are added flatly to their buckets now!
+        float total = 0f;
 
         // --- 1. ITEMS ---
         foreach (var kvp in OwnedItems)
@@ -134,6 +135,12 @@ public class PlayerEntity
             {
                 if (weaponConfig.StatBonuses != null && weaponConfig.StatBonuses.TryGetValue(statName, out float wBonus))
                     dynamicFlat += (wBonus * weapon.Level);
+            }
+
+            // >>> FIX: Add the rolled stats directly to dynamicFlat! <<<
+            if (weapon.RolledStats != null && weapon.RolledStats.TryGetValue(statName, out var weaponStatValue))
+            {
+                dynamicFlat += weaponStatValue;
             }
         }
 

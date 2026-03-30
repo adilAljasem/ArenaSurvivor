@@ -150,6 +150,24 @@ public static class SkillSystem
                     }
                 }
             }
+            foreach (var weapon in player.Weapons)
+            {
+                if (weapon.WeaponSkills == null) continue;
+                
+                foreach (var wSkill in weapon.WeaponSkills)
+                {
+                    wSkill.CurrentCooldown -= dt;
+                    if (wSkill.CurrentCooldown <= 0 && configs.Skills.TryGetValue(wSkill.ConfigId, out var config))
+                    {
+                        if (config.TriggerType == SkillTriggerType.Auto)
+                        {
+                            // Instantly fires the skill in the background without locking the player!
+                            ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, state, configs);
+                            wSkill.CurrentCooldown = config.CooldownSeconds;
+                        }
+                    }
+                }
+            }
         }
     }
 

@@ -71,6 +71,6 @@
     "duration": 5.0,
     "tickRate": 1.0,
     "tickDamage": -10.0, 
-    "colorTint": "0x00ff00"
+    "colorTint": "#cefad0"
   }
 }
