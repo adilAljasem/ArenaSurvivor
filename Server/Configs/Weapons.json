@@ -13,7 +13,7 @@
     "iconFrame": 7,
     "defaultFacingRight": true,
     "attackAnimType": "recoil",
-    "soundFire": "sfx_pistol_fire",
+    "soundFire": "ball-shoot",
     "statBonuses": {
       "speedPercent": 0.05
     },
@@ -38,7 +38,7 @@
     "iconFrame": 11,
     "defaultFacingRight": true,
     "attackAnimType": "recoil",
-    "soundFire": "sfx_smg_fire",
+    "soundFire": "ball-shoot",
     "statBonuses": {},
     "damageScaling": {
       "rangedDamage": 0.25

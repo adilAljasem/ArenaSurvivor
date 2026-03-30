@@ -92,7 +92,6 @@ class GameScene extends Phaser.Scene {
   private pingMs: number = 0;
   private lastNetworkEntitiesCount: number = 0;
 
-  // Replace your old bandwidth variables with these:
   private compressedBytesReceived: number = 0;
   private uncompressedBytesReceived: number = 0;
   private currentCompressedKbps: string = "0.00";
@@ -111,6 +110,9 @@ class GameScene extends Phaser.Scene {
     this.load.spritesheet('characters_sheet', 'assets/characters_sheet.png', { frameWidth: 32, frameHeight: 32 });
     this.load.spritesheet('tree', 'assets/obstacles/Tree Lights 02-Sheet.png', { frameWidth: 32, frameHeight: 64 });
     this.load.spritesheet('effects1', 'assets/Effects/effects1.png', { frameWidth: 64, frameHeight: 64 });
+    this.load.audio('sfx_shoot', 'assets/Audio/weapon-fire-1.wav');
+    this.load.audio('ball-shoot', 'assets/Audio/ball-tap.wav');
+
 
   }
 

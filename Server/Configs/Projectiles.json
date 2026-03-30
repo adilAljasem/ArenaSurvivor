@@ -8,7 +8,7 @@
         "baseSpeed": 800,
         "hitRadius": 10,
         "pierceCount": 0,
-        "soundHit": "sfx_bullet_impact"
+        "soundHit": "ball-hit"
     },
     "sniper_round": {
         "id": "sniper_round",
