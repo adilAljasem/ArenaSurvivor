@@ -4,17 +4,16 @@ import { HubConnection } from '@microsoft/signalr';
 // =========================================================================
 // TYPES
 // =========================================================================
-interface CombinePreview {
+export interface CombinePreview {
     tier: number;
     stats: Record<string, number>;
     skills: string[];
 }
 
-interface StatLines {
-    posStr: string;
-    negStr: string;
-    randomStr: string;
-    skillsStr: string;
+export interface TextBlock {
+    text: string;
+    color: string;
+    isHeader?: boolean;
 }
 
 // =========================================================================
@@ -73,23 +72,26 @@ export const UIHelpers = {
         return isPct ? `${Math.round(val * 100)}%` : `${val}`;
     },
 
-    /**
-     * Builds formatted stat-line strings from a config object + optional rolled data.
-     * Used by both the Tooltip and the shop-card renderer to keep them in sync.
-     */
-    buildStatLines: (
+    formatEffectName: (str: string): string => {
+        if (!str) return "";
+        return str.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    },
+
+    buildStatBlocks: (
         config: any,
         rolledStats: any = null,
         rolledSkills: string[] | null = null,
         atlasConfigs: any = null,
-        stackCount: number = 1
-    ): StatLines => {
-        let posStr = '';
-        let negStr = '';
-        let randomStr = '';
-        let skillsStr = '';
+        stackCount: number = 1,
+        combinePreview: CombinePreview | null = null
+    ): TextBlock[] => {
+        const blocks: TextBlock[] = [];
+        let posLines: string[] = [];
+        let negLines: string[] = [];
+        let randomLines: string[] = [];
+        let skillsLines: string[] = [];
 
-        if (!config) return { posStr, negStr, randomStr, skillsStr };
+        if (!config) return blocks;
 
         try {
             const meleeDmg       = config.meleeDamage      ?? config.MeleeDamage;
@@ -107,113 +109,128 @@ export const UIHelpers = {
             const traits         = config.traits            ?? config.Traits;
             const mechanics      = config.mechanics         ?? config.Mechanics;
 
-            // Base weapon/item combat stats
-            if (meleeDmg)  posStr += `🗡️ Melee Dmg: ${meleeDmg * stackCount}\n`;
-            if (rangedDmg) posStr += `🏹 Ranged Dmg: ${rangedDmg * stackCount}\n`;
-            if (elemDmg)   posStr += `🔥 Elem Dmg: ${elemDmg * stackCount}\n`;
-            if (cooldown)  posStr += `⏱️ Cooldown: ${cooldown}s\n`;
-            if (range)     posStr += `📏 Range: ${range}\n`;
+            // Apply stackCount (weapon level or item count) to base stats
+            if (meleeDmg)  posLines.push(`🗡️ Melee Dmg: ${meleeDmg * stackCount}`);
+            if (rangedDmg) posLines.push(`🏹 Ranged Dmg: ${rangedDmg * stackCount}`);
+            if (elemDmg)   posLines.push(`🔥 Elem Dmg: ${elemDmg * stackCount}`);
+            if (cooldown)  posLines.push(`⏱️ Cooldown: ${cooldown}s`);
+            if (range)     posLines.push(`📏 Range: ${range}`);
 
             if (scaling) {
-                const parts = Object.entries(scaling).map(([k, v]) =>
-                    `${Math.round((v as number) * 100)}% ${UIHelpers.getStatInfo(k).n}`
-                );
-                if (parts.length) posStr += `📈 Scales: ${parts.join(', ')}\n`;
+                const parts = Object.entries(scaling).map(([k, v]) => `${Math.round((v as number) * 100)}% ${UIHelpers.getStatInfo(k).n}`);
+                if (parts.length) posLines.push(`📈 Scales: ${parts.join(', ')}`);
             }
 
-            if (onHitEffects?.length) {
-                onHitEffects.forEach((e: string) => { posStr += `�� On Hit: ${e}\n`; });
-            }
+            if (onHitEffects?.length) onHitEffects.forEach((e: string) => posLines.push(`🧪 On Hit: ${UIHelpers.formatEffectName(e)}`));
 
-            // Mechanics
             if (mechanics) {
                 Object.entries(mechanics).forEach(([k, v]) => {
                     const info = UIHelpers.getStatInfo(k);
-                    posStr += `${info.e} ${info.n}: ${UIHelpers.formatVal(k, (v as number) * stackCount)}\n`;
+                    posLines.push(`${info.e} ${info.n}: ${UIHelpers.formatVal(k, (v as number) * stackCount)}`);
                 });
             }
 
-            // Static stat bonuses
             if (statBonuses) {
                 Object.entries(statBonuses).forEach(([k, v]) => {
                     const num = (v as number) * stackCount;
                     const info = UIHelpers.getStatInfo(k);
-                    if (num > 0)      posStr += `${info.e} ${info.n}: +${UIHelpers.formatVal(k, num)}\n`;
-                    else if (num < 0) negStr  += `${info.e} ${info.n}: ${UIHelpers.formatVal(k, num)}\n`;
+                    if (num > 0) posLines.push(`${info.e} ${info.n}: +${UIHelpers.formatVal(k, num)}`);
+                    else if (num < 0) negLines.push(`${info.e} ${info.n}: ${UIHelpers.formatVal(k, num)}`);
                 });
             }
 
-            // Dynamic modifiers (conditional stats)
             if (dynamicMods) {
                 dynamicMods.forEach((m: any) => {
-                    const stat   = m.targetStat        ?? m.TargetStat        ?? "";
-                    const amt    = (m.amount           ?? m.Amount)           * stackCount;
+                    const stat = m.targetStat ?? m.TargetStat ?? "";
+                    const amt = (m.amount ?? m.Amount) * stackCount;
                     const thresh = m.conditionThreshold ?? m.ConditionThreshold;
-                    const info   = UIHelpers.getStatInfo(stat);
-                    const prefix = amt > 0 ? '+' : '';
-                    posStr += `⚡ ${info.n}: ${prefix}${UIHelpers.formatVal(stat, amt)} per ${Math.round(thresh * 100)}% missing HP\n`;
+                    const info = UIHelpers.getStatInfo(stat);
+                    posLines.push(`⚡ ${info.n}: ${amt > 0 ? '+' : ''}${UIHelpers.formatVal(stat, amt)} per ${Math.round(thresh * 100)}% missing HP`);
                 });
             }
 
-            // Wave-end effects
             if (waveEndEffects?.length) {
                 waveEndEffects.forEach((e: any) => {
-                    const stat   = e.statName ?? e.StatName ?? "";
-                    const amt    = (e.amount  ?? e.Amount)  * stackCount;
-                    const info   = UIHelpers.getStatInfo(stat);
-                    const prefix = amt > 0 ? '+' : '';
-                    const line   = `🌊 Wave End: ${info.n} ${prefix}${UIHelpers.formatVal(stat, amt)}\n`;
-                    if (amt < 0) negStr += line; else posStr += line;
+                    const stat = e.statName ?? e.StatName ?? "";
+                    const amt = (e.amount ?? e.Amount) * stackCount;
+                    const info = UIHelpers.getStatInfo(stat);
+                    const line = `🌊 Wave End: ${info.n} ${amt > 0 ? '+' : ''}${UIHelpers.formatVal(stat, amt)}`;
+                    if (amt < 0) negLines.push(line); else posLines.push(line);
                 });
             }
 
-            // On-purchase effects
-            if (onPurchase?.length) {
-                onPurchase.forEach((e: string) => { posStr += `🔹 Grants: ${e}\n`; });
+            if (onPurchase?.length) onPurchase.forEach((e: string) => posLines.push(`🔹 Grants: ${UIHelpers.formatEffectName(e)}`));
+
+            if (traits) {
+                traits.forEach((t: string) => {
+                    if (t === "CannotHeal") negLines.push(`⚠️ Cannot Heal`);
+                    else posLines.push(`🔹 ${UIHelpers.formatEffectName(t)}`);
+                });
             }
 
-            // Granted (permanent) skills from config
             if (grantedSkills?.length) {
                 const skillMap = atlasConfigs?.skills ?? atlasConfigs?.Skills;
                 grantedSkills.forEach((id: string) => {
                     const s = skillMap?.[id];
-                    skillsStr += `⭐ ${s ? (s.name ?? s.Name) : id}\n`;
+                    skillsLines.push(`⭐ ${s ? (s.name ?? s.Name) : id}`);
                 });
             }
 
-            // Traits
-            if (traits) {
-                traits.forEach((t: string) => {
-                    if (t === "CannotHeal") negStr += `⚠️ Cannot Heal\n`;
-                    else posStr += `🔹 ${t}\n`;
-                });
-            }
-
-            // Randomly rolled bonus stats
             if (rolledStats && Object.keys(rolledStats).length) {
                 Object.entries(rolledStats).forEach(([k, v]) => {
-                    const num  = v as number;
+                    const num = v as number;
                     const info = UIHelpers.getStatInfo(k);
-                    if (num > 0)      randomStr += `${info.e} ${info.n}: +${UIHelpers.formatVal(k, num)}\n`;
-                    else if (num < 0) negStr     += `${info.e} ${info.n}: ${UIHelpers.formatVal(k, num)}\n`;
+                    if (num > 0) randomLines.push(`${info.e} ${info.n}: +${UIHelpers.formatVal(k, num)}`);
+                    else if (num < 0) negLines.push(`${info.e} ${info.n}: ${UIHelpers.formatVal(k, num)}`);
                 });
             }
 
-            // Randomly rolled skills
             if (rolledSkills?.length) {
                 const skillMap = atlasConfigs?.skills ?? atlasConfigs?.Skills;
                 rolledSkills.forEach((id: string) => {
                     const s = skillMap?.[id];
-                    skillsStr += `✨ ${s ? (s.name ?? s.Name) : id}\n`;
+                    skillsLines.push(`✨ ${s ? (s.name ?? s.Name) : id}`);
                 });
             }
 
+            if (posLines.length > 0) {
+                blocks.push({ text: "[ Base Stats ]", color: "#4fc3f7", isHeader: true });
+                blocks.push({ text: posLines.join('\n'), color: "#ffffff" });
+            }
+            if (negLines.length > 0) {
+                blocks.push({ text: negLines.join('\n'), color: "#ef5350" });
+            }
+            if (randomLines.length > 0) {
+                blocks.push({ text: "[ Random Rolls ]", color: "#ffd54f", isHeader: true });
+                blocks.push({ text: randomLines.join('\n'), color: "#ffffff" });
+            }
+            if (skillsLines.length > 0) {
+                blocks.push({ text: "[ Skills ]", color: "#ba68c8", isHeader: true });
+                blocks.push({ text: skillsLines.join('\n'), color: "#ffffff" });
+            }
+
+            if (combinePreview) {
+                blocks.push({ text: `[ ⚗️ Combine → Tier ${combinePreview.tier} ]`, color: "#81c784", isHeader: true });
+                let comboStr = "";
+                const skillMap = atlasConfigs?.skills ?? atlasConfigs?.Skills;
+                Object.entries(combinePreview.stats).forEach(([k, v]) => {
+                    const num = v as number;
+                    const info = UIHelpers.getStatInfo(k);
+                    comboStr += `${info.e} ${info.n}: ${num > 0 ? '+' : ''}${UIHelpers.formatVal(k, num)}\n`;
+                });
+                combinePreview.skills.forEach((id: string) => {
+                    const s = skillMap?.[id];
+                    comboStr += `⭐ ${s ? (s.name ?? s.Name) : id}\n`;
+                });
+                blocks.push({ text: comboStr.trim(), color: "#ffffff" });
+            }
+
         } catch (e) {
-            console.error("UIHelpers.buildStatLines error:", e);
+            console.error("buildStatBlocks error:", e);
         }
 
-        return { posStr, negStr, randomStr, skillsStr };
-    },
+        return blocks;
+    }
 };
 
 // =========================================================================
@@ -222,9 +239,8 @@ export const UIHelpers = {
 export class Tooltip extends Phaser.GameObjects.Container {
     private bg: Phaser.GameObjects.Graphics;
     private titleText: Phaser.GameObjects.Text;
-    private descText: Phaser.GameObjects.Text;
-    private bonusText: Phaser.GameObjects.Text;
-    private negativeText: Phaser.GameObjects.Text;
+    private dynamicTexts: Phaser.GameObjects.Text[] = [];
+    private currentHeight: number = 80;
 
     constructor(scene: Phaser.Scene) {
         super(scene, 0, 0);
@@ -233,24 +249,11 @@ export class Tooltip extends Phaser.GameObjects.Container {
         this.setScrollFactor(0);
 
         this.bg = scene.add.graphics();
-
         this.titleText = scene.add.text(12, 12, '', {
             fontFamily: UIHelpers.FONT, fontSize: '18px', fontStyle: 'bold', resolution: 3
         });
-        this.descText = scene.add.text(12, 38, '', {
-            fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#dddddd',
-            wordWrap: { width: 240 }, lineSpacing: 3, resolution: 3
-        });
-        this.bonusText = scene.add.text(12, 38, '', {
-            fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#ffd700',
-            wordWrap: { width: 240 }, lineSpacing: 3, resolution: 3
-        });
-        this.negativeText = scene.add.text(12, 38, '', {
-            fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#ff4444',
-            wordWrap: { width: 240 }, lineSpacing: 3, resolution: 3
-        });
 
-        this.add([this.bg, this.titleText, this.descText, this.bonusText, this.negativeText]);
+        this.add([this.bg, this.titleText]);
         scene.add.existing(this);
     }
 
@@ -267,68 +270,59 @@ export class Tooltip extends Phaser.GameObjects.Container {
         if (!config) return;
 
         try {
+            this.dynamicTexts.forEach(t => t.destroy());
+            this.dynamicTexts = [];
+
             const tier = config.tier ?? config.Tier ?? 1;
             this.titleText.setText(config.name ?? config.Name ?? '').setColor(UIHelpers.getTierColorStr(tier));
 
-            const { posStr, negStr, randomStr, skillsStr } =
-                UIHelpers.buildStatLines(config, rolledStats, rolledSkills, atlasConfigs, stackCount);
+            const blocks = UIHelpers.buildStatBlocks(config, rolledStats, rolledSkills, atlasConfigs, stackCount, combinePreview);
 
-            // Base stats section
-            let descContent = `[ Tier ${tier} ]\n`;
-            if (posStr) descContent += posStr;
-            this.descText.setText(descContent.trim());
-
-            // Bonus section: random rolls + skills + combine preview
-            let bonusContent = '';
-            if (randomStr) bonusContent += `[ 🎲 Random Rolls ]\n${randomStr}`;
-            if (skillsStr) bonusContent += `\n[ 🌟 Skills ]\n${skillsStr}`;
-            if (combinePreview) {
-                bonusContent += `\n[ ⚗️ Combine → Tier ${combinePreview.tier} ]\n`;
-                const skillMap = atlasConfigs?.skills ?? atlasConfigs?.Skills;
-                Object.entries(combinePreview.stats).forEach(([k, v]) => {
-                    const num  = v as number;
-                    const info = UIHelpers.getStatInfo(k);
-                    bonusContent += `${info.e} ${info.n}: ${num > 0 ? '+' : ''}${UIHelpers.formatVal(k, num)}\n`;
+            let currentY = 38;
+            blocks.forEach(b => {
+                const t = this.scene.add.text(12, currentY, b.text, {
+                    fontFamily: UIHelpers.FONT,
+                    fontSize: b.isHeader ? '14px' : '13px',
+                    fontStyle: b.isHeader ? 'bold' : 'normal',
+                    color: b.color,
+                    wordWrap: { width: 240 },
+                    lineSpacing: 3,
+                    resolution: 3
                 });
-                if (combinePreview.skills.length) {
-                    combinePreview.skills.forEach((id: string) => {
-                        const s = skillMap?.[id];
-                        bonusContent += `⭐ ${s ? (s.name ?? s.Name) : id}\n`;
-                    });
-                }
-            }
-            this.bonusText.setText(bonusContent.trim());
-            this.negativeText.setText(negStr.trim());
+                this.add(t);
+                this.dynamicTexts.push(t);
+                currentY += t.displayHeight + (b.isHeader ? 2 : 6);
+            });
 
-            // Layout: stack text objects vertically
-            const SECTION_GAP = 6;
-            const descBottom = this.descText.y + this.descText.displayHeight;
-            const bonusY = descBottom + (posStr.trim() && bonusContent.trim() ? SECTION_GAP : 0);
-            this.bonusText.setY(bonusY);
-            const bonusBottom = bonusY + (bonusContent.trim() ? this.bonusText.displayHeight + SECTION_GAP : 0);
-            this.negativeText.setY(bonusBottom);
-
-            const totalHeight =
-                bonusBottom +
-                (negStr.trim() ? this.negativeText.displayHeight + 6 : 0);
-            const bgHeight = Math.max(80, 45 + totalHeight + 10);
+            this.currentHeight = Math.max(80, currentY + 10);
 
             this.bg.clear();
             this.bg.fillStyle(0x111317, 0.95);
-            this.bg.fillRoundedRect(0, 0, 260, bgHeight, 8);
+            this.bg.fillRoundedRect(0, 0, 264, this.currentHeight, 8);
             this.bg.lineStyle(2, UIHelpers.getTierColorHex(tier), 1);
-            this.bg.strokeRoundedRect(0, 0, 260, bgHeight, 8);
+            this.bg.strokeRoundedRect(0, 0, 264, this.currentHeight, 8);
 
-            let targetX = x + 15;
-            let targetY = y + 15;
-            if (targetX + 260 > this.scene.scale.width)  targetX = x - 265;
-            if (targetY + bgHeight > this.scene.scale.height) targetY = y - bgHeight - 5;
-
-            this.setPosition(targetX, targetY);
+            this.updatePosition(x, y);
             this.setVisible(true);
         } catch (err) {
             console.error("Safely caught a Tooltip formatting error:", err);
         }
+    }
+
+    public updatePosition(x: number, y: number) {
+        let targetX = x + 15;
+        let targetY = y + 15;
+        
+        if (targetX + 264 > this.scene.scale.width) {
+            targetX = x - 280;
+        }
+        
+        if (targetY + this.currentHeight > this.scene.scale.height) {
+            targetY = y - this.currentHeight - 5;
+            if (targetY < 5) targetY = 5;
+        }
+
+        this.setPosition(targetX, targetY);
     }
 
     public hide() { this.setVisible(false); }
@@ -398,151 +392,197 @@ export class StatDisplay extends Phaser.GameObjects.Container {
 // =========================================================================
 // INVENTORY DISPLAY
 // =========================================================================
-export class InventoryDisplay extends Phaser.GameObjects.Container {
-    private itemGrid: Phaser.GameObjects.Container;
-    private weaponGrid: Phaser.GameObjects.Container;
+export class InventoryDisplay {
+    private scene: Phaser.Scene;
     private tooltip: Tooltip;
+    
+    // Explicit TS fixing here!
+    private _elements: (Phaser.GameObjects.GameObject & { setVisible(v: boolean): any; setDepth(d: number): any })[] = [];
+    
+    private baseX: number = 0;
+    private baseY: number = 0;
+    private availableWidth: number = 0;
+    private currentScale: number = 1;
+    private _visible: boolean = false;
+    private _depth: number = 1000;
+    
     private atlasConfigs: any = null;
+    private weaponsData: any[] = [];
+    private itemsData: any[] = [];
 
-    constructor(scene: Phaser.Scene, x: number, y: number, tooltip: Tooltip) {
-        super(scene, x, y);
+    constructor(scene: Phaser.Scene, tooltip: Tooltip) {
+        this.scene = scene;
         this.tooltip = tooltip;
-
-        this.itemGrid = scene.add.container(0, 0);
-        const itemTitle = scene.add.text(0, -25, 'Items', {
-            fontFamily: UIHelpers.FONT, fontSize: '16px', color: '#a0abbc', fontStyle: 'bold', resolution: 3
-        });
-        this.itemGrid.add(itemTitle);
-
-        this.weaponGrid = scene.add.container(320, 0);
-        const weaponTitle = scene.add.text(0, -25, 'Weapons', {
-            fontFamily: UIHelpers.FONT, fontSize: '16px', color: '#a0abbc', fontStyle: 'bold', resolution: 3
-        });
-        this.weaponGrid.add(weaponTitle);
-
-        this.add([this.itemGrid, this.weaponGrid]);
-        scene.add.existing(this);
     }
 
+    public setVisible(value: boolean): this {
+        this._visible = value;
+        this._elements.forEach(e => e?.setVisible(value));
+        return this;
+    }
+
+    public setDepth(depth: number): this {
+        this._depth = depth;
+        this._elements.forEach(e => e?.setDepth(depth));
+        return this;
+    }
+
+    public setScale(scale: number): this {
+        this.currentScale = scale;
+        this.redraw();
+        return this;
+    }
+
+    public setPosition(x: number, y: number): this {
+        this.baseX = x;
+        this.baseY = y;
+        this.redraw();
+        return this;
+    }
+
+    public setScrollFactor(value: number): this { return this; }
+
     public updateLayout(availableWidth: number) {
-        this.weaponGrid.setPosition(availableWidth - 180, -80);
+        this.availableWidth = availableWidth;
+        this.redraw();
     }
 
     public updateInventory(weapons: any[], items: any[], atlasConfigs: any) {
+        this.weaponsData = weapons || [];
+        this.itemsData = items || [];
         this.atlasConfigs = atlasConfigs;
-        this.itemGrid.list.filter(child => child.type !== 'Text').forEach(c => (c as any).destroy());
-        this.weaponGrid.list.filter(child => child.type !== 'Text').forEach(c => (c as any).destroy());
+        this.redraw();
+    }
 
-        // ---- Item slots ----
+    private redraw() {
+        this._elements.forEach(e => e?.destroy());
+        this._elements = [];
+
+        if (!this.atlasConfigs) return;
+
+        const itemStartX = this.baseX;
+        const itemStartY = this.baseY;
+        const weaponStartX = this.baseX + (this.availableWidth * this.currentScale) - (180 * this.currentScale);
+        const weaponStartY = this.baseY - (80 * this.currentScale);
+        
+        const slotSize = 65 * this.currentScale;
+        const slotGap = 75 * this.currentScale;
+
+        // ---- Items ----
+        const itemTitle = this.scene.add.text(itemStartX, itemStartY - (25 * this.currentScale), 'Items', {
+            fontFamily: UIHelpers.FONT, fontSize: `${16 * this.currentScale}px`, color: '#a0abbc', fontStyle: 'bold', resolution: 3
+        }).setScrollFactor(0).setDepth(this._depth).setVisible(this._visible);
+        this._elements.push(itemTitle);
+
         for (let i = 0; i < 5; i++) {
-            const slotX = i * 75;
-            const slotBg = this.scene.add.graphics();
-            slotBg.fillStyle(0x161920, 1);
-            slotBg.fillRoundedRect(slotX, 0, 65, 65, 8);
-            slotBg.lineStyle(2, 0x3a4454, 1);
-            slotBg.strokeRoundedRect(slotX, 0, 65, 65, 8);
-            this.itemGrid.add(slotBg);
+            const slotX = itemStartX + (i * slotGap);
+            const slotY = itemStartY;
 
-            if (items?.[i]) {
-                const itemData = items[i];
-                const config = atlasConfigs?.items?.[itemData.configId] ?? null;
+            const slotBg = this.scene.add.graphics().setScrollFactor(0).setDepth(this._depth).setVisible(this._visible);
+            slotBg.fillStyle(0x161920, 1);
+            slotBg.fillRoundedRect(slotX, slotY, slotSize, slotSize, 8 * this.currentScale);
+            slotBg.lineStyle(2 * this.currentScale, 0x3a4454, 1);
+            slotBg.strokeRoundedRect(slotX, slotY, slotSize, slotSize, 8 * this.currentScale);
+            this._elements.push(slotBg);
+
+            if (this.itemsData[i]) {
+                const itemData = this.itemsData[i];
+                const config = this.atlasConfigs?.items?.[itemData.configId] ?? null;
                 const stackCount = itemData.count || 1;
 
                 if (config) {
-                    slotBg.lineStyle(2, UIHelpers.getTierColorHex(config.tier || 1), 1);
-                    slotBg.strokeRoundedRect(slotX, 0, 65, 65, 8);
+                    slotBg.lineStyle(2 * this.currentScale, UIHelpers.getTierColorHex(config.tier || 1), 1);
+                    slotBg.strokeRoundedRect(slotX, slotY, slotSize, slotSize, 8 * this.currentScale);
                 }
 
-                let icon: any;
                 const tex = config?.textureKey ?? config?.TextureKey;
                 if (tex && this.scene.textures.exists(tex)) {
-                    icon = this.scene.add.sprite(slotX + 32.5, 32.5, tex);
+                    const icon = this.scene.add.sprite(slotX + (slotSize / 2), slotY + (slotSize / 2), tex)
+                        .setScrollFactor(0).setDepth(this._depth).setVisible(this._visible);
                     const frame = config.iconFrame ?? config.IconFrame;
                     if (frame !== undefined) icon.setFrame(frame);
-                    icon.setScale(Math.min(50 / icon.width, 50 / icon.height));
-                } else {
-                    icon = this.scene.add.rectangle(slotX + 32.5, 32.5, 40, 40, 0x000000).setStrokeStyle(2, 0x00ff00);
+                    icon.setScale(Math.min((50 * this.currentScale) / icon.width, (50 * this.currentScale) / icon.height));
+                    this._elements.push(icon);
                 }
-                this.itemGrid.add(icon);
 
-                const hitbox = this.scene.add.rectangle(slotX + 32.5, 32.5, 65, 65, 0x000000, 0)
-                    .setInteractive({ useHandCursor: true });
+                const hitbox = this.scene.add.rectangle(slotX + (slotSize / 2), slotY + (slotSize / 2), slotSize, slotSize, 0x000000, 0)
+                    .setScrollFactor(0).setDepth(this._depth).setVisible(this._visible).setInteractive({ useHandCursor: true });
+                
                 if (config) {
-                    const rolledStats  = itemData.rolledStats  ?? itemData.RolledStats;
+                    const rolledStats = itemData.rolledStats ?? itemData.RolledStats;
                     const rolledSkills = itemData.rolledSkills ?? itemData.RolledSkills;
-                    hitbox.on('pointerover', (p: Phaser.Input.Pointer) =>
-                        this.tooltip.show(config, p.x, p.y, stackCount, this.atlasConfigs, rolledStats, rolledSkills));
-                    hitbox.on('pointermove', (p: Phaser.Input.Pointer) =>
-                        this.tooltip.setPosition(p.x + 15, p.y + 15));
+                    hitbox.on('pointerover', (p: Phaser.Input.Pointer) => this.tooltip.show(config, p.x, p.y, stackCount, this.atlasConfigs, rolledStats, rolledSkills));
+                    hitbox.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip.updatePosition(p.x, p.y));
                     hitbox.on('pointerout', () => this.tooltip.hide());
                 }
-                this.itemGrid.add(hitbox);
+                this._elements.push(hitbox as any);
 
                 if (stackCount > 1) {
-                    const countTxt = this.scene.add.text(slotX + 60, 60, `x${stackCount}`, {
-                        fontFamily: UIHelpers.FONT, fontSize: '14px', color: '#fff',
-                        stroke: '#000', strokeThickness: 3, resolution: 3
-                    }).setOrigin(1, 1);
-                    this.itemGrid.add(countTxt);
+                    const countTxt = this.scene.add.text(slotX + slotSize - (5 * this.currentScale), slotY + slotSize - (5 * this.currentScale), `x${stackCount}`, {
+                        fontFamily: UIHelpers.FONT, fontSize: `${14 * this.currentScale}px`, color: '#fff', stroke: '#000', strokeThickness: 3 * this.currentScale, resolution: 3
+                    }).setOrigin(1, 1).setScrollFactor(0).setDepth(this._depth).setVisible(this._visible);
+                    this._elements.push(countTxt);
                 }
             }
         }
 
-        // ---- Weapon slots ----
+        // ---- Weapons ----
+        const weaponTitle = this.scene.add.text(weaponStartX, weaponStartY - (25 * this.currentScale), 'Weapons', {
+            fontFamily: UIHelpers.FONT, fontSize: `${16 * this.currentScale}px`, color: '#a0abbc', fontStyle: 'bold', resolution: 3
+        }).setScrollFactor(0).setDepth(this._depth).setVisible(this._visible);
+        this._elements.push(weaponTitle);
+
         for (let i = 0; i < 4; i++) {
-            const col  = i % 2;
-            const row  = Math.floor(i / 2);
-            const slotX = col * 75;
-            const slotY = row * 75;
+            const col = i % 2;
+            const row = Math.floor(i / 2);
+            const slotX = weaponStartX + (col * slotGap);
+            const slotY = weaponStartY + (row * slotGap);
 
-            const slotBg = this.scene.add.graphics();
+            const slotBg = this.scene.add.graphics().setScrollFactor(0).setDepth(this._depth).setVisible(this._visible);
             slotBg.fillStyle(0x161920, 1);
-            slotBg.fillRoundedRect(slotX, slotY, 65, 65, 8);
-            slotBg.lineStyle(2, 0x3a4454, 1);
-            slotBg.strokeRoundedRect(slotX, slotY, 65, 65, 8);
-            this.weaponGrid.add(slotBg);
+            slotBg.fillRoundedRect(slotX, slotY, slotSize, slotSize, 8 * this.currentScale);
+            slotBg.lineStyle(2 * this.currentScale, 0x3a4454, 1);
+            slotBg.strokeRoundedRect(slotX, slotY, slotSize, slotSize, 8 * this.currentScale);
+            this._elements.push(slotBg);
 
-            if (weapons?.[i]) {
-                const weaponData = weapons[i];
-                const config     = atlasConfigs?.weapons?.[weaponData.configId] ?? null;
-                const wLevel     = weaponData.level || 1;
+            if (this.weaponsData[i]) {
+                const weaponData = this.weaponsData[i];
+                const config = this.atlasConfigs?.weapons?.[weaponData.configId] ?? null;
+                const wLevel = weaponData.level || 1;
 
                 if (config) {
-                    slotBg.lineStyle(2, UIHelpers.getTierColorHex(wLevel), 1);
-                    slotBg.strokeRoundedRect(slotX, slotY, 65, 65, 8);
+                    slotBg.lineStyle(2 * this.currentScale, UIHelpers.getTierColorHex(wLevel), 1);
+                    slotBg.strokeRoundedRect(slotX, slotY, slotSize, slotSize, 8 * this.currentScale);
                 }
 
-                let icon: any;
                 const tex = config?.textureKey ?? config?.TextureKey;
                 if (tex && this.scene.textures.exists(tex)) {
-                    icon = this.scene.add.sprite(slotX + 32.5, slotY + 32.5, tex);
+                    const icon = this.scene.add.sprite(slotX + (slotSize / 2), slotY + (slotSize / 2), tex)
+                        .setScrollFactor(0).setDepth(this._depth).setVisible(this._visible);
                     const frame = config.iconFrame ?? config.IconFrame;
                     if (frame !== undefined) icon.setFrame(frame);
-                    icon.setScale(Math.min(50 / icon.width, 50 / icon.height));
-                } else {
-                    icon = this.scene.add.rectangle(slotX + 32.5, slotY + 32.5, 40, 40, 0x000000).setStrokeStyle(2, 0x00ff00);
+                    icon.setScale(Math.min((50 * this.currentScale) / icon.width, (50 * this.currentScale) / icon.height));
+                    this._elements.push(icon);
                 }
-                this.weaponGrid.add(icon);
 
-                const hitbox = this.scene.add.rectangle(slotX + 32.5, slotY + 32.5, 65, 65, 0x000000, 0)
-                    .setInteractive({ useHandCursor: true });
+                const hitbox = this.scene.add.rectangle(slotX + (slotSize / 2), slotY + (slotSize / 2), slotSize, slotSize, 0x000000, 0)
+                    .setScrollFactor(0).setDepth(this._depth).setVisible(this._visible).setInteractive({ useHandCursor: true });
+
                 if (config) {
                     const toolTipConfig = { ...config, tier: wLevel };
-                    const rolledStats   = weaponData.rolledStats   ?? weaponData.RolledStats;
-                    const weaponSkills  = weaponData.weaponSkills   ?? weaponData.WeaponSkills;
-                    hitbox.on('pointerover', (p: Phaser.Input.Pointer) =>
-                        this.tooltip.show(toolTipConfig, p.x, p.y, 1, this.atlasConfigs, rolledStats, weaponSkills));
-                    hitbox.on('pointermove', (p: Phaser.Input.Pointer) =>
-                        this.tooltip.setPosition(p.x + 15, p.y + 15));
+                    const rolledStats = weaponData.rolledStats ?? weaponData.RolledStats;
+                    const weaponSkills = weaponData.weaponSkills ?? weaponData.WeaponSkills;
+                    
+                    hitbox.on('pointerover', (p: Phaser.Input.Pointer) => this.tooltip.show(toolTipConfig, p.x, p.y, wLevel, this.atlasConfigs, rolledStats, weaponSkills));
+                    hitbox.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip.updatePosition(p.x, p.y));
                     hitbox.on('pointerout', () => this.tooltip.hide());
                 }
-                this.weaponGrid.add(hitbox);
+                this._elements.push(hitbox as any);
 
-                const lvlTxt = this.scene.add.text(slotX + 60, slotY + 60, `Lv.${wLevel}`, {
-                    fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#ffffff',
-                    stroke: '#000', strokeThickness: 3, resolution: 3
-                }).setOrigin(1, 1);
-                this.weaponGrid.add(lvlTxt);
+                const lvlTxt = this.scene.add.text(slotX + slotSize - (5 * this.currentScale), slotY + slotSize - (5 * this.currentScale), `Lv.${wLevel}`, {
+                    fontFamily: UIHelpers.FONT, fontSize: `${13 * this.currentScale}px`, color: '#ffffff', stroke: '#000', strokeThickness: 3 * this.currentScale, resolution: 3
+                }).setOrigin(1, 1).setScrollFactor(0).setDepth(this._depth).setVisible(this._visible);
+                this._elements.push(lvlTxt);
             }
         }
     }
@@ -551,11 +591,6 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
 // =========================================================================
 // MAIN SHOP UI
 // =========================================================================
-// NOTE: ShopUI is a plain manager class (NOT a Container) to avoid Phaser 3's
-// known issue where Container children's input hit-areas ignore the parent
-// Container's scrollFactor when the game camera is scrolled.  Every inner
-// container is added directly to the scene and has setScrollFactor(0) set
-// explicitly, matching the pattern used by EscMenu.
 export class ShopUI {
     private scene: Phaser.Scene;
     private statDisplay: StatDisplay;
@@ -569,7 +604,6 @@ export class ShopUI {
     private tooltip: Tooltip;
     private overlay: Phaser.GameObjects.Rectangle;
 
-    // All top-level scene objects owned by this UI (for setVisible / setDepth)
     private _elements: (Phaser.GameObjects.GameObject & { setVisible(v: boolean): any; setDepth(d: number): any })[] = [];
     private _visible: boolean = false;
     private _depth: number = 1000;
@@ -579,7 +613,6 @@ export class ShopUI {
         this.connection = connection;
         const D = this._depth;
 
-        // Full-screen overlay – blocks clicks reaching the game world beneath
         this.overlay = scene.add.rectangle(0, 0, scene.scale.width, scene.scale.height, 0x07090c, 0.90)
             .setOrigin(0, 0).setScrollFactor(0).setDepth(D).setInteractive();
         this._elements.push(this.overlay);
@@ -589,7 +622,6 @@ export class ShopUI {
         }).setScrollFactor(0).setDepth(D + 1);
         this._elements.push(this.headerText);
 
-        // Reroll button (its own Container so internal layout stays relative)
         this.rerollButtonContainer = scene.add.container(0, 0).setScrollFactor(0).setDepth(D + 1);
         const rerollBg = scene.add.graphics();
         rerollBg.fillStyle(0x1a1e24, 1);
@@ -627,17 +659,15 @@ export class ShopUI {
         this.statDisplay.setScrollFactor(0).setDepth(D + 1);
         this._elements.push(this.statDisplay as any);
 
-        this.inventoryDisplay = new InventoryDisplay(scene, 0, 0, this.tooltip);
-        this.inventoryDisplay.setScrollFactor(0).setDepth(D + 1);
+        this.inventoryDisplay = new InventoryDisplay(scene, this.tooltip);
+        this.inventoryDisplay.setDepth(D + 1);
         this._elements.push(this.inventoryDisplay as any);
 
-        // Card containers are direct scene objects (not nested inside another Container)
         this.shopCardsContainer = scene.add.container(0, 0).setScrollFactor(0).setDepth(D + 1);
         this.levelUpContainer   = scene.add.container(0, 0).setScrollFactor(0).setDepth(D + 1);
         this._elements.push(this.shopCardsContainer);
         this._elements.push(this.levelUpContainer);
 
-        // Defensive: any click on the scene hides the tooltip (e.g. after buy/reroll destroys hitboxes)
         scene.input.on('pointerdown', () => this.tooltip?.hide());
 
         this.updateLayout(scene.scale.width, scene.scale.height);
@@ -668,7 +698,6 @@ export class ShopUI {
         return this;
     }
 
-    // No-op: every element has its scrollFactor set individually in the constructor
     public setScrollFactor(_value: number): this { return this; }
 
     private updateLayout(width: number, height: number) {
@@ -716,8 +745,6 @@ export class ShopUI {
             this.statDisplay.updateStats(uiData.stats, uiData.level || 1);
             this.inventoryDisplay.updateInventory(uiData.weapons, uiData.ownedItems, atlasConfigs);
 
-            // Always hide before rebuilding card objects so destroyed hitboxes
-            // don't leave a stale tooltip visible on screen.
             this.tooltip.hide();
             this.shopCardsContainer.removeAll(true);
             this.levelUpContainer.removeAll(true);
@@ -791,7 +818,6 @@ export class ShopUI {
 
             if (!uiData.currentShop) return;
 
-            // Build a map of owned weapon configIds for combine-preview
             const ownedWeaponsMap: Record<string, any> = {};
             if (uiData.weapons) {
                 uiData.weapons.forEach((w: any) => {
@@ -819,57 +845,27 @@ export class ShopUI {
                 const tier      = config?.tier ?? config?.Tier ?? 1;
                 const tierColor = isLocked ? 0x888888 : UIHelpers.getTierColorHex(tier);
 
-                // ---- Card background ----
+                // -------------------------------------------------------------
+                // 1. BASE BACKGROUND
+                // -------------------------------------------------------------
                 const cardBg = this.scene.add.graphics();
                 cardBg.fillStyle(0x161920, 1);
                 cardBg.fillRoundedRect(cardX, 0, 240, 480, 12);
-                cardBg.lineStyle(2, tierColor, 1);
-                cardBg.strokeRoundedRect(cardX, 0, 240, 480, 12);
                 this.shopCardsContainer.add(cardBg);
 
-                // ---- Icon ----
-                const tex = config?.textureKey ?? config?.TextureKey;
-                if (tex && tex.trim() !== "" && this.scene.textures.exists(tex)) {
-                    const icon = this.scene.add.sprite(cardX + 120, 75, tex);
-                    const frame = config.iconFrame ?? config.IconFrame;
-                    if (frame !== undefined) icon.setFrame(frame);
-                    icon.setScale(Math.min(64 / icon.width, 64 / icon.height));
-                    this.shopCardsContainer.add(icon);
-                }
-
-                // ---- Name / type header ----
-                const nameText = this.scene.add.text(cardX + 120, 135, item.name ?? item.Name ?? "Unknown", {
-                    fontFamily: UIHelpers.FONT, fontSize: '18px', color: UIHelpers.getTierColorStr(tier), fontStyle: 'bold', resolution: 3
-                }).setOrigin(0.5);
-                const typeStr  = isWeapon ? "⚔️ Weapon" : "🎒 Item";
-                const typeText = this.scene.add.text(cardX + 120, 155, typeStr, {
-                    fontFamily: UIHelpers.FONT, fontSize: '12px', color: '#8892a0', fontStyle: 'italic', resolution: 3
-                }).setOrigin(0.5);
-                const divider  = this.scene.add.rectangle(cardX + 120, 170, 200, 2, 0x3a4454).setOrigin(0.5);
-
-                // ---- Build stat text using shared helper ----
-                const rolledStats  = item.rolledStats  ?? item.RolledStats;
-                const rolledSkills = item.weaponSkills  ?? item.WeaponSkills;
-                const { posStr, negStr, randomStr, skillsStr } =
-                    UIHelpers.buildStatLines(config, rolledStats, rolledSkills, atlasConfigs, 1);
-
-                // ---- Weapon combine preview ----
+                // -------------------------------------------------------------
+                // 2. SCROLLABLE TEXT (Placed underneath the blockers)
+                // -------------------------------------------------------------
                 let combinePreview: CombinePreview | undefined;
                 if (isWeapon && config && ownedWeaponsMap[configId]) {
                     const owned = ownedWeaponsMap[configId];
                     const combinedStats: Record<string, number> = {};
                     const accumulate = (bonuses: any) => {
                         if (!bonuses) return;
-                        Object.entries(bonuses).forEach(([k, v]) => {
-                            combinedStats[k] = (combinedStats[k] ?? 0) + (v as number);
-                        });
+                        Object.entries(bonuses).forEach(([k, v]) => { combinedStats[k] = (combinedStats[k] ?? 0) + (v as number); });
                     };
-                    // Each weapon instance contributes its own base stat bonuses.
-                    // Owned weapon's base stats (already bought):
                     accumulate(config.statBonuses ?? config.StatBonuses);
-                    // Shop weapon's base stats (would be gained on combine):
                     accumulate(config.statBonuses ?? config.StatBonuses);
-                    // Sum random rolled stats from both instances
                     accumulate(owned.rolledStats  ?? owned.RolledStats);
                     accumulate(item.rolledStats   ?? item.RolledStats);
 
@@ -883,35 +879,107 @@ export class ShopUI {
                     };
                 }
 
-                // ---- Build card body text ----
-                let finalPosStr = '';
-                if (posStr)      finalPosStr += `[ 📊 Base Stats ]\n${posStr}`;
-                if (randomStr)   finalPosStr += `\n[ 🎲 Random Rolls ]\n${randomStr}`;
-                if (skillsStr)   finalPosStr += `\n[ 🌟 Skills ]\n${skillsStr}`;
-                if (combinePreview) {
-                    const skillMap = atlasConfigs?.skills ?? atlasConfigs?.Skills;
-                    finalPosStr += `\n[ ⚗️ Combine → Tier ${combinePreview.tier} ]\n`;
-                    Object.entries(combinePreview.stats).forEach(([k, v]) => {
-                        const num  = v as number;
-                        const info = UIHelpers.getStatInfo(k);
-                        finalPosStr += `${info.e} ${info.n}: ${num > 0 ? '+' : ''}${UIHelpers.formatVal(k, num)}\n`;
-                    });
-                    if (combinePreview.skills.length) {
-                        combinePreview.skills.forEach((id: string) => {
-                            const s = skillMap?.[id];
-                            finalPosStr += `⭐ ${s ? (s.name ?? s.Name) : id}\n`;
-                        });
-                    }
+                const rolledStats  = item.rolledStats  ?? item.RolledStats;
+                const rolledSkills = item.weaponSkills  ?? item.WeaponSkills;
+                const blocks = UIHelpers.buildStatBlocks(config, rolledStats, rolledSkills, atlasConfigs, 1, combinePreview);
+
+                const statsContainer = this.scene.add.container(0, 0);
+                this.shopCardsContainer.add(statsContainer);
+
+                let currentY = 115;
+                blocks.forEach(b => {
+                    const t = this.scene.add.text(cardX + 15, currentY, b.text, {
+                        fontFamily: UIHelpers.FONT,
+                        fontSize: b.isHeader ? '13px' : '12px',
+                        fontStyle: b.isHeader ? 'bold' : 'normal',
+                        color: b.color,
+                        lineSpacing: 1,
+                        wordWrap: { width: 200 }, // Leave room for scrollbar
+                        resolution: 3
+                    }).setOrigin(0, 0);
+                    statsContainer.add(t);
+                    currentY += t.displayHeight + (b.isHeader ? 2 : 4);
+                });
+
+                // SCROLLBAR CALCS
+                const maxScroll = Math.max(0, currentY - 115 - 260);
+                let updateScrollBar = () => {};
+
+                if (maxScroll > 0) {
+                    const scrollBarBg = this.scene.add.graphics();
+                    scrollBarBg.fillStyle(0x000000, 0.5);
+                    scrollBarBg.fillRoundedRect(cardX + 225, 115, 4, 260, 2);
+                    this.shopCardsContainer.add(scrollBarBg);
+
+                    const scrollBar = this.scene.add.graphics();
+                    this.shopCardsContainer.add(scrollBar);
+                    const barHeight = Math.max(20, 260 * (260 / (currentY - 115)));
+                    
+                    updateScrollBar = () => {
+                        scrollBar.clear();
+                        scrollBar.fillStyle(0x8892a0, 1);
+                        const progress = Math.abs(statsContainer.y) / maxScroll;
+                        const barY = 115 + (progress * (260 - barHeight));
+                        scrollBar.fillRoundedRect(cardX + 225, barY, 4, barHeight, 2);
+                    };
+                    updateScrollBar();
                 }
 
-                const posTextObj = this.scene.add.text(cardX + 15, 180, finalPosStr.trim(), {
-                    fontFamily: UIHelpers.FONT, fontSize: '12px', color: '#dddddd', lineSpacing: 2, resolution: 3
-                }).setOrigin(0, 0);
-                const negTextObj = this.scene.add.text(cardX + 15, 180 + posTextObj.height + 4, negStr.trim(), {
-                    fontFamily: UIHelpers.FONT, fontSize: '12px', color: '#ff4444', lineSpacing: 2, resolution: 3
-                }).setOrigin(0, 0);
+                // -------------------------------------------------------------
+                // 3. SOLID BLOCKERS (The "Stencil-less Mask")
+                // By drawing the same color block over the top and bottom of the card, 
+                // the scrolling text is naturally "clipped" without using WebGL masks!
+                // -------------------------------------------------------------
+                const blockers = this.scene.add.graphics();
+                blockers.fillStyle(0x161920, 1);
+                
+                // Top Blocker (Hides text scrolling up)
+                blockers.fillRoundedRect(cardX, 0, 240, 115, 12);
+                blockers.fillRect(cardX, 50, 240, 65); // Square off the bottom of the top blocker
+                
+                // Bottom Blocker (Hides text scrolling down)
+                blockers.fillRoundedRect(cardX, 375, 240, 105, 12);
+                blockers.fillRect(cardX, 375, 240, 60); // Square off the top of the bottom blocker
+                
+                this.shopCardsContainer.add(blockers);
 
-                // ---- Buy button ----
+                // -------------------------------------------------------------
+                // 4. BORDER (Drawn above blockers so it stays visible)
+                // -------------------------------------------------------------
+                const cardBorder = this.scene.add.graphics();
+                cardBorder.lineStyle(2, tierColor, 1);
+                cardBorder.strokeRoundedRect(cardX, 0, 240, 480, 12);
+                this.shopCardsContainer.add(cardBorder);
+
+                // -------------------------------------------------------------
+                // 5. HEADER CONTENT (Drawn over the top blocker)
+                // -------------------------------------------------------------
+                const tierTextStr = `Tier ${tier} ${isWeapon ? 'Weapon' : 'Item'}`;
+                const tierTextObj = this.scene.add.text(cardX + 120, 20, tierTextStr, {
+                    fontFamily: UIHelpers.FONT, fontSize: '12px', color: UIHelpers.getTierColorStr(tier), fontStyle: 'bold', resolution: 3
+                }).setOrigin(0.5);
+                
+                const nameText = this.scene.add.text(cardX + 120, 40, item.name ?? item.Name ?? "Unknown", {
+                    fontFamily: UIHelpers.FONT, fontSize: '20px', color: '#ffffff', fontStyle: 'bold', resolution: 3
+                }).setOrigin(0.5);
+
+                const tex = config?.textureKey ?? config?.TextureKey;
+                let icon: any = null;
+                if (tex && tex.trim() !== "" && this.scene.textures.exists(tex)) {
+                    icon = this.scene.add.sprite(cardX + 120, 75, tex);
+                    const frame = config.iconFrame ?? config.IconFrame;
+                    if (frame !== undefined) icon.setFrame(frame);
+                    icon.setScale(Math.min(48 / icon.width, 48 / icon.height));
+                }
+
+                const divider = this.scene.add.rectangle(cardX + 120, 105, 200, 2, 0x3a4454).setOrigin(0.5);
+                
+                this.shopCardsContainer.add([tierTextObj, nameText, divider]);
+                if (icon) this.shopCardsContainer.add(icon);
+
+                // -------------------------------------------------------------
+                // 6. FOOTER CONTENT & BUTTONS (Drawn over the bottom blocker)
+                // -------------------------------------------------------------
                 const buyBtnBg = this.scene.add.graphics();
                 buyBtnBg.fillStyle(0x2e7d32, 1);
                 buyBtnBg.fillRoundedRect(cardX + 30, 390, 180, 40, 20);
@@ -934,7 +1002,6 @@ export class ShopUI {
                     buyBtnBg.fillRoundedRect(cardX + 30, 390, 180, 40, 20);
                 });
 
-                // ---- Lock button ----
                 const lockBtnBg = this.scene.add.graphics();
                 lockBtnBg.fillStyle(isLocked ? 0x443300 : 0x2a303a, 1);
                 lockBtnBg.fillRoundedRect(cardX + 70, 440, 100, 26, 13);
@@ -947,30 +1014,48 @@ export class ShopUI {
                 lockHitbox.on('pointerdown', () =>
                     this.connection.invoke("ToggleLock", configId).catch((err: any) => console.error(err)));
 
-                // ---- Whole-card hover hitbox for tooltip ----
+                this.shopCardsContainer.add([buyBtnBg, buyText, lockBtnBg, lockText]);
+
+                // -------------------------------------------------------------
+                // 7. CARD HOVER / SCROLL HITBOX
+                // -------------------------------------------------------------
                 const cardHitbox = this.scene.add.rectangle(cardX + 120, 240, 240, 480, 0x000000, 0)
                     .setScrollFactor(0).setInteractive();
+                
+                cardHitbox.on('wheel', (pointer: Phaser.Input.Pointer, dx: number, dy: number, dz: number, event: Phaser.Types.Input.EventData) => {
+                    if (maxScroll > 0) {
+                        statsContainer.y -= dy * 0.5;
+                        if (statsContainer.y < -maxScroll) statsContainer.y = -maxScroll;
+                        if (statsContainer.y > 0) statsContainer.y = 0;
+                        updateScrollBar();
+                        event.stopPropagation();
+                    }
+                });
+
+                this.scene.input.setDraggable(cardHitbox);
+                cardHitbox.on('drag', (pointer: Phaser.Input.Pointer, dragX: number, dragY: number) => {
+                    if (maxScroll > 0) {
+                        statsContainer.y += (pointer.y - pointer.prevPosition.y); 
+                        if (statsContainer.y < -maxScroll) statsContainer.y = -maxScroll;
+                        if (statsContainer.y > 0) statsContainer.y = 0;
+                        updateScrollBar();
+                    }
+                });
+
                 cardHitbox.on('pointerover', (p: Phaser.Input.Pointer) => {
-                    cardBg.lineStyle(3, 0xffffff, 1);
-                    cardBg.strokeRoundedRect(cardX, 0, 240, 480, 12);
+                    cardBorder.lineStyle(3, 0xffffff, 1);
+                    cardBorder.strokeRoundedRect(cardX, 0, 240, 480, 12);
                     this.tooltip.show(config, p.x, p.y, 1, atlasConfigs, rolledStats, rolledSkills, combinePreview);
                 });
-                cardHitbox.on('pointermove', (p: Phaser.Input.Pointer) =>
-                    this.tooltip.setPosition(p.x + 15, p.y + 15));
+                cardHitbox.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip.updatePosition(p.x, p.y));
                 cardHitbox.on('pointerout', () => {
-                    cardBg.lineStyle(2, tierColor, 1);
-                    cardBg.strokeRoundedRect(cardX, 0, 240, 480, 12);
+                    cardBorder.lineStyle(2, tierColor, 1);
+                    cardBorder.strokeRoundedRect(cardX, 0, 240, 480, 12);
                     this.tooltip.hide();
                 });
 
-                // Order: visuals first → cardHitbox → buy/lock on top (highest z = first processed for input)
-                this.shopCardsContainer.add([
-                    divider, nameText, typeText, posTextObj, negTextObj,
-                    buyBtnBg, buyText, lockBtnBg, lockText,
-                    cardHitbox,
-                    buyHitbox,
-                    lockHitbox,
-                ]);
+                // Add hitboxes last so they correctly capture pointer events on top of visuals
+                this.shopCardsContainer.add([cardHitbox, buyHitbox, lockHitbox]);
             });
 
         } catch (err) {
