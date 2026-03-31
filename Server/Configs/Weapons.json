@@ -15,7 +15,7 @@
     "attackAnimType": "recoil",
     "soundFire": "ball-shoot",
     "statBonuses": {
-      "speedPercent": 0.05
+      "speed": 5
     },
     "damageScaling": {
       "rangedDamage": 0.5
@@ -106,7 +106,7 @@
     "attackAnimType": "recoil",
     "soundFire": "sfx_sniper_fire",
     "statBonuses": {
-      "speed": -0.05
+      "speed": -5
     },
     "damageScaling": {
       "rangedDamage": 1.2
@@ -194,7 +194,7 @@
     "attackAnimType": "swing",
     "soundFire": "sword-shoot",
     "statBonuses": {
-      "speedPercent": 0.02
+      "speed": 2
     },
     "damageScaling": {
       "meleeDamage": 0.8

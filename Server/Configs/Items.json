@@ -12,11 +12,20 @@
     "dynamicModifiers": [
       {
         "conditionType": "MissingHealthPercent",
-        "conditionThreshold": 0.20,
+        "conditionThreshold": 0.2,
         "targetStat": "meleeDamage",
         "amount": 5
       }
-    ]
+    ],
+    "statBonuses": {
+      "meleeDamage": 2
+    },
+    "statRollChance": 0.40,
+    "maxRandomStats": 1,
+    "allowedRandomStats": ["meleeDamage", "critChance", "maxHp"],
+    "skillRollChance": 0.10,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": ["adrenaline_surge", "boss_stomp"]
   },
   "magical_leaf": {
     "id": "magical_leaf",
@@ -39,7 +48,16 @@
       }
     ],
     "effectsOnPurchase": [],
-    "dynamicModifiers": []
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "hpRegen": 1
+    },
+    "statRollChance": 0.35,
+    "maxRandomStats": 1,
+    "allowedRandomStats": ["maxHp", "hpRegen", "lifeSteal"],
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": ["nature_pulse"]
   },
   "mirror": {
     "id": "mirror",
@@ -53,7 +71,16 @@
     "effectsOnPurchase": [
       "DuplicateNextItem"
     ],
-    "dynamicModifiers": []
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "luck": 1
+    },
+    "statRollChance": 0.30,
+    "maxRandomStats": 1,
+    "allowedRandomStats": ["luck", "harvesting", "xpGainPercent"],
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
   },
   "alien_tongue": {
     "id": "alien_tongue",
@@ -68,11 +95,20 @@
     "dynamicModifiers": [
       {
         "conditionType": "MissingHealthPercent",
-        "conditionThreshold": 0.10,
+        "conditionThreshold": 0.1,
         "targetStat": "speed",
         "amount": 5
       }
-    ]
+    ],
+    "statBonuses": {
+      "speed": 3
+    },
+    "statRollChance": 0.35,
+    "maxRandomStats": 1,
+    "allowedRandomStats": ["speed", "dodge", "luck"],
+    "skillRollChance": 0.10,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": ["adrenaline_surge"]
   },
   "blood_leech": {
     "id": "blood_leech",
@@ -89,7 +125,16 @@
       }
     ],
     "effectsOnPurchase": [],
-    "dynamicModifiers": []
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "lifeSteal": 0.01
+    },
+    "statRollChance": 0.35,
+    "maxRandomStats": 1,
+    "allowedRandomStats": ["lifeSteal", "meleeDamage", "hpRegen"],
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
   },
   "heavy_boots": {
     "id": "heavy_boots",
@@ -106,11 +151,20 @@
     "dynamicModifiers": [
       {
         "conditionType": "MissingHealthPercent",
-        "conditionThreshold": 0.50,
+        "conditionThreshold": 0.5,
         "targetStat": "armor",
         "amount": 5
       }
-    ]
+    ],
+    "statBonuses": {
+      "armor": 1
+    },
+    "statRollChance": 0.35,
+    "maxRandomStats": 1,
+    "allowedRandomStats": ["armor", "speed", "maxHp"],
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": ["boss_stomp"]
   },
   "lucky_coin": {
     "id": "lucky_coin",
@@ -127,7 +181,16 @@
       }
     ],
     "effectsOnPurchase": [],
-    "dynamicModifiers": []
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "luck": 2
+    },
+    "statRollChance": 0.40,
+    "maxRandomStats": 1,
+    "allowedRandomStats": ["luck", "harvesting", "engineering"],
+    "skillRollChance": 0.10,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
   },
   "cursed_skull": {
     "id": "cursed_skull",
@@ -150,7 +213,16 @@
       }
     ],
     "effectsOnPurchase": [],
-    "dynamicModifiers": []
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "meleeDamage": 3
+    },
+    "statRollChance": 0.40,
+    "maxRandomStats": 1,
+    "allowedRandomStats": ["meleeDamage", "rangedDamage", "damagePercent"],
+    "skillRollChance": 0.10,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": ["enrage", "adrenaline_surge"]
   },
   "battery": {
     "id": "battery",
@@ -169,7 +241,16 @@
         "targetStat": "elementalDamage",
         "amount": 3
       }
-    ]
+    ],
+    "statBonuses": {
+      "elementalDamage": 2
+    },
+    "statRollChance": 0.35,
+    "maxRandomStats": 1,
+    "allowedRandomStats": ["elementalDamage", "engineering", "attackSpeedPercent"],
+    "skillRollChance": 0.10,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": ["magic_missile", "frost_nova"]
   },
   "coffee": {
     "id": "coffee",
@@ -186,6 +267,15 @@
       }
     ],
     "effectsOnPurchase": [],
-    "dynamicModifiers": []
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "speed": 5
+    },
+    "statRollChance": 0.35,
+    "maxRandomStats": 1,
+    "allowedRandomStats": ["speed", "haste", "attackSpeedPercent"],
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": ["adrenaline_surge"]
   }
 }
