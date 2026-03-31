@@ -301,10 +301,11 @@ export class Tooltip extends Phaser.GameObjects.Container {
             this.negativeText.setText(negStr.trim());
 
             // Layout: stack text objects vertically
+            const SECTION_GAP = 6;
             const descBottom = this.descText.y + this.descText.displayHeight;
-            const bonusY = descBottom + (posStr.trim() && bonusContent.trim() ? 6 : 0);
+            const bonusY = descBottom + (posStr.trim() && bonusContent.trim() ? SECTION_GAP : 0);
             this.bonusText.setY(bonusY);
-            const bonusBottom = bonusY + (bonusContent.trim() ? this.bonusText.displayHeight + 6 : 0);
+            const bonusBottom = bonusY + (bonusContent.trim() ? this.bonusText.displayHeight + SECTION_GAP : 0);
             this.negativeText.setY(bonusBottom);
 
             const totalHeight =
@@ -863,8 +864,10 @@ export class ShopUI {
                             combinedStats[k] = (combinedStats[k] ?? 0) + (v as number);
                         });
                     };
-                    // Sum base stat bonuses from both weapon instances
+                    // Each weapon instance contributes its own base stat bonuses.
+                    // Owned weapon's base stats (already bought):
                     accumulate(config.statBonuses ?? config.StatBonuses);
+                    // Shop weapon's base stats (would be gained on combine):
                     accumulate(config.statBonuses ?? config.StatBonuses);
                     // Sum random rolled stats from both instances
                     accumulate(owned.rolledStats  ?? owned.RolledStats);
