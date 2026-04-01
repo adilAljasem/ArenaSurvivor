@@ -461,6 +461,7 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
         this.weaponGrid.list.filter(child => child.type !== 'Text').forEach(c => (c as any).destroy());
 
         // ---- Item slots ----
+        // ---- Item slots ----
         for (let i = 0; i < 5; i++) {
             const slotX = i * 75;
             const slotBg = this.scene.add.graphics();
@@ -472,11 +473,13 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
 
             if (items?.[i]) {
                 const itemData = items[i];
-                const config = atlasConfigs?.items?.[itemData.configId] ?? null;
-                const stackCount = itemData.count || 1;
+                const config = atlasConfigs?.items?.[itemData.configId || itemData.ConfigId] ?? null;
+
+                // >>> FIX: Items now have Levels! <<<
+                const iLevel = itemData.level || itemData.Level || 1;
 
                 if (config) {
-                    slotBg.lineStyle(2, UIHelpers.getTierColorHex(config.tier || 1), 1);
+                    slotBg.lineStyle(2, UIHelpers.getTierColorHex(iLevel), 1);
                     slotBg.strokeRoundedRect(slotX, 0, 65, 65, 8);
                 }
 
@@ -494,24 +497,37 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
 
                 const hitbox = this.scene.add.rectangle(slotX + 32.5, 32.5, 65, 65, 0x000000, 0)
                     .setInteractive({ useHandCursor: true });
+
                 if (config) {
-                    const rolledStats = itemData.rolledStats ?? itemData.RolledStats;
-                    const rolledSkills = itemData.rolledSkills ?? itemData.RolledSkills;
-                    hitbox.on('pointerover', (p: Phaser.Input.Pointer) =>
-                        this.tooltip.show(config, p.x, p.y, stackCount, this.atlasConfigs, rolledStats, rolledSkills));
-                    hitbox.on('pointermove', (p: Phaser.Input.Pointer) =>
-                        this.tooltip.updatePosition(p.x, p.y));
-                    hitbox.on('pointerout', () => this.tooltip.hide());
+                    hitbox.on('pointerover', (p: Phaser.Input.Pointer) => {
+                        slotBg.lineStyle(2, 0xffffff, 1);
+                        slotBg.strokeRoundedRect(slotX, 0, 65, 65, 8);
+
+                        // >>> FIX: Pass all the new random stats and skills to the Tooltip! <<<
+                        this.tooltip.show(
+                            config, p.x, p.y, iLevel, this.atlasConfigs,
+                            itemData.totalBaseStats ?? itemData.TotalBaseStats,
+                            itemData.rolledStats ?? itemData.RolledStats,
+                            itemData.itemSkills ?? itemData.ItemSkills
+                        );
+                    });
+
+                    hitbox.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip.updatePosition(p.x, p.y));
+
+                    hitbox.on('pointerout', () => {
+                        slotBg.lineStyle(2, UIHelpers.getTierColorHex(iLevel), 1);
+                        slotBg.strokeRoundedRect(slotX, 0, 65, 65, 8);
+                        this.tooltip.hide();
+                    });
                 }
                 this.itemGrid.add(hitbox);
 
-                if (stackCount > 1) {
-                    const countTxt = this.scene.add.text(slotX + 60, 60, `x${stackCount}`, {
-                        fontFamily: UIHelpers.FONT, fontSize: '14px', color: '#fff',
-                        stroke: '#000', strokeThickness: 3, resolution: 3
-                    }).setOrigin(1, 1);
-                    this.itemGrid.add(countTxt);
-                }
+                // >>> FIX: Render the Item Level instead of Stack Count! <<<
+                const lvlTxt = this.scene.add.text(slotX + 60, 60, `Lv.${iLevel}`, {
+                    fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#ffffff',
+                    stroke: '#000', strokeThickness: 3, resolution: 3
+                }).setOrigin(1, 1);
+                this.itemGrid.add(lvlTxt);
             }
         }
 
@@ -863,10 +879,10 @@ export class ShopUI {
                 const statsContainer = this.scene.add.container(0, 0);
                 this.shopCardsContainer.add(statsContainer);
 
-                // >>> FIX: Extract totalBaseStats and pass the arguments in the exact right order! <<<
+                // >>> FIX: Check for weaponSkills OR itemSkills just to be safe! <<<
                 const totalBaseStats = item.totalBaseStats ?? item.TotalBaseStats;
                 const rolledStats = item.rolledStats ?? item.RolledStats;
-                const rolledSkills = item.weaponSkills ?? item.WeaponSkills;
+                const rolledSkills = item.weaponSkills ?? item.WeaponSkills ?? item.itemSkills ?? item.ItemSkills;
 
                 const blocks = UIHelpers.buildStatBlocks(
                     config,

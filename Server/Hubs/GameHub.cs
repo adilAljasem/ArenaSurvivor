@@ -118,7 +118,15 @@ public class GameHub : Hub
             player.Gold,
             player.CurrentShop,
             player.Weapons,
-            OwnedItems = player.OwnedItems.Select(kvp => new { ConfigId = kvp.Key, Count = kvp.Value }).ToArray(),
+            OwnedItems = player.OwnedItems.Select(i => new
+            {
+                ConfigId = i.ConfigId,
+                SlotIndex = i.SlotIndex,
+                Level = i.Level,
+                RolledStats = i.RolledStats,
+                ItemSkills = i.ItemSkills.Select(s => s.ConfigId).ToList(),
+                TotalBaseStats = i.TotalBaseStats
+            }).ToArray(),
             CurrentRerollCost = player.CurrentRerollCost,
             CurrentWave = _gameState.CurrentWave,
 
@@ -144,22 +152,50 @@ public class GameHub : Hub
             // 1. IS IT AN ITEM?
             if (_configManager.Items.TryGetValue(configId, out var itemConfig))
             {
-                if (!player.OwnedItems.ContainsKey(itemConfig.Id) && player.OwnedItems.Count >= 5)
+                var newlyBoughtItem = Server.Core.Systems.ItemGenerator.GenerateItem(configId, player, _configManager, 1);
+                newlyBoughtItem.RolledStats = shopItem.RolledStats ?? new Dictionary<string, float>();
+
+                if (shopItem.WeaponSkills != null)
                 {
-                    return; // Inventory full, abort purchase (gold is saved)
+                    foreach (var skillId in shopItem.WeaponSkills)
+                    {
+                        if (_configManager.Skills.TryGetValue(skillId, out var sCfg))
+                            newlyBoughtItem.ItemSkills.Add(new Server.Entities.ActiveSkill { ConfigId = skillId, CurrentCooldown = sCfg.CooldownSeconds });
+                    }
                 }
 
-                player.Gold -= shopItem.Price;
+                var existingItem = player.OwnedItems.FirstOrDefault(i =>
+                    _configManager.Items.TryGetValue(i.ConfigId, out var existingCfg) &&
+                    (
+                        (!string.IsNullOrEmpty(itemConfig.ItemFamily) && existingCfg.ItemFamily == itemConfig.ItemFamily)
+                        || i.ConfigId == configId
+                    )
+                );
 
-                if (player.DuplicateNextPurchase)
+                if (existingItem != null)
                 {
-                    player.DuplicateNextPurchase = false;
-                    AddItemToInventory(player, itemConfig);
-                    AddItemToInventory(player, itemConfig);
+                    player.Gold -= shopItem.Price;
+                    var upgradedItem = Server.Core.Systems.ItemGenerator.MergeItems(existingItem, newlyBoughtItem, _configManager);
+                    player.OwnedItems.Remove(existingItem);
+                    player.OwnedItems.Add(upgradedItem);
                 }
                 else
                 {
-                    AddItemToInventory(player, itemConfig);
+                    if (player.OwnedItems.Count < 5) // Assuming 5 max item slots
+                    {
+                        player.Gold -= shopItem.Price;
+                        var usedSlots = player.OwnedItems.Select(i => i.SlotIndex).ToList();
+                        int nextSlot = 0;
+                        while (usedSlots.Contains(nextSlot)) nextSlot++;
+
+                        newlyBoughtItem.SlotIndex = nextSlot;
+                        player.OwnedItems.Add(newlyBoughtItem);
+
+                        // Apply one-time traits
+                        foreach (var trait in itemConfig.Traits) player.Traits.Add(trait);
+                        if (itemConfig.EffectsOnPurchase.Contains("DuplicateNextItem")) player.DuplicateNextPurchase = true;
+                    }
+                    else return;
                 }
 
                 player.CurrentShop.Remove(shopItem);
@@ -293,16 +329,5 @@ public class GameHub : Hub
         // The client just needs the server to acknowledge the message to calculate latency!
     }
 
-    // Add this helper method right below BuyItem inside GameHub
-    private void AddItemToInventory(Server.Entities.PlayerEntity player, Server.Configs.ItemConfig item)
-    {
-        if (!player.OwnedItems.TryAdd(item.Id, 1))
-            player.OwnedItems[item.Id]++;
-
-        foreach (var trait in item.Traits)
-            player.Traits.Add(trait);
-
-        if (item.EffectsOnPurchase.Contains("DuplicateNextItem"))
-            player.DuplicateNextPurchase = true;
-    }
+    
 }

@@ -178,14 +178,13 @@ public class GameLoop : BackgroundService
             player.CurrentRerollCost = 2;
             GenerateShopForPlayer(player, _configManager, _gameState.CurrentWave);
 
-            foreach (var kvp in player.OwnedItems)
+            foreach (var item in player.OwnedItems)
             {
-                if (_configManager.Items.TryGetValue(kvp.Key, out var itemConfig))
+                if (_configManager.Items.TryGetValue(item.ConfigId, out var itemConfig))
                 {
-                    int stackCount = kvp.Value;
                     foreach (var effect in itemConfig.EffectsAtWaveEnd)
                     {
-                        player.Stats.AddModifier(effect.StatName, effect.Amount * stackCount, 0);
+                        player.Stats.AddModifier(effect.StatName, effect.Amount * item.Level, 0);
                     }
                 }
             }
@@ -203,7 +202,15 @@ public class GameLoop : BackgroundService
                 player.Gold,
                 player.CurrentShop,
                 player.Weapons,
-                OwnedItems = player.OwnedItems.Select(kvp => new { ConfigId = kvp.Key, Count = kvp.Value }).ToArray(),
+                OwnedItems = player.OwnedItems.Select(i => new
+                {
+                    ConfigId = i.ConfigId,
+                    SlotIndex = i.SlotIndex,
+                    Level = i.Level,
+                    RolledStats = i.RolledStats,
+                    ItemSkills = i.ItemSkills.Select(s => s.ConfigId).ToList(),
+                    TotalBaseStats = i.TotalBaseStats
+                }).ToArray(),
                 CurrentRerollCost = player.CurrentRerollCost,
                 CurrentWave = _gameState.CurrentWave,
                 Level = player.Level,
@@ -345,7 +352,17 @@ public class GameLoop : BackgroundService
             else if (availableItems.Count > 0)
             {
                 var item = availableItems[Random.Shared.Next(availableItems.Count)];
-                player.CurrentShop.Add(new Server.DTOs.ShopItemDto { ConfigId = item.Id, Name = item.Name, Price = 25 });
+                var previewItem = Server.Core.Systems.ItemGenerator.GenerateItem(item.Id, player, configManager, 1);
+
+                player.CurrentShop.Add(new Server.DTOs.ShopItemDto
+                {
+                    ConfigId = item.Id,
+                    Name = item.Name,
+                    Price = item.Price,
+                    TotalBaseStats = previewItem.TotalBaseStats,
+                    RolledStats = previewItem.RolledStats,
+                    WeaponSkills = previewItem.ItemSkills.Select(s => s.ConfigId).ToList()
+                });
             }
         }
     }

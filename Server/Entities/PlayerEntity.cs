@@ -40,8 +40,7 @@ public class PlayerEntity
 
     // Inventory
     public List<EquippedWeapon> Weapons { get; set; } = new();
-    public Dictionary<string, int> OwnedItems { get; set; } = new();
-
+    public List<EquippedItem> OwnedItems { get; set; } = new();
     // Mechanics
     public List<string> Traits { get; set; } = new();
     public bool DuplicateNextPurchase { get; set; }
@@ -95,34 +94,36 @@ public class PlayerEntity
     public float GetTotalStat(string statName, ConfigManager configManager)
     {
         float baseStat = Stats.GetFinalStat(statName);
-        float dynamicFlat = 0f; // All stats are added flatly to their buckets now!
-        float total = 0f;
-
+        float dynamicFlat = 0f; 
+        
         // --- 1. ITEMS ---
-        foreach (var kvp in OwnedItems)
+        foreach (var item in OwnedItems)
         {
-            if (configManager.Items.TryGetValue(kvp.Key, out var itemConfig))
-            {
-                if (itemConfig.StatBonuses != null && itemConfig.StatBonuses.TryGetValue(statName, out float bonus))
-                    dynamicFlat += (bonus * kvp.Value);
+            // A. Add pre-calculated Base Stats directly! (Replaces itemConfig.StatBonuses * kvp.Value)
+            if (item.TotalBaseStats != null && item.TotalBaseStats.TryGetValue(statName, out float iBase))
+                dynamicFlat += iBase;
 
-                if (itemConfig.DynamicModifiers != null)
+            // B. Add Random Rolled Stats directly!
+            if (item.RolledStats != null && item.RolledStats.TryGetValue(statName, out float iRoll))
+                dynamicFlat += iRoll;
+
+            // C. Calculate Dynamic Modifiers (These still need the JSON config)
+            if (configManager.Items.TryGetValue(item.ConfigId, out var itemConfig) && itemConfig.DynamicModifiers != null)
+            {
+                foreach (var mod in itemConfig.DynamicModifiers.Where(m => m.TargetStat == statName))
                 {
-                    foreach (var mod in itemConfig.DynamicModifiers.Where(m => m.TargetStat == statName))
+                    if (mod.ConditionType == "MissingHealthPercent")
                     {
-                        if (mod.ConditionType == "MissingHealthPercent")
-                        {
-                            float maxHp = Stats.GetFinalStat("maxHp");
-                            float missingHpPercent = 1f - (CurrentHp / Math.Max(1f, maxHp));
-                            int chunks = (int)Math.Floor(missingHpPercent / Math.Max(0.01f, mod.ConditionThreshold));
-                            dynamicFlat += (mod.Amount * chunks * kvp.Value); // Unifed!
-                        }
-                        else if (mod.ConditionType == "PerXStat" && !string.IsNullOrEmpty(mod.ConditionStat))
-                        {
-                            float sourceStatValue = GetTotalStat(mod.ConditionStat, configManager);
-                            int chunks = (int)Math.Floor(sourceStatValue / Math.Max(0.01f, mod.ConditionThreshold));
-                            dynamicFlat += (mod.Amount * chunks * kvp.Value); // Unified!
-                        }
+                        float maxHp = Stats.GetFinalStat("maxHp");
+                        float missingHpPercent = 1f - (CurrentHp / Math.Max(1f, maxHp));
+                        int chunks = (int)Math.Floor(missingHpPercent / Math.Max(0.01f, mod.ConditionThreshold));
+                        dynamicFlat += (mod.Amount * chunks * item.Level); // Use item.Level instead of kvp.Value!
+                    }
+                    else if (mod.ConditionType == "PerXStat" && !string.IsNullOrEmpty(mod.ConditionStat))
+                    {
+                        float sourceStatValue = GetTotalStat(mod.ConditionStat, configManager);
+                        int chunks = (int)Math.Floor(sourceStatValue / Math.Max(0.01f, mod.ConditionThreshold));
+                        dynamicFlat += (mod.Amount * chunks * item.Level); // Use item.Level!
                     }
                 }
             }
@@ -131,25 +132,20 @@ public class PlayerEntity
         // --- 2. WEAPONS ---
         foreach (var weapon in Weapons)
         {
-            if (configManager.Weapons.TryGetValue(weapon.ConfigId, out var weaponConfig))
-            {
-                if (weaponConfig.StatBonuses != null && weaponConfig.StatBonuses.TryGetValue(statName, out float wBonus))
-                    dynamicFlat += (wBonus * weapon.Level);
-            }
+            // A. Add pre-calculated Base Stats directly! (Replaces weaponConfig.StatBonuses * weapon.Level)
+            if (weapon.TotalBaseStats != null && weapon.TotalBaseStats.TryGetValue(statName, out float wBase))
+                dynamicFlat += wBase;
 
-            // >>> FIX: Add the rolled stats directly to dynamicFlat! <<<
-            if (weapon.RolledStats != null && weapon.RolledStats.TryGetValue(statName, out var weaponStatValue))
-            {
-                dynamicFlat += weaponStatValue;
-            }
+            // B. Add Random Rolled Stats directly!
+            if (weapon.RolledStats != null && weapon.RolledStats.TryGetValue(statName, out var wRoll))
+                dynamicFlat += wRoll;
         }
 
-        // >>> NEW: 3. ACTIVE EFFECTS (Buffs & Debuffs) <<<
+        // --- 3. ACTIVE EFFECTS (Buffs & Debuffs) ---
         foreach (var effect in ActiveEffects)
         {
             if (configManager.Effects.TryGetValue(effect.ConfigId, out var effectConfig))
             {
-                // If the effect modifies this specific stat, add/subtract it!
                 if (effectConfig.StatModifiers != null && effectConfig.StatModifiers.TryGetValue(statName, out float amount))
                 {
                     dynamicFlat += amount;

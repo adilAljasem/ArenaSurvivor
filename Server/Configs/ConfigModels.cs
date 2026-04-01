@@ -150,6 +150,9 @@ public class ItemConfig
     public int Price { get; set; }
     public string TextureKey { get; set; } = string.Empty;
     public string IconKey { get; set; } = string.Empty;
+    // >>> NEW: Add Tier and Family for merging! <<<
+    public int Tier { get; set; } = 1;
+    public string ItemFamily { get; set; } = string.Empty;
 
     // --- Stat Modifiers & Effects ---
     public Dictionary<string, float> StatBonuses { get; set; } = new();
