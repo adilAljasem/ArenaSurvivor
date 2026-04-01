@@ -99,6 +99,7 @@ public class WeaponConfig
 {
     // --- Identity & Visuals ---
     public string Id { get; set; } = string.Empty;
+    public string WeaponFamily { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public int Tier { get; set; }
     public string TextureKey { get; set; } = string.Empty;

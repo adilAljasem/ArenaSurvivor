@@ -31,7 +31,7 @@ public class PlayerEntity
     public float CurrentHp { get; set; }
 
     // Economy & Shop
-    public int Gold { get; set; }
+    public int Gold { get; set; } = 5000;
     public int CurrentRerollCost { get; set; } = 2;
     public List<DTOs.ShopItemDto> CurrentShop { get; set; } = new();
 

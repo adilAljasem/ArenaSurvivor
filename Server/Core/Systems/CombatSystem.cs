@@ -42,8 +42,20 @@ public static class CombatSystem
 
                         player.FiredWeaponsThisTick.Add(weapon.SlotIndex);
 
-                        float finalDamage = config.MeleeDamage + config.RangedDamage + config.ElementalDamage;
 
+                        // >>> FIX: Instantly read the cached server calculation! No more loops! <<<
+                        float baseMelee = weapon.TotalBaseStats.GetValueOrDefault("meleeDamage", 0f);
+                        float baseRanged = weapon.TotalBaseStats.GetValueOrDefault("rangedDamage", 0f);
+                        float baseElemental = weapon.TotalBaseStats.GetValueOrDefault("elementalDamage", 0f);
+
+                        // 2. Add any specific random rolls this specific weapon has!
+                        if (weapon.RolledStats.TryGetValue("meleeDamage", out var rm)) baseMelee += rm;
+                        if (weapon.RolledStats.TryGetValue("rangedDamage", out var rr)) baseRanged += rr;
+                        if (weapon.RolledStats.TryGetValue("elementalDamage", out var re)) baseElemental += re;
+
+                        float finalDamage = baseMelee + baseRanged + baseElemental;
+
+                        // 3. Add Player Stat Scaling (e.g., +50% of your Engineering stat)
                         if (config.DamageScaling != null)
                         {
                             foreach (var scale in config.DamageScaling)
@@ -52,8 +64,10 @@ public static class CombatSystem
                             }
                         }
 
+                        // 4. Apply global damage percent (REMOVED * weapon.Level !!!)
                         float damagePercent = player.GetTotalStat("damagePercent", configs);
-                        finalDamage = (finalDamage * weapon.Level) * (1f + damagePercent);
+                        finalDamage = finalDamage * (1f + damagePercent);
+                        // ====================================================================
 
                         float localLifeSteal = config.Mechanics != null && config.Mechanics.ContainsKey("lifeSteal")
                                                ? config.Mechanics["lifeSteal"] : 0f;

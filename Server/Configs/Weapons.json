@@ -1,6 +1,7 @@
 {
   "pistol": {
     "id": "pistol",
+    "weaponFamily": "pistol_family",
     "name": "Pistol",
     "tier": 1,
     "cooldownSeconds": 0.5,
@@ -29,6 +30,39 @@
     "allowedRandomStats": ["rangedDamage", "critChance", "speed"],
     "skillRollChance": 0.10,
     "maxRandomSkills": 1,
+    "allowedRandomSkills": ["adrenaline_surge"]
+  },
+    "pistol_t2": {
+    "id": "pistol_t2",
+    "weaponFamily": "pistol_family",
+    "name": "Pistol",
+    "tier": 2,
+    "cooldownSeconds": 0.5,
+    "rangedDamage": 300,
+    "projectileSpeed": 600,
+    "projectileId": "9mm_bullet",
+    "range": 5000,
+    "textureKey": "weapons_sheet",
+    "scale": 0.15,
+    "iconFrame": 7,
+    "defaultFacingRight": true,
+    "attackAnimType": "recoil",
+    "soundFire": "ball-shoot",
+    "statBonuses": {
+      "speed": 5
+    },
+    "damageScaling": {
+      "rangedDamage": 0.5
+    },
+    "applyEffectsOnHit": [
+      "poison_dot"
+    ],
+    "grantedSkills": ["adrenaline_surge"],
+    "statRollChance": 0.90,
+    "maxRandomStats": 3,
+    "allowedRandomStats": ["rangedDamage", "critChance", "speed"],
+    "skillRollChance": 0.90,
+    "maxRandomSkills": 3,
     "allowedRandomSkills": ["adrenaline_surge"]
   },
   "smg": {
@@ -191,7 +225,7 @@
     "scale": 0.15,
     "iconFrame": 0,
     "defaultFacingRight": true,
-    "attackAnimType": "swing",
+    "attackAnimType": "stab",
     "soundFire": "sword-shoot",
     "statBonuses": {
       "speed": 2

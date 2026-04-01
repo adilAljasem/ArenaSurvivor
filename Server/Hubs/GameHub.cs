@@ -40,8 +40,14 @@ public class GameHub : Hub
             newPlayer.CurrentHp = 100f;
         }
 
-        newPlayer.Weapons.Add(new EquippedWeapon { ConfigId = "pistol", SlotIndex = 0 }); // Right
-        newPlayer.Weapons.Add(new EquippedWeapon { ConfigId = "smg", SlotIndex = 1 });  // Left
+        var w1 = Server.Core.Systems.WeaponGenerator.GenerateWeapon("pistol", newPlayer, _configManager, 1);
+        w1.SlotIndex = 0;
+        newPlayer.Weapons.Add(w1);
+
+        var w2 = Server.Core.Systems.WeaponGenerator.GenerateWeapon("smg", newPlayer, _configManager, 1);
+        w2.SlotIndex = 1;
+        newPlayer.Weapons.Add(w2);
+
         _gameState.Players.TryAdd(Context.ConnectionId, newPlayer);
 
         Core.GameLoop.GenerateShopForPlayer(newPlayer, _configManager, _gameState.CurrentWave);
@@ -161,10 +167,9 @@ public class GameHub : Hub
                 return;
             }
 
-           // 2. IS IT A WEAPON?
+            // 2. IS IT A WEAPON?
             if (_configManager.Weapons.TryGetValue(configId, out var weaponConfig))
             {
-                // >>> FIX: Reconstruct the weapon using the exact stats we rolled in the shop! <<<
                 var newlyBoughtWeapon = new Server.Entities.EquippedWeapon
                 {
                     ConfigId = configId,
@@ -172,6 +177,7 @@ public class GameHub : Hub
                     SlotIndex = 0,
                     RolledStats = shopItem.RolledStats ?? new Dictionary<string, float>()
                 };
+                newlyBoughtWeapon.MergedConfigIds.Add(configId);
 
                 if (shopItem.WeaponSkills != null)
                 {
@@ -184,15 +190,24 @@ public class GameHub : Hub
                     }
                 }
 
-                var existingWeapon = player.Weapons.FirstOrDefault(w => w.ConfigId == configId);
+                var existingWeapon = player.Weapons.FirstOrDefault(w =>
+                        _configManager.Weapons.TryGetValue(w.ConfigId, out var existingCfg) &&
+                        (
+                            // If both have a family, merge them!
+                            (!string.IsNullOrEmpty(weaponConfig.WeaponFamily) && existingCfg.WeaponFamily == weaponConfig.WeaponFamily)
+                            ||
+                            // Fallback: If no family is defined, merge by exact ID
+                            w.ConfigId == configId
+                        )
+                    );
 
                 if (existingWeapon != null)
                 {
                     player.Gold -= shopItem.Price;
-                    
+
                     // Merge using our pre-generated stats
                     var upgradedWeapon = Server.Core.Systems.WeaponGenerator.MergeWeapons(existingWeapon, newlyBoughtWeapon, _configManager);
-                    
+
                     player.Weapons.Remove(existingWeapon);
                     player.Weapons.Add(upgradedWeapon);
                 }
@@ -201,7 +216,7 @@ public class GameHub : Hub
                     if (player.Weapons.Count < 4)
                     {
                         player.Gold -= shopItem.Price;
-                        
+
                         var usedSlots = player.Weapons.Select(w => w.SlotIndex).ToList();
                         int nextSlot = 0;
                         while (usedSlots.Contains(nextSlot)) nextSlot++;

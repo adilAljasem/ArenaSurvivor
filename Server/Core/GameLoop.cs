@@ -27,6 +27,7 @@ public class GameLoop : BackgroundService
         _configManager = configManager;
         _configManager.LoadConfigs(); // Load JSON on startup
 
+
         // Initialize the current map from config
         if (_configManager.Maps.TryGetValue("map_forest", out var initialMap))
             _currentMap = initialMap;
@@ -133,7 +134,7 @@ public class GameLoop : BackgroundService
         {
             _gameState.Phase = GamePhase.WaveActive;
             _gameState.PhaseTimer = 60f;
-            _gameState.CurrentWave = 1;
+            _gameState.CurrentWave = 500;
         }
 
         if (_gameState.Phase != GamePhase.WaitingForPlayers)
@@ -310,7 +311,7 @@ public class GameLoop : BackgroundService
     // SHOP HELPERS
     // =================================================================================
 
-   public static void GenerateShopForPlayer(PlayerEntity player, ConfigManager configManager, int currentWave)
+    public static void GenerateShopForPlayer(PlayerEntity player, ConfigManager configManager, int currentWave)
     {
         int maxAllowedTier = (currentWave / 5) + 1;
         var availableWeapons = configManager.Weapons.Values.Where(w => w.Tier <= maxAllowedTier).ToList();
@@ -326,17 +327,20 @@ public class GameLoop : BackgroundService
             if (spawnWeapon && availableWeapons.Count > 0)
             {
                 var w = availableWeapons[Random.Shared.Next(availableWeapons.Count)];
-                
-                // >>> FIX: Generate the weapon NOW so we can see the random stats in the shop! <<<
-                var previewWeapon = WeaponGenerator.GenerateWeapon(w.Id, player, configManager, 1);
+                var previewWeapon = Server.Core.Systems.WeaponGenerator.GenerateWeapon(w.Id, player, configManager, 1);
 
-                player.CurrentShop.Add(new Server.DTOs.ShopItemDto { 
-                    ConfigId = w.Id, 
-                    Name = w.Name, 
+                var shopItem = new Server.DTOs.ShopItemDto
+                {
+                    ConfigId = w.Id,
+                    Name = w.Name,
                     Price = w.Tier * 15,
+                    TotalBaseStats = previewWeapon.TotalBaseStats, // <<< ADD THIS LINE
                     RolledStats = previewWeapon.RolledStats,
                     WeaponSkills = previewWeapon.WeaponSkills.Select(s => s.ConfigId).ToList()
-                });
+                };
+
+                // Just add it! No more messy server-side preview math.
+                player.CurrentShop.Add(shopItem);
             }
             else if (availableItems.Count > 0)
             {

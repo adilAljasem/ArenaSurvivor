@@ -361,14 +361,21 @@ class GameScene extends Phaser.Scene {
           currentHp: p[5], maxHp: p[6], gold: p[7], actionState: StateMap[p[8]],
           currentCastingSkillId: p[9], currentCastTimer: p[10], maxCastTimer: p[11],
           // >>> THE FIX: Read the Level, RolledStats, and WeaponSkills from the network! <<<
+          // >>> THE FIX: Parse the new TotalBaseStats from the server payload (w[5])! <<<
           weapons: p[12]?.map((w: any[]) => ({
             configId: w[0],
             slotIndex: w[1],
             level: w[2],
             rolledStats: w[3] || {},
-            weaponSkills: w[4] || []
+            weaponSkills: w[4] || [],
+            totalBaseStats: w[5] || {}
           })) || [],
-          firedWeapons: p[13] || [], activeEffects: p[14] || [], currentShop: [], stats: {}, ownedItems: {}
+
+          firedWeapons: p[13] || [],
+          activeEffects: p[14] || [],
+          currentShop: [],
+          stats: {},
+          ownedItems: {}
         })) || [],
 
         enemies: Array.from(this.enemyCache.values()),
