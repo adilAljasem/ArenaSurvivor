@@ -243,11 +243,18 @@
     "startingWeapons": [
       "pistol"
     ],
+    "startingWeaponTiers": [
+      2
+    ],
     "startingItems": [
       "ugly_tooth"
     ],
-    "weaponDropChance": 0.05,
+    "startingItemTiers": [
+      3
+    ],
+    "weaponDropChance": 0.9,
     "itemDropChance": 0.10,
+    "AttackRadius":600,
     "dynamicSkills": [
       {
         "conditionType": "MissingHealthPercent",
