@@ -2,6 +2,8 @@
   "ugly_tooth": {
     "id": "ugly_tooth",
     "name": "Ugly Tooth",
+    "itemFamily": "tooth_family",
+    "tier": 1,
     "price": 25,
     "textureKey": "items_sheet",
     "scale": 1.0,
@@ -12,39 +14,75 @@
     "dynamicModifiers": [
       {
         "conditionType": "MissingHealthPercent",
-        "conditionThreshold": 0.2,
+        "conditionThreshold": 0.20,
         "targetStat": "meleeDamage",
-        "amount": 5
+        "amount": 3
       }
     ],
     "statBonuses": {
-      "meleeDamage": 2
+      "meleeDamage": 2,
+      "maxHp": 5
     },
     "statRollChance": 0.40,
     "maxRandomStats": 1,
     "allowedRandomStats": ["meleeDamage", "critChance", "maxHp"],
     "skillRollChance": 0.10,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": ["adrenaline_surge", "boss_stomp"]
+    "allowedRandomSkills": ["adrenaline_surge"]
   },
+  "dragon_fang": {
+    "id": "dragon_fang",
+    "name": "Dragon's Fang",
+    "itemFamily": "tooth_family",
+    "tier": 2,
+    "price": 65,
+    "textureKey": "items_sheet",
+    "scale": 1.2,
+    "iconFrame": 0,
+    "traits": ["HeavyHitter"],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [
+      {
+        "conditionType": "MissingHealthPercent",
+        "conditionThreshold": 0.15,
+        "targetStat": "meleeDamage",
+        "amount": 8
+      },
+      {
+        "conditionType": "MissingHealthPercent",
+        "conditionThreshold": 0.15,
+        "targetStat": "armor",
+        "amount": 1
+      }
+    ],
+    "statBonuses": {
+      "meleeDamage": 10,
+      "maxHp": 15,
+      "speed": -5
+    },
+    "statRollChance": 0.75,
+    "maxRandomStats": 2,
+    "allowedRandomStats": ["meleeDamage", "critChance", "armor", "maxHp"],
+    "skillRollChance": 0.25,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": ["boss_stomp", "enrage"]
+  },
+
   "magical_leaf": {
     "id": "magical_leaf",
     "name": "Grind's Leaf",
-    "price": 45,
+    "itemFamily": "nature_family",
+    "tier": 1,
+    "price": 40,
     "textureKey": "items_sheet",
     "scale": 1.0,
     "iconFrame": 1,
-    "traits": [
-      "CannotHeal"
-    ],
+    "traits": [],
     "effectsAtWaveEnd": [
       {
         "statName": "maxHp",
-        "amount": 3
-      },
-      {
-        "statName": "hpRegen",
-        "amount": 1
+        "amount": 2
       }
     ],
     "effectsOnPurchase": [],
@@ -54,15 +92,257 @@
     },
     "statRollChance": 0.35,
     "maxRandomStats": 1,
-    "allowedRandomStats": ["maxHp", "hpRegen", "lifeSteal"],
+    "allowedRandomStats": ["maxHp", "hpRegen", "dodge"],
     "skillRollChance": 0.05,
     "maxRandomSkills": 1,
     "allowedRandomSkills": ["nature_pulse"]
   },
+  "world_tree_branch": {
+    "id": "world_tree_branch",
+    "name": "World Tree Branch",
+    "itemFamily": "nature_family",
+    "tier": 3,
+    "price": 120,
+    "textureKey": "items_sheet",
+    "scale": 1.3,
+    "iconFrame": 1,
+    "traits": ["Rooted"],
+    "effectsAtWaveEnd": [
+      {
+        "statName": "maxHp",
+        "amount": 5
+      },
+      {
+        "statName": "hpRegen",
+        "amount": 2
+      }
+    ],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [
+      {
+        "conditionType": "PerXStat",
+        "conditionStat": "maxHp",
+        "conditionThreshold": 100.0,
+        "targetStat": "damagePercent",
+        "amount": 0.05
+      }
+    ],
+    "statBonuses": {
+      "hpRegen": 5,
+      "armor": 3
+    },
+    "statRollChance": 0.80,
+    "maxRandomStats": 3,
+    "allowedRandomStats": ["maxHp", "hpRegen", "dodge", "armor"],
+    "skillRollChance": 0.40,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": ["summon_trees", "nature_pulse"]
+  },
+
+  "cursed_skull": {
+    "id": "cursed_skull",
+    "name": "Cursed Skull",
+    "itemFamily": "cursed_family",
+    "tier": 1,
+    "price": 15,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 7,
+    "traits": ["MoreEnemies"],
+    "effectsAtWaveEnd": [
+      {
+        "statName": "maxHp",
+        "amount": -2
+      },
+      {
+        "statName": "damagePercent",
+        "amount": 0.05
+      }
+    ],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "meleeDamage": 3,
+      "rangedDamage": 3
+    },
+    "statRollChance": 0.50,
+    "maxRandomStats": 2,
+    "allowedRandomStats": ["meleeDamage", "rangedDamage", "critChance"],
+    "skillRollChance": 0.15,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": ["poison_volley"]
+  },
+  "demonic_pact": {
+    "id": "demonic_pact",
+    "name": "Demonic Pact",
+    "itemFamily": "cursed_family",
+    "tier": 3,
+    "price": 99,
+    "textureKey": "items_sheet",
+    "scale": 1.2,
+    "iconFrame": 7,
+    "traits": ["CannotHeal", "MoreEnemies"],
+    "effectsAtWaveEnd": [
+      {
+        "statName": "maxHp",
+        "amount": -5
+      },
+      {
+        "statName": "damagePercent",
+        "amount": 0.15
+      },
+      {
+        "statName": "lifeSteal",
+        "amount": 0.02
+      }
+    ],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [
+      {
+        "conditionType": "MissingHealthPercent",
+        "conditionThreshold": 0.10,
+        "targetStat": "attackSpeedPercent",
+        "amount": 0.05
+      }
+    ],
+    "statBonuses": {
+      "armor": -5,
+      "lifeSteal": 0.05
+    },
+    "statRollChance": 0.90,
+    "maxRandomStats": 3,
+    "allowedRandomStats": ["damagePercent", "critChance", "lifeSteal", "speed"],
+    "skillRollChance": 0.50,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": ["enrage"]
+  },
+
+  "battery": {
+    "id": "battery",
+    "name": "Battery",
+    "itemFamily": "tech_family",
+    "tier": 1,
+    "price": 35,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 8,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "elementalDamage": 3,
+      "engineering": 1
+    },
+    "statRollChance": 0.35,
+    "maxRandomStats": 1,
+    "allowedRandomStats": ["elementalDamage", "engineering", "attackSpeedPercent"],
+    "skillRollChance": 0.10,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": ["magic_missile"]
+  },
+  "plasma_core": {
+    "id": "plasma_core",
+    "name": "Plasma Core",
+    "itemFamily": "tech_family",
+    "tier": 2,
+    "price": 75,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 8,
+    "traits": [],
+    "effectsAtWaveEnd": [
+      {
+        "statName": "engineering",
+        "amount": 2
+      }
+    ],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [
+      {
+        "conditionType": "PerXStat",
+        "conditionStat": "engineering",
+        "conditionThreshold": 5.0,
+        "targetStat": "elementalDamage",
+        "amount": 2.0
+      }
+    ],
+    "statBonuses": {
+      "elementalDamage": 8,
+      "engineering": 3
+    },
+    "statRollChance": 0.70,
+    "maxRandomStats": 2,
+    "allowedRandomStats": ["elementalDamage", "engineering", "attackSpeedPercent", "projectileSpeedPercent"],
+    "skillRollChance": 0.30,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": ["frost_nova", "magic_missile"]
+  },
+
+  "coffee": {
+    "id": "coffee",
+    "name": "Coffee",
+    "itemFamily": "stimulant_family",
+    "tier": 1,
+    "price": 25,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 9,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "speed": 15,
+      "attackSpeedPercent": 0.05
+    },
+    "statRollChance": 0.35,
+    "maxRandomStats": 1,
+    "allowedRandomStats": ["speed", "haste", "attackSpeedPercent", "dodge"],
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": ["adrenaline_surge"]
+  },
+  "espresso_shot": {
+    "id": "espresso_shot",
+    "name": "Espresso Shot",
+    "itemFamily": "stimulant_family",
+    "tier": 2,
+    "price": 55,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 9,
+    "traits": ["Jittery"],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [
+      {
+        "conditionType": "PerXStat",
+        "conditionStat": "speed",
+        "conditionThreshold": 100.0,
+        "targetStat": "dodge",
+        "amount": 0.02
+      }
+    ],
+    "statBonuses": {
+      "speed": 40,
+      "attackSpeedPercent": 0.15,
+      "haste": 5
+    },
+    "statRollChance": 0.60,
+    "maxRandomStats": 2,
+    "allowedRandomStats": ["speed", "haste", "attackSpeedPercent", "dodge"],
+    "skillRollChance": 0.25,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": ["adrenaline_surge"]
+  },
+
   "mirror": {
     "id": "mirror",
     "name": "Mirror",
-    "price": 30,
+    "itemFamily": "mirror",
+    "tier": 1,
+    "price": 50,
     "textureKey": "items_sheet",
     "scale": 1.0,
     "iconFrame": 2,
@@ -73,47 +353,21 @@
     ],
     "dynamicModifiers": [],
     "statBonuses": {
-      "luck": 1
+      "luck": 5
     },
-    "statRollChance": 0.30,
-    "maxRandomStats": 1,
+    "statRollChance": 0.50,
+    "maxRandomStats": 2,
     "allowedRandomStats": ["luck", "harvesting", "xpGainPercent"],
-    "skillRollChance": 0.05,
-    "maxRandomSkills": 1,
+    "skillRollChance": 0.0,
+    "maxRandomSkills": 0,
     "allowedRandomSkills": []
-  },
-  "alien_tongue": {
-    "id": "alien_tongue",
-    "name": "Alien Tongue",
-    "price": 35,
-    "textureKey": "items_sheet",
-    "scale": 1.0,
-    "iconFrame": 3,
-    "traits": [],
-    "effectsAtWaveEnd": [],
-    "effectsOnPurchase": [],
-    "dynamicModifiers": [
-      {
-        "conditionType": "MissingHealthPercent",
-        "conditionThreshold": 0.1,
-        "targetStat": "speed",
-        "amount": 5
-      }
-    ],
-    "statBonuses": {
-      "speed": 3
-    },
-    "statRollChance": 0.35,
-    "maxRandomStats": 1,
-    "allowedRandomStats": ["speed", "dodge", "luck"],
-    "skillRollChance": 0.10,
-    "maxRandomSkills": 1,
-    "allowedRandomSkills": ["adrenaline_surge"]
   },
   "blood_leech": {
     "id": "blood_leech",
     "name": "Blood Leech",
-    "price": 50,
+    "itemFamily": "leech",
+    "tier": 1,
+    "price": 40,
     "textureKey": "items_sheet",
     "scale": 1.0,
     "iconFrame": 4,
@@ -127,155 +381,14 @@
     "effectsOnPurchase": [],
     "dynamicModifiers": [],
     "statBonuses": {
-      "lifeSteal": 0.01
+      "lifeSteal": 0.02,
+      "maxHp": -5
     },
-    "statRollChance": 0.35,
+    "statRollChance": 0.45,
     "maxRandomStats": 1,
     "allowedRandomStats": ["lifeSteal", "meleeDamage", "hpRegen"],
-    "skillRollChance": 0.05,
-    "maxRandomSkills": 1,
+    "skillRollChance": 0.0,
+    "maxRandomSkills": 0,
     "allowedRandomSkills": []
-  },
-  "heavy_boots": {
-    "id": "heavy_boots",
-    "name": "Heavy Boots",
-    "price": 20,
-    "textureKey": "items_sheet",
-    "scale": 1.0,
-    "iconFrame": 5,
-    "traits": [
-      "SlowStart"
-    ],
-    "effectsAtWaveEnd": [],
-    "effectsOnPurchase": [],
-    "dynamicModifiers": [
-      {
-        "conditionType": "MissingHealthPercent",
-        "conditionThreshold": 0.5,
-        "targetStat": "armor",
-        "amount": 5
-      }
-    ],
-    "statBonuses": {
-      "armor": 1
-    },
-    "statRollChance": 0.35,
-    "maxRandomStats": 1,
-    "allowedRandomStats": ["armor", "speed", "maxHp"],
-    "skillRollChance": 0.05,
-    "maxRandomSkills": 1,
-    "allowedRandomSkills": ["boss_stomp"]
-  },
-  "lucky_coin": {
-    "id": "lucky_coin",
-    "name": "Lucky Coin",
-    "price": 60,
-    "textureKey": "items_sheet",
-    "scale": 1.0,
-    "iconFrame": 6,
-    "traits": [],
-    "effectsAtWaveEnd": [
-      {
-        "statName": "engineering",
-        "amount": 2
-      }
-    ],
-    "effectsOnPurchase": [],
-    "dynamicModifiers": [],
-    "statBonuses": {
-      "luck": 2
-    },
-    "statRollChance": 0.40,
-    "maxRandomStats": 1,
-    "allowedRandomStats": ["luck", "harvesting", "engineering"],
-    "skillRollChance": 0.10,
-    "maxRandomSkills": 1,
-    "allowedRandomSkills": []
-  },
-  "cursed_skull": {
-    "id": "cursed_skull",
-    "name": "Cursed Skull",
-    "price": 15,
-    "textureKey": "items_sheet",
-    "scale": 1.0,
-    "iconFrame": 7,
-    "traits": [
-      "MoreEnemies"
-    ],
-    "effectsAtWaveEnd": [
-      {
-        "statName": "maxHp",
-        "amount": -2
-      },
-      {
-        "statName": "meleeDamage",
-        "amount": 8
-      }
-    ],
-    "effectsOnPurchase": [],
-    "dynamicModifiers": [],
-    "statBonuses": {
-      "meleeDamage": 3
-    },
-    "statRollChance": 0.40,
-    "maxRandomStats": 1,
-    "allowedRandomStats": ["meleeDamage", "rangedDamage", "damagePercent"],
-    "skillRollChance": 0.10,
-    "maxRandomSkills": 1,
-    "allowedRandomSkills": ["enrage", "adrenaline_surge"]
-  },
-  "battery": {
-    "id": "battery",
-    "name": "Battery",
-    "price": 40,
-    "textureKey": "items_sheet",
-    "scale": 1.0,
-    "iconFrame": 8,
-    "traits": [],
-    "effectsAtWaveEnd": [],
-    "effectsOnPurchase": [],
-    "dynamicModifiers": [
-      {
-        "conditionType": "MissingHealthPercent",
-        "conditionThreshold": 0.25,
-        "targetStat": "elementalDamage",
-        "amount": 3
-      }
-    ],
-    "statBonuses": {
-      "elementalDamage": 2
-    },
-    "statRollChance": 0.35,
-    "maxRandomStats": 1,
-    "allowedRandomStats": ["elementalDamage", "engineering", "attackSpeedPercent"],
-    "skillRollChance": 0.10,
-    "maxRandomSkills": 1,
-    "allowedRandomSkills": ["magic_missile", "frost_nova"]
-  },
-  "coffee": {
-    "id": "coffee",
-    "name": "Coffee",
-    "price": 25,
-    "textureKey": "items_sheet",
-    "scale": 1.0,
-    "iconFrame": 9,
-    "traits": [],
-    "effectsAtWaveEnd": [
-      {
-        "statName": "speed",
-        "amount": 10
-      }
-    ],
-    "effectsOnPurchase": [],
-    "dynamicModifiers": [],
-    "statBonuses": {
-      "speed": 5
-    },
-    "statRollChance": 0.35,
-    "maxRandomStats": 1,
-    "allowedRandomStats": ["speed", "haste", "attackSpeedPercent"],
-    "skillRollChance": 0.05,
-    "maxRandomSkills": 1,
-    "allowedRandomSkills": ["adrenaline_surge"]
   }
 }

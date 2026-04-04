@@ -150,10 +150,30 @@ public static class SkillSystem
                     }
                 }
             }
+
+
+            foreach (var item in player.OwnedItems)
+            {
+                if (item.ItemSkills == null) continue;
+
+                foreach (var iSkill in item.ItemSkills)
+                {
+                    iSkill.CurrentCooldown -= dt;
+                    if (iSkill.CurrentCooldown <= 0 && configs.Skills.TryGetValue(iSkill.ConfigId, out var config))
+                    {
+                        if (config.TriggerType == SkillTriggerType.Auto)
+                        {
+                            ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, state, configs);
+                            iSkill.CurrentCooldown = config.CooldownSeconds;
+                        }
+                    }
+                }
+            }
             foreach (var weapon in player.Weapons)
             {
                 if (weapon.WeaponSkills == null) continue;
-                
+
+
                 foreach (var wSkill in weapon.WeaponSkills)
                 {
                     wSkill.CurrentCooldown -= dt;

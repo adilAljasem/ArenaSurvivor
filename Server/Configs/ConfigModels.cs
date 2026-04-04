@@ -144,23 +144,37 @@ public class WeaponConfig
 
 public class ItemConfig
 {
-    // --- Identity & Visuals ---
+    // --- Identity ---
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public int Price { get; set; }
-    public string TextureKey { get; set; } = string.Empty;
-    public string IconKey { get; set; } = string.Empty;
-    // >>> NEW: Add Tier and Family for merging! <<<
+
+    // --- Merging Identity ---
     public int Tier { get; set; } = 1;
     public string ItemFamily { get; set; } = string.Empty;
 
-    // --- Stat Modifiers & Effects ---
-    public Dictionary<string, float> StatBonuses { get; set; } = new();
-    public List<string> EffectsOnPurchase { get; set; } = new();
-    public List<WaveEndEffect> EffectsAtWaveEnd { get; set; } = new();
-    public List<DynamicModifier> DynamicModifiers { get; set; } = new();
+    // --- Visuals ---
+    public string TextureKey { get; set; } = string.Empty;
+    public int IconFrame { get; set; }
+    public float Scale { get; set; } = 1f;
+
+    // --- Fixed Stats & Effects ---
     public List<string> Traits { get; set; } = new();
+    public List<WaveEndEffect> EffectsAtWaveEnd { get; set; } = new();
+    public List<string> EffectsOnPurchase { get; set; } = new();
+    public List<DynamicModifier> DynamicModifiers { get; set; } = new();
+    public Dictionary<string, float> StatBonuses { get; set; } = new();
+
+    // --- Random Roll Properties ---
+    public float StatRollChance { get; set; } = 0f;
+    public int MaxRandomStats { get; set; } = 0;
+    public List<string> AllowedRandomStats { get; set; } = new();
+
+    public float SkillRollChance { get; set; } = 0f;
+    public int MaxRandomSkills { get; set; } = 0;
+    public List<string> AllowedRandomSkills { get; set; } = new();
 }
+
 
 public class ProjectileConfig
 {
