@@ -346,8 +346,8 @@ public static class CombatSystem
         foreach (var weapon in enemy.Weapons)
         {
             if (config.WeaponDropChance <= 0f) continue;
-            if (Random.Shared.NextDouble() >= config.WeaponDropChance) continue;
             if (!configs.Weapons.TryGetValue(weapon.ConfigId, out var wCfg) || !wCfg.CanDrop) continue;
+            if (Random.Shared.NextDouble() >= config.WeaponDropChance) continue;
 
             float ox = (float)(Random.Shared.NextDouble() * scatterRadius * 2 - scatterRadius);
             float oy = (float)(Random.Shared.NextDouble() * scatterRadius * 2 - scatterRadius);
@@ -364,8 +364,8 @@ public static class CombatSystem
         foreach (var item in enemy.OwnedItems)
         {
             if (config.ItemDropChance <= 0f) continue;
-            if (Random.Shared.NextDouble() >= config.ItemDropChance) continue;
             if (!configs.Items.TryGetValue(item.ConfigId, out var iCfg) || !iCfg.CanDrop) continue;
+            if (Random.Shared.NextDouble() >= config.ItemDropChance) continue;
 
             float ox = (float)(Random.Shared.NextDouble() * scatterRadius * 2 - scatterRadius);
             float oy = (float)(Random.Shared.NextDouble() * scatterRadius * 2 - scatterRadius);
