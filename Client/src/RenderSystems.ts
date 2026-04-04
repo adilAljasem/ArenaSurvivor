@@ -412,7 +412,8 @@ export class EnemyRenderer {
       });
 
       weaponsContainer.each((child: any) => {
-        const slot = parseInt(child.name?.split('_')[1]);
+        if (!child.name?.startsWith('weapon_')) return;
+        const slot = parseInt(child.name.split('_')[1]);
         if (!isNaN(slot) && !activeWeaponSlots.has(slot)) child.destroy();
       });
 

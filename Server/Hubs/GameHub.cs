@@ -341,10 +341,10 @@ public class GameHub : Hub
         // Validate the pickup is a weapon or item (gold is auto-collected)
         if (pickup.Type == Entities.PickupType.Gold) return;
 
-        // Validate the player is close enough (50px radius = 2500 sq)
+        // Validate the player is close enough (50px radius, larger than the 25px auto-gold radius)
         float dx = player.X - pickup.X;
         float dy = player.Y - pickup.Y;
-        if (dx * dx + dy * dy > 2500f) return;
+        if (dx * dx + dy * dy > 2500f) return; // 50² = 2500
 
         // Atomically remove the pickup so two players can't grab the same drop
         if (!_gameState.Pickups.TryRemove(pickupId, out _)) return;

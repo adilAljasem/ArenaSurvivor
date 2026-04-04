@@ -345,7 +345,7 @@ class GameScene extends Phaser.Scene {
         // If the nearby loot was just destroyed/picked up, clear the tooltip immediately
         if (id === this.nearbyLootId) {
           this.nearbyLootId = null;
-          this.groundTooltip?.hide();
+          this.groundTooltip.hide();
         }
       });
 
@@ -428,13 +428,14 @@ class GameScene extends Phaser.Scene {
       const PICKUP_RADIUS_SQ = 50 * 50;
       let newNearbyLootId: string | null = null;
       if (myPlayer) {
-        this.pickupCache.forEach((pickup, id) => {
-          if (newNearbyLootId) return;
-          if (pickup.type === 0) return; // skip gold – auto-collected
+        const cacheEntries = Array.from(this.pickupCache.entries());
+        const found = cacheEntries.find(([, pickup]) => {
+          if (pickup.type === 0) return false; // skip gold – auto-collected
           const dx = pickup.x - myPlayer.x;
           const dy = pickup.y - myPlayer.y;
-          if (dx * dx + dy * dy <= PICKUP_RADIUS_SQ) newNearbyLootId = id;
+          return dx * dx + dy * dy <= PICKUP_RADIUS_SQ;
         });
+        if (found) newNearbyLootId = found[0];
       }
 
       if (newNearbyLootId !== this.nearbyLootId) {
