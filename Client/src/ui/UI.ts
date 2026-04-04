@@ -457,8 +457,16 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
 
     public updateInventory(weapons: any[], items: any[], atlasConfigs: any) {
         this.atlasConfigs = atlasConfigs;
-        this.itemGrid.list.filter(child => child.type !== 'Text').forEach(c => (c as any).destroy());
-        this.weaponGrid.list.filter(child => child.type !== 'Text').forEach(c => (c as any).destroy());
+        // Destroy ALL children (including Text level-labels that accumulate across renders)
+        this.itemGrid.removeAll(true);
+        this.weaponGrid.removeAll(true);
+        // Re-add the permanent title text objects
+        this.itemGrid.add(this.scene.add.text(0, -25, 'Items', {
+            fontFamily: UIHelpers.FONT, fontSize: '16px', color: '#a0abbc', fontStyle: 'bold', resolution: 3
+        }));
+        this.weaponGrid.add(this.scene.add.text(0, -25, 'Weapons', {
+            fontFamily: UIHelpers.FONT, fontSize: '16px', color: '#a0abbc', fontStyle: 'bold', resolution: 3
+        }));
 
         // ---- Item slots ----
         // ---- Item slots ----
@@ -496,7 +504,8 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                 this.itemGrid.add(icon);
 
                 const hitbox = this.scene.add.rectangle(slotX + 32.5, 32.5, 65, 65, 0x000000, 0)
-                    .setInteractive({ useHandCursor: true });
+                    .setInteractive({ useHandCursor: true })
+                    .setScrollFactor(0);
 
                 if (config) {
                     hitbox.on('pointerover', (p: Phaser.Input.Pointer) => {
@@ -568,7 +577,8 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                 this.weaponGrid.add(icon);
 
                 const hitbox = this.scene.add.rectangle(slotX + 32.5, slotY + 32.5, 65, 65, 0x000000, 0)
-                    .setInteractive({ useHandCursor: true });
+                    .setInteractive({ useHandCursor: true })
+                    .setScrollFactor(0);
 
                 if (config) {
                     const toolTipConfig = { ...config, tier: wLevel };

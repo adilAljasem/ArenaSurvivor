@@ -39,6 +39,7 @@ interface ServerPickup {
   level: number;
   totalBaseStats: Record<string, number>;
   rolledStats: Record<string, number>;
+  skills: string[];
 }
 interface DamageEvent { x: number; y: number; amount: number; }
 
@@ -369,7 +370,8 @@ class GameScene extends Phaser.Scene {
           gearConfigId: pk[5] || '',
           level: pk[6] ?? 1,
           totalBaseStats: pk[7] || {},
-          rolledStats: pk[8] || {}
+          rolledStats: pk[8] || {},
+          skills: pk[9] || []
         });
       });
 
@@ -456,7 +458,7 @@ class GameScene extends Phaser.Scene {
             const cam = this.cameras.main;
             const screenX = (pickup.x - cam.scrollX) * cam.zoom;
             const screenY = (pickup.y - cam.scrollY) * cam.zoom - 80;
-            this.groundTooltip.show(gearConfig, screenX, screenY, gearConfig.tier ?? 1, masterConfigs, pickup.totalBaseStats, pickup.rolledStats);
+            this.groundTooltip.show(gearConfig, screenX, screenY, gearConfig.tier ?? 1, masterConfigs, pickup.totalBaseStats, pickup.rolledStats, pickup.skills);
           }
         } else {
           this.groundTooltip.hide();
@@ -611,6 +613,7 @@ class GameScene extends Phaser.Scene {
   private cleanupSprites(map: Map<string, any>, activeIds: Set<string>) {
     map.forEach((sprite, id) => {
       if (!activeIds.has(id)) {
+        if (typeof sprite.removeAll === 'function') sprite.removeAll(true);
         sprite.destroy();
         map.delete(id);
         this.targetPositions.delete(id);

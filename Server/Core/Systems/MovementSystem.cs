@@ -74,7 +74,8 @@ public static class MovementSystem
 
             if (target != null)
             {
-                if (closestDistSq < 2500)
+                float attackRadiusSq = config.AttackRadius * config.AttackRadius;
+                if (closestDistSq < attackRadiusSq)
                 {
                     enemy.ActionState = "Attacking";
                     enemy.AttackCooldown = config.AttackDuration;
