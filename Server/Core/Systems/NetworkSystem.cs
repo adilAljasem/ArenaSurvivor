@@ -57,6 +57,7 @@ public static class NetworkSystem
         public const int CastTimer = 8;
         public const int MaxCastTimer = 9;
         public const int ActiveEffects = 10;
+        public const int Weapons = 11;
     }
 
     // =========================================================================
@@ -146,7 +147,14 @@ public static class NetworkSystem
             Enemies = gameState.Enemies.Values.Select(e => new object[] {
                 e.Id, e.ConfigId, (int)e.X, (int)e.Y, (int)e.CurrentHp, (int)e.GetTotalStat("maxHp", configManager),
                 GetStateId(e.ActionState), e.CurrentCastingSkillId, Math.Round(e.CurrentCastTimer, 1), Math.Round(e.MaxCastTimer, 1),
-                e.ActiveEffects.Select(a => a.ConfigId).ToList()
+                e.ActiveEffects.Select(a => a.ConfigId).ToList(),
+                e.Weapons.Select(w => new object[] {
+                    w.ConfigId,
+                    w.SlotIndex,
+                    w.Level,
+                    w.RolledStats ?? new Dictionary<string, float>(),
+                    w.TotalBaseStats ?? new Dictionary<string, float>()
+                }).ToList()
             }).ToList(),
 
             NewBullets = newProjectiles.Select(proj => new object[] {
@@ -155,7 +163,10 @@ public static class NetworkSystem
 
             Pickups = gameState.Pickups.Values.Select(pk => new object[] {
                 pk.Id, (int)pk.X, (int)pk.Y, pk.Value, (int)pk.Type,
-                pk.DroppedWeapon?.ConfigId ?? pk.DroppedItem?.ConfigId ?? ""
+                pk.DroppedWeapon?.ConfigId ?? pk.DroppedItem?.ConfigId ?? "",
+                pk.DroppedWeapon?.Level ?? pk.DroppedItem?.Level ?? 1,
+                pk.DroppedWeapon?.TotalBaseStats ?? pk.DroppedItem?.TotalBaseStats ?? new Dictionary<string, float>(),
+                pk.DroppedWeapon?.RolledStats ?? pk.DroppedItem?.RolledStats ?? new Dictionary<string, float>()
             }).ToList(),
             Damage = dmgEvents.Select(d => new object[] { (int)d.X, (int)d.Y, (int)d.Amount }).ToList(),
             Aoe = aoeEvents.Select(a => new object[] { (int)a.X, (int)a.Y, (int)a.Radius, a.IsFriendly, a.ConfigId }).ToList()

@@ -373,6 +373,49 @@ export class EnemyRenderer {
         castCircle.setVisible(false);
       }
 
+      // 2.6 ENEMY WEAPONS
+      const weaponsContainer = eContainer.getData('weaponsContainer') as Phaser.GameObjects.Container;
+      const activeWeaponSlots = new Set<number>();
+      const weaponsList = se.weapons || se.Weapons || [];
+
+      // Dynamic offsets using the enemy's actual rendered sprite dimensions
+      const halfW = (body && body.displayWidth) ? body.displayWidth / 2 : 16;
+      const halfH = (body && body.displayHeight) ? body.displayHeight / 2 : 16;
+
+      weaponsList.forEach((w: any) => {
+        const slotIndex = w.slotIndex ?? w.SlotIndex;
+        const wConfigId = w.configId || w.ConfigId;
+        activeWeaponSlots.add(slotIndex);
+
+        let wx = 0, wy = 0;
+        if (slotIndex === 0) { wx = halfW + 8; wy = 0; }
+        else if (slotIndex === 1) { wx = -(halfW + 8); wy = 0; }
+        else if (slotIndex === 2) { wx = 0; wy = -(halfH + 8); }
+        else if (slotIndex === 3) { wx = 0; wy = halfH + 8; }
+
+        const wConfig = configs.weapons ? (configs.weapons[wConfigId] || (configs.Weapons && configs.Weapons[wConfigId])) : null;
+        let sprite = weaponsContainer.getByName(`weapon_${slotIndex}`) as Phaser.GameObjects.Sprite;
+
+        if (!sprite && wConfig && wConfig.textureKey && scene.textures.exists(wConfig.textureKey)) {
+          sprite = scene.add.sprite(wx, wy, wConfig.textureKey);
+          if (wConfig.iconFrame !== undefined) sprite.setFrame(wConfig.iconFrame);
+          sprite.setName(`weapon_${slotIndex}`);
+          sprite.setScale(wConfig.scale || 1.0);
+          if (wConfig.defaultFacingRight === false) sprite.setFlipX(true);
+          weaponsContainer.add(sprite);
+        }
+
+        if (sprite) {
+          sprite.x = wx;
+          sprite.y = wy;
+        }
+      });
+
+      weaponsContainer.each((child: any) => {
+        const slot = parseInt(child.name?.split('_')[1]);
+        if (!isNaN(slot) && !activeWeaponSlots.has(slot)) child.destroy();
+      });
+
       // 2.5 CLIENT-SIDE DEATH SKILL AoE VISUAL
       const wasDead = eContainer.getData('wasDead') || false;
       if (eActionState === 'Dead' && !wasDead) {
@@ -527,7 +570,39 @@ export class WorldRenderer {
       const safeId = pickup.id || pickup.Id;
       activePickups.add(safeId);
       if (!pickups.has(safeId)) {
-        let sprite = scene.textures.exists('items_sheet') ? scene.add.sprite(pickup.x || pickup.X, pickup.y || pickup.Y, 'items_sheet', 6) : scene.add.rectangle(pickup.x || pickup.X, pickup.y || pickup.Y, 12, 12, 0x000000).setStrokeStyle(2, 0x00ff00);
+        const pType = pickup.type ?? pickup.Type ?? 0;
+        const gearConfigId = pickup.gearConfigId || pickup.GearConfigId || '';
+
+        let sprite: Phaser.GameObjects.Sprite | Phaser.GameObjects.Rectangle;
+
+        if (pType === 1 && gearConfigId) {
+          // Weapon drop — draw the weapon's icon
+          const wConfig = configs.weapons ? (configs.weapons[gearConfigId] || (configs.Weapons && configs.Weapons[gearConfigId])) : null;
+          if (wConfig && wConfig.textureKey && scene.textures.exists(wConfig.textureKey)) {
+            sprite = scene.add.sprite(pickup.x || pickup.X, pickup.y || pickup.Y, wConfig.textureKey);
+            if (wConfig.iconFrame !== undefined) (sprite as Phaser.GameObjects.Sprite).setFrame(wConfig.iconFrame);
+            sprite.setScale(wConfig.scale || 1.0);
+          } else {
+            sprite = scene.add.rectangle(pickup.x || pickup.X, pickup.y || pickup.Y, 14, 14, 0xffaa00).setStrokeStyle(2, 0xffffff) as any;
+          }
+        } else if (pType === 2 && gearConfigId) {
+          // Item drop — draw the item's icon
+          const iConfig = configs.items ? (configs.items[gearConfigId] || (configs.Items && configs.Items[gearConfigId])) : null;
+          if (iConfig && iConfig.textureKey && scene.textures.exists(iConfig.textureKey)) {
+            sprite = scene.add.sprite(pickup.x || pickup.X, pickup.y || pickup.Y, iConfig.textureKey);
+            if (iConfig.iconFrame !== undefined) (sprite as Phaser.GameObjects.Sprite).setFrame(iConfig.iconFrame);
+            sprite.setScale(iConfig.scale || 1.0);
+          } else {
+            sprite = scene.add.rectangle(pickup.x || pickup.X, pickup.y || pickup.Y, 14, 14, 0x00aaff).setStrokeStyle(2, 0xffffff) as any;
+          }
+        } else {
+          // Gold — use the existing coins sprite
+          sprite = scene.textures.exists('items_sheet')
+            ? scene.add.sprite(pickup.x || pickup.X, pickup.y || pickup.Y, 'items_sheet', 6)
+            : scene.add.rectangle(pickup.x || pickup.X, pickup.y || pickup.Y, 12, 12, 0x000000).setStrokeStyle(2, 0x00ff00) as any;
+        }
+
+        (sprite as any).setDepth(5);
         pickups.set(safeId, sprite as any);
       }
     });

@@ -1,6 +1,6 @@
 import * as Phaser from 'phaser';
 import { HubConnectionBuilder, HubConnectionState } from '@microsoft/signalr';
-import { ShopUI } from './ui/UI';
+import { ShopUI, Tooltip } from './ui/UI';
 import { EscMenu } from './ui/EscMenu';
 import { PlayerRenderer, EnemyRenderer, WorldRenderer, precalculateSpriteTops } from './RenderSystems';
 import { AudioManager } from './AudioManager';
@@ -28,9 +28,17 @@ interface ServerEnemy {
   id: string; configId: string; x: number; y: number; velX?: number;
   currentHp: number; maxHp: number; actionState: string; activeEffects: string[];
   currentCastingSkillId: string; currentCastTimer: number; maxCastTimer: number;
+  weapons: { configId: string; slotIndex: number; level: number; rolledStats: Record<string, number>; totalBaseStats: Record<string, number>; }[];
 }
 interface ServerProjectile { id: string; configId: string; x: number; y: number; velX: number; velY: number; }
-interface ServerPickup { id: string; x: number; y: number; value: number; }
+interface ServerPickup {
+  id: string; x: number; y: number; value: number;
+  type: number;         // 0=Gold, 1=Weapon, 2=Item
+  gearConfigId: string;
+  level: number;
+  totalBaseStats: Record<string, number>;
+  rolledStats: Record<string, number>;
+}
 interface DamageEvent { x: number; y: number; amount: number; }
 
 export interface GameStatePayload {
@@ -73,6 +81,11 @@ class GameScene extends Phaser.Scene {
   private manuallyClosedShop: boolean = false;
 
   private hasScannedSprites: boolean = false;
+
+  // Spacebar loot pickup
+  private spaceKey!: Phaser.Input.Keyboard.Key;
+  private nearbyLootId: string | null = null;
+  private groundTooltip!: Tooltip;
 
   // Map Variables
   private isMapInitialized: boolean = false;
@@ -162,8 +175,11 @@ class GameScene extends Phaser.Scene {
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();
       this.wasd = this.input.keyboard.addKeys('W,A,S,D');
+      this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     }
     this.input.mouse?.disableContextMenu();
+
+    this.groundTooltip = new Tooltip(this);
 
     const renderer = this.game.renderer as any;
     const gl = renderer.gl;
@@ -324,17 +340,34 @@ class GameScene extends Phaser.Scene {
       // >>> 2. DELTA COMPRESSION: ENEMIES & PICKUPS <<<
       // ==========================================================
       rawState.de?.forEach((id: string) => this.enemyCache.delete(id));
-      rawState.dpk?.forEach((id: string) => this.pickupCache.delete(id));
+      rawState.dpk?.forEach((id: string) => {
+        this.pickupCache.delete(id);
+        // If the nearby loot was just destroyed/picked up, clear the tooltip immediately
+        if (id === this.nearbyLootId) {
+          this.nearbyLootId = null;
+          this.groundTooltip?.hide();
+        }
+      });
 
       rawState.e?.forEach((e: any[]) => {
         this.enemyCache.set(e[0], {
           id: e[0], configId: e[1], x: e[2], y: e[3], currentHp: e[4], maxHp: e[5],
           actionState: StateMap[e[6]], currentCastingSkillId: e[7], currentCastTimer: e[8],
-          maxCastTimer: e[9], activeEffects: e[10] || []
+          maxCastTimer: e[9], activeEffects: e[10] || [],
+          weapons: e[11]?.map((w: any[]) => ({
+            configId: w[0], slotIndex: w[1], level: w[2], rolledStats: w[3] || {}, totalBaseStats: w[4] || {}
+          })) || []
         });
       });
       rawState.pk?.forEach((pk: any[]) => {
-        this.pickupCache.set(pk[0], { id: pk[0], x: pk[1], y: pk[2], value: pk[3] });
+        this.pickupCache.set(pk[0], {
+          id: pk[0], x: pk[1], y: pk[2], value: pk[3],
+          type: pk[4] ?? 0,
+          gearConfigId: pk[5] || '',
+          level: pk[6] ?? 1,
+          totalBaseStats: pk[7] || {},
+          rolledStats: pk[8] || {}
+        });
       });
 
       rawState.me?.forEach((m: any[]) => {
@@ -387,7 +420,41 @@ class GameScene extends Phaser.Scene {
 
       this.currentPhase = state.phase;
       const myPlayer = state.players.find(p => p.connectionId === connection.connectionId);
-      if (myPlayer) this.goldUIText.setText(`💰 ${myPlayer.gold}`);
+      if (myPlayer) {
+        this.goldUIText.setText(`💰 ${myPlayer.gold}`);
+      }
+
+      // Detect the nearest gear loot within pickup radius and manage the ground tooltip
+      const PICKUP_RADIUS_SQ = 50 * 50;
+      let newNearbyLootId: string | null = null;
+      if (myPlayer) {
+        this.pickupCache.forEach((pickup, id) => {
+          if (newNearbyLootId) return;
+          if (pickup.type === 0) return; // skip gold – auto-collected
+          const dx = pickup.x - myPlayer.x;
+          const dy = pickup.y - myPlayer.y;
+          if (dx * dx + dy * dy <= PICKUP_RADIUS_SQ) newNearbyLootId = id;
+        });
+      }
+
+      if (newNearbyLootId !== this.nearbyLootId) {
+        this.nearbyLootId = newNearbyLootId;
+        if (newNearbyLootId) {
+          const pickup = this.pickupCache.get(newNearbyLootId)!;
+          const pType = pickup.type;
+          const gearConfig = pType === 1
+            ? (masterConfigs.weapons?.[pickup.gearConfigId])
+            : (masterConfigs.items?.[pickup.gearConfigId]);
+          if (gearConfig) {
+            const cam = this.cameras.main;
+            const screenX = (pickup.x - cam.scrollX) * cam.zoom;
+            const screenY = (pickup.y - cam.scrollY) * cam.zoom - 80;
+            this.groundTooltip.show(gearConfig, screenX, screenY, gearConfig.tier ?? 1, masterConfigs, pickup.totalBaseStats, pickup.rolledStats);
+          }
+        } else {
+          this.groundTooltip.hide();
+        }
+      }
 
       if (this.currentPhase === "WaveActive") {
         this.waveUIText.setText(`Wave ${state.currentWave} - 0:${state.timeRemaining.toString().padStart(2, '0')}`).setColor('#ffffff');
@@ -422,6 +489,22 @@ class GameScene extends Phaser.Scene {
     this.handleInput(time);
     this.smoothInterpolateSprites(this.playerSprites, 0.2);
     this.smoothInterpolateSprites(this.enemySprites, 0.2);
+
+    // Keep ground tooltip positioned above the nearby loot pickup as the camera moves
+    if (this.nearbyLootId && this.groundTooltip?.visible) {
+      const pickup = this.pickupCache.get(this.nearbyLootId);
+      if (pickup) {
+        const cam = this.cameras.main;
+        const screenX = (pickup.x - cam.scrollX) * cam.zoom;
+        const screenY = (pickup.y - cam.scrollY) * cam.zoom - 80;
+        this.groundTooltip.updatePosition(screenX, screenY);
+      }
+    }
+
+    // Spacebar: manually pick up the nearest gear loot within range
+    if (this.spaceKey && Phaser.Input.Keyboard.JustDown(this.spaceKey) && this.nearbyLootId) {
+      connection.invoke("TryPickupLoot", this.nearbyLootId).catch((err: any) => console.error(err));
+    }
 
     if (masterConfigs.enemies && !this.hasScannedSprites) {
       precalculateSpriteTops(this, masterConfigs);

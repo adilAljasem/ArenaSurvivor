@@ -329,5 +329,39 @@ public class GameHub : Hub
         // The client just needs the server to acknowledge the message to calculate latency!
     }
 
+    /// <summary>
+    /// Called by the client when the player presses Spacebar near a dropped weapon or item.
+    /// Validates the player's proximity to the loot before adding it to their inventory.
+    /// </summary>
+    public async Task TryPickupLoot(string pickupId)
+    {
+        if (!_gameState.Players.TryGetValue(Context.ConnectionId, out var player)) return;
+        if (!_gameState.Pickups.TryGetValue(pickupId, out var pickup)) return;
+
+        // Validate the pickup is a weapon or item (gold is auto-collected)
+        if (pickup.Type == Entities.PickupType.Gold) return;
+
+        // Validate the player is close enough (50px radius = 2500 sq)
+        float dx = player.X - pickup.X;
+        float dy = player.Y - pickup.Y;
+        if (dx * dx + dy * dy > 2500f) return;
+
+        // Atomically remove the pickup so two players can't grab the same drop
+        if (!_gameState.Pickups.TryRemove(pickupId, out _)) return;
+
+        if (pickup.Type == Entities.PickupType.Weapon && pickup.DroppedWeapon != null)
+        {
+            pickup.DroppedWeapon.SlotIndex = player.Weapons.Count;
+            player.Weapons.Add(pickup.DroppedWeapon);
+        }
+        else if (pickup.Type == Entities.PickupType.Item && pickup.DroppedItem != null)
+        {
+            pickup.DroppedItem.SlotIndex = player.OwnedItems.Count;
+            player.OwnedItems.Add(pickup.DroppedItem);
+        }
+
+        await SendPlayerUI(player);
+    }
+
     
 }

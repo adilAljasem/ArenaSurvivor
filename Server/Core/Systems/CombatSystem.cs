@@ -301,7 +301,7 @@ public static class CombatSystem
             }
         }
 
-        // 2. Players vs Pickups
+        // 2. Players vs Pickups (Gold / XP only – weapons and items require manual spacebar pickup)
         foreach (var player in state.Players.Values)
         {
             foreach (var pickup in state.Pickups.Values)
@@ -311,25 +311,13 @@ public static class CombatSystem
                 float distSq = (player.X - pickup.X) * (player.X - pickup.X) + (player.Y - pickup.Y) * (player.Y - pickup.Y);
                 if (distSq < 625) // 25 radius
                 {
-                    switch (pickup.Type)
+                    if (pickup.Type == PickupType.Gold)
                     {
-                        case PickupType.Gold:
-                            player.Gold += pickup.Value;
-                            player.GainXp(pickup.Value, configs);
-                            break;
-
-                        case PickupType.Weapon when pickup.DroppedWeapon != null:
-                            pickup.DroppedWeapon.SlotIndex = player.Weapons.Count;
-                            player.Weapons.Add(pickup.DroppedWeapon);
-                            break;
-
-                        case PickupType.Item when pickup.DroppedItem != null:
-                            pickup.DroppedItem.SlotIndex = player.OwnedItems.Count;
-                            player.OwnedItems.Add(pickup.DroppedItem);
-                            break;
+                        player.Gold += pickup.Value;
+                        player.GainXp(pickup.Value, configs);
+                        pickupsToRemove.Add(pickup.Id);
                     }
-
-                    pickupsToRemove.Add(pickup.Id);
+                    // Weapon and Item pickups are handled by TryPickupLoot (manual spacebar)
                 }
             }
         }
