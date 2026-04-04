@@ -172,9 +172,9 @@ public static class NetworkSystem
                 pk.DroppedWeapon?.Level ?? pk.DroppedItem?.Level ?? 1,
                 pk.DroppedWeapon?.TotalBaseStats ?? pk.DroppedItem?.TotalBaseStats ?? new Dictionary<string, float>(),
                 pk.DroppedWeapon?.RolledStats ?? pk.DroppedItem?.RolledStats ?? new Dictionary<string, float>(),
-                (pk.DroppedWeapon?.WeaponSkills?.Select(s => s.ConfigId).ToList()
-                    ?? pk.DroppedItem?.ItemSkills?.Select(s => s.ConfigId).ToList()
-                    ?? new List<string>())
+                (pk.DroppedWeapon != null
+                    ? (pk.DroppedWeapon.WeaponSkills?.Select(s => s.ConfigId).ToList() ?? new List<string>())
+                    : (pk.DroppedItem?.ItemSkills?.Select(s => s.ConfigId).ToList() ?? new List<string>()))
             }).ToList(),
             Damage = dmgEvents.Select(d => new object[] { (int)d.X, (int)d.Y, (int)d.Amount }).ToList(),
             Aoe = aoeEvents.Select(a => new object[] { (int)a.X, (int)a.Y, (int)a.Radius, a.IsFriendly, a.ConfigId }).ToList()

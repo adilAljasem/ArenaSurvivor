@@ -461,12 +461,11 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
         this.itemGrid.removeAll(true);
         this.weaponGrid.removeAll(true);
         // Re-add the permanent title text objects
-        this.itemGrid.add(this.scene.add.text(0, -25, 'Items', {
+        const titleStyle = {
             fontFamily: UIHelpers.FONT, fontSize: '16px', color: '#a0abbc', fontStyle: 'bold', resolution: 3
-        }));
-        this.weaponGrid.add(this.scene.add.text(0, -25, 'Weapons', {
-            fontFamily: UIHelpers.FONT, fontSize: '16px', color: '#a0abbc', fontStyle: 'bold', resolution: 3
-        }));
+        } as const;
+        this.itemGrid.add(this.scene.add.text(0, -25, 'Items', titleStyle));
+        this.weaponGrid.add(this.scene.add.text(0, -25, 'Weapons', titleStyle));
 
         // ---- Item slots ----
         // ---- Item slots ----
