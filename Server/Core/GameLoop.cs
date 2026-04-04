@@ -134,7 +134,7 @@ public class GameLoop : BackgroundService
         {
             _gameState.Phase = GamePhase.WaveActive;
             _gameState.PhaseTimer = 60f;
-            _gameState.CurrentWave = 500;
+            _gameState.CurrentWave = 1;
         }
 
         if (_gameState.Phase != GamePhase.WaitingForPlayers)
