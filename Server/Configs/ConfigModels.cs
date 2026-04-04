@@ -22,6 +22,49 @@ public class DynamicModifier
 }
 
 // =================================================================================
+// BASE CONFIG CLASSES (DRY)
+// =================================================================================
+
+/// <summary>
+/// Shared base for WeaponConfig and ItemConfig.
+/// Contains all properties that every piece of gear must have.
+/// </summary>
+public abstract class BaseGearConfig
+{
+    // --- Identity ---
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public int Tier { get; set; }
+
+    // --- Visuals ---
+    public string TextureKey { get; set; } = string.Empty;
+    public int IconFrame { get; set; }
+    public float Scale { get; set; } = 1.0f;
+
+    // --- Shared Traits ---
+    public List<string> Traits { get; set; } = new();
+
+    // --- Fixed Stat Bonuses ---
+    public Dictionary<string, float> StatBonuses { get; set; } = new();
+
+    // --- Random Roll Properties ---
+    public float StatRollChance { get; set; } = 0f;
+    public int MaxRandomStats { get; set; } = 0;
+    public List<string> AllowedRandomStats { get; set; } = new();
+
+    public float SkillRollChance { get; set; } = 0f;
+    public int MaxRandomSkills { get; set; } = 0;
+    public List<string> AllowedRandomSkills { get; set; } = new();
+
+    // --- Drop & Shop Availability ---
+    /// <summary>Whether this gear can be dropped by enemies. Default: true.</summary>
+    public bool CanDrop { get; set; } = true;
+
+    /// <summary>Whether this gear appears in the player shop. Default: true.</summary>
+    public bool AvailableInShop { get; set; } = true;
+}
+
+// =================================================================================
 // CORE ENTITIES
 // =================================================================================
 
@@ -85,6 +128,20 @@ public class EnemyConfig
 
     public List<string> StartingSkills { get; set; } = new();
 
+    // --- Starting Equipment ---
+    /// <summary>Weapon config IDs this enemy spawns equipped with.</summary>
+    public List<string> StartingWeapons { get; set; } = new();
+
+    /// <summary>Item config IDs this enemy spawns holding.</summary>
+    public List<string> StartingItems { get; set; } = new();
+
+    // --- Drop Chances ---
+    /// <summary>Per-weapon roll probability when the enemy dies (e.g. 0.05 = 5%).</summary>
+    public float WeaponDropChance { get; set; } = 0f;
+
+    /// <summary>Per-item roll probability when the enemy dies (e.g. 0.10 = 10%).</summary>
+    public float ItemDropChance { get; set; } = 0f;
+
     // --- Modifiers ---
     public List<DynamicModifier> DynamicModifiers { get; set; } = new();
     public List<string> OnDeathSkills { get; set; } = new();
@@ -95,16 +152,10 @@ public class EnemyConfig
 // EQUIPMENT, ITEMS & PROJECTILES
 // =================================================================================
 
-public class WeaponConfig
+public class WeaponConfig : BaseGearConfig
 {
     // --- Identity & Visuals ---
-    public string Id { get; set; } = string.Empty;
     public string WeaponFamily { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
-    public int Tier { get; set; }
-    public string TextureKey { get; set; } = string.Empty;
-    public int IconFrame { get; set; }
-    public float Scale { get; set; } = 1.0f;
     public bool DefaultFacingRight { get; set; } = true;
     public string AttackAnimType { get; set; } = "recoil"; // Can be: "recoil", "stab", "swing", or "none"
 
@@ -125,54 +176,24 @@ public class WeaponConfig
 
     // --- Scaling & Mechanics ---
     public Dictionary<string, float> Mechanics { get; set; } = new();     // "critChance", "knockback"
-    public Dictionary<string, float> StatBonuses { get; set; } = new();   // "maxHp", "speed"
     public Dictionary<string, float> DamageScaling { get; set; } = new();
-    public List<string> Traits { get; set; } = new();
     public List<string> ApplyEffectsOnHit { get; set; } = new();                   // "ExplodesOnImpact", "Homing"
     // --- Granted Skills ---
     public List<string> GrantedSkills { get; set; } = new();
-
-    // --- Random Generation Limits ---
-    public float StatRollChance { get; set; } = 0.50f; // 50% base chance
-    public int MaxRandomStats { get; set; } = 2;
-    public List<string> AllowedRandomStats { get; set; } = new();
-
-    public float SkillRollChance { get; set; } = 0.15f; // 15% base chance
-    public int MaxRandomSkills { get; set; } = 1;
-    public List<string> AllowedRandomSkills { get; set; } = new();
 }
 
-public class ItemConfig
+public class ItemConfig : BaseGearConfig
 {
-    // --- Identity ---
-    public string Id { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
+    // --- Shop ---
     public int Price { get; set; }
 
     // --- Merging Identity ---
-    public int Tier { get; set; } = 1;
     public string ItemFamily { get; set; } = string.Empty;
 
-    // --- Visuals ---
-    public string TextureKey { get; set; } = string.Empty;
-    public int IconFrame { get; set; }
-    public float Scale { get; set; } = 1f;
-
     // --- Fixed Stats & Effects ---
-    public List<string> Traits { get; set; } = new();
     public List<WaveEndEffect> EffectsAtWaveEnd { get; set; } = new();
     public List<string> EffectsOnPurchase { get; set; } = new();
     public List<DynamicModifier> DynamicModifiers { get; set; } = new();
-    public Dictionary<string, float> StatBonuses { get; set; } = new();
-
-    // --- Random Roll Properties ---
-    public float StatRollChance { get; set; } = 0f;
-    public int MaxRandomStats { get; set; } = 0;
-    public List<string> AllowedRandomStats { get; set; } = new();
-
-    public float SkillRollChance { get; set; } = 0f;
-    public int MaxRandomSkills { get; set; } = 0;
-    public List<string> AllowedRandomSkills { get; set; } = new();
 }
 
 

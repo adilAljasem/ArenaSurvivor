@@ -34,6 +34,10 @@
       "meleeDamage": 5,
       "dodge": 0.05
     },
+    "startingWeapons": ["pistol"],
+    "startingItems": ["ugly_tooth"],
+    "weaponDropChance": 0.05,
+    "itemDropChance": 0.10,
     "dynamicModifiers": []
   },
   "boss_demon_king": {

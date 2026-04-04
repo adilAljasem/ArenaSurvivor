@@ -6,12 +6,10 @@ using System.Linq;
 
 namespace Server.Entities;
 
-public class PlayerEntity
+public class PlayerEntity : BaseActorEntity
 {
     public string ConnectionId { get; set; } = string.Empty;
     public string ConfigId { get; set; } = "char_well_rounded";
-    public float X { get; set; }
-    public float Y { get; set; }
 
     public int Level { get; set; } = 1;
     public float CurrentXp { get; set; }
@@ -27,36 +25,20 @@ public class PlayerEntity
     public float AimY { get; set; }
     public List<int> FiredWeaponsThisTick { get; set; } = new();
 
-    // Active Resource Pool (Changes when you take damage or heal)
-    public float CurrentHp { get; set; }
-
     // Economy & Shop
     public int Gold { get; set; } = 5000;
     public int CurrentRerollCost { get; set; } = 2;
     public List<DTOs.ShopItemDto> CurrentShop { get; set; } = new();
 
-    // The Unified Data-Driven Dictionary
-    public StatDictionary Stats { get; set; } = new();
-
-    // Inventory
-    public List<EquippedWeapon> Weapons { get; set; } = new();
-    public List<EquippedItem> OwnedItems { get; set; } = new();
     // Mechanics
     public List<string> Traits { get; set; } = new();
     public bool DuplicateNextPurchase { get; set; }
 
-    public List<ActiveEffect> ActiveEffects { get; set; } = new();
-    public string Team { get; set; } = "Player"; // Hardcoded for players
-    public string ActionState { get; set; } = "Idle";
-    public List<ActiveSkill> Skills { get; set; } = new();
-    public string CurrentCastingSkillId { get; set; } = string.Empty;
-    public float CurrentCastTimer { get; set; }
-    public float MaxCastTimer { get; set; }
-    public Dictionary<string, float> DynamicSkillTimers { get; set; } = new();
-
     // Initializes the player with the Master Stat List so it never crashes
     public void Initialize(CharacterConfig config, ConfigManager configManager)
     {
+        Team = "Player";
+
         // 1. Initialize EVERY stat dynamically from the JSON file!
         foreach (var stat in configManager.AllStats)
         {

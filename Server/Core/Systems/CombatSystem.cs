@@ -11,6 +11,7 @@ public static class CombatSystem
 {
     public static void ProcessShooting(float dt, GameState state, ConfigManager configs)
     {
+        // --- 1. PLAYER WEAPONS ---
         foreach (var player in state.Players.Values)
         {
             foreach (var weapon in player.Weapons)
@@ -42,20 +43,16 @@ public static class CombatSystem
 
                         player.FiredWeaponsThisTick.Add(weapon.SlotIndex);
 
-
-                        // >>> FIX: Instantly read the cached server calculation! No more loops! <<<
                         float baseMelee = weapon.TotalBaseStats.GetValueOrDefault("meleeDamage", 0f);
                         float baseRanged = weapon.TotalBaseStats.GetValueOrDefault("rangedDamage", 0f);
                         float baseElemental = weapon.TotalBaseStats.GetValueOrDefault("elementalDamage", 0f);
 
-                        // 2. Add any specific random rolls this specific weapon has!
                         if (weapon.RolledStats.TryGetValue("meleeDamage", out var rm)) baseMelee += rm;
                         if (weapon.RolledStats.TryGetValue("rangedDamage", out var rr)) baseRanged += rr;
                         if (weapon.RolledStats.TryGetValue("elementalDamage", out var re)) baseElemental += re;
 
                         float finalDamage = baseMelee + baseRanged + baseElemental;
 
-                        // 3. Add Player Stat Scaling (e.g., +50% of your Engineering stat)
                         if (config.DamageScaling != null)
                         {
                             foreach (var scale in config.DamageScaling)
@@ -64,10 +61,8 @@ public static class CombatSystem
                             }
                         }
 
-                        // 4. Apply global damage percent (REMOVED * weapon.Level !!!)
                         float damagePercent = player.GetTotalStat("damagePercent", configs);
                         finalDamage = finalDamage * (1f + damagePercent);
-                        // ====================================================================
 
                         float localLifeSteal = config.Mechanics != null && config.Mechanics.ContainsKey("lifeSteal")
                                                ? config.Mechanics["lifeSteal"] : 0f;
@@ -111,6 +106,94 @@ public static class CombatSystem
                 }
             }
         }
+
+        // --- 2. ENEMY WEAPONS ---
+        foreach (var enemy in state.Enemies.Values)
+        {
+            if (enemy.ActionState == "Dead" || enemy.Weapons.Count == 0) continue;
+
+            // Find the closest player to aim at
+            PlayerEntity? target = null;
+            float bestDistSq = float.MaxValue;
+            foreach (var player in state.Players.Values)
+            {
+                float dx = player.X - enemy.X;
+                float dy = player.Y - enemy.Y;
+                float distSq = dx * dx + dy * dy;
+                if (distSq < bestDistSq)
+                {
+                    bestDistSq = distSq;
+                    target = player;
+                }
+            }
+
+            if (target == null) continue;
+
+            float dirToTargetX = target.X - enemy.X;
+            float dirToTargetY = target.Y - enemy.Y;
+            float dirLength = (float)Math.Sqrt(dirToTargetX * dirToTargetX + dirToTargetY * dirToTargetY);
+            if (dirLength <= 0) continue;
+
+            foreach (var weapon in enemy.Weapons)
+            {
+                weapon.CurrentCooldown -= dt;
+                if (weapon.CurrentCooldown > 0) continue;
+
+                if (!configs.Weapons.TryGetValue(weapon.ConfigId, out var weaponConfig)) continue;
+
+                weapon.CurrentCooldown = weaponConfig.CooldownSeconds;
+
+                float baseMelee = weapon.TotalBaseStats.GetValueOrDefault("meleeDamage", 0f);
+                float baseRanged = weapon.TotalBaseStats.GetValueOrDefault("rangedDamage", 0f);
+                float baseElemental = weapon.TotalBaseStats.GetValueOrDefault("elementalDamage", 0f);
+
+                if (weapon.RolledStats.TryGetValue("meleeDamage", out var rm)) baseMelee += rm;
+                if (weapon.RolledStats.TryGetValue("rangedDamage", out var rr)) baseRanged += rr;
+                if (weapon.RolledStats.TryGetValue("elementalDamage", out var re)) baseElemental += re;
+
+                float finalDamage = baseMelee + baseRanged + baseElemental;
+
+                if (weaponConfig.DamageScaling != null)
+                {
+                    foreach (var scale in weaponConfig.DamageScaling)
+                        finalDamage += enemy.GetTotalStat(scale.Key, configs) * scale.Value;
+                }
+
+                float damagePercent = enemy.GetTotalStat("damagePercent", configs);
+                finalDamage = finalDamage * (1f + damagePercent);
+
+                float finalRange = weaponConfig.Range + enemy.GetTotalStat("range", configs);
+
+                string projId = weaponConfig.ProjectileId;
+                if (string.IsNullOrEmpty(projId) || !configs.Projectiles.TryGetValue(projId, out var projConfig)) continue;
+
+                float finalSpeed = projConfig.BaseSpeed;
+                float computedLifespan = finalSpeed > 0 ? (finalRange / finalSpeed) : 0.15f;
+                if (projConfig.Lifespan > 0) computedLifespan = projConfig.Lifespan;
+                if (weaponConfig.Lifespan > 0) computedLifespan = weaponConfig.Lifespan;
+
+                var combinedEffects = new List<string>();
+                if (weaponConfig.ApplyEffectsOnHit != null) combinedEffects.AddRange(weaponConfig.ApplyEffectsOnHit);
+                if (projConfig.ApplyEffectsOnHit != null) combinedEffects.AddRange(projConfig.ApplyEffectsOnHit);
+
+                var bullet = new ProjectileEntity
+                {
+                    ConfigId = projConfig.Id,
+                    OwnerId = enemy.Id,
+                    X = enemy.X,
+                    Y = enemy.Y,
+                    VelX = (dirToTargetX / dirLength) * finalSpeed,
+                    VelY = (dirToTargetY / dirLength) * finalSpeed,
+                    Damage = finalDamage,
+                    LifeStealChance = 0f,
+                    HitRadius = projConfig.HitRadius,
+                    PierceCount = projConfig.PierceCount,
+                    Lifespan = computedLifespan,
+                    ApplyEffectsOnHit = combinedEffects
+                };
+                state.Projectiles.TryAdd(bullet.Id, bullet);
+            }
+        }
     }
 
     public static void ProcessCollisions(float dt, GameState state, ConfigManager configs, List<DamageEventDto> tickDamageEvents, List<AoeEventDto> tickAoeEvents)
@@ -134,74 +217,85 @@ public static class CombatSystem
                 continue;
             }
 
-            foreach (var enemy in state.Enemies.Values)
+            // Only player-fired projectiles can hit enemies (OwnerId matches a player ConnectionId)
+            bool isPlayerProjectile = state.Players.ContainsKey(proj.OwnerId);
+
+            if (isPlayerProjectile)
             {
-                if (enemy.ActionState == "Dead" || proj.HitEnemies.Contains(enemy.Id)) continue;
-
-                float combinedRadius = proj.HitRadius + enemy.HitRadius;
-                float hitThresholdSq = combinedRadius * combinedRadius;
-
-                float dx = proj.X - prevX;
-                float dy = proj.Y - prevY;
-                float fx = enemy.X - prevX;
-                float fy = enemy.Y - prevY;
-
-                float lengthSq = (dx * dx) + (dy * dy);
-                float t = lengthSq == 0 ? 0 : Math.Max(0, Math.Min(1, (fx * dx + fy * dy) / lengthSq));
-
-                float closestX = prevX + t * dx;
-                float closestY = prevY + t * dy;
-
-                float distX = closestX - enemy.X;
-                float distY = closestY - enemy.Y;
-                float distSqToSegment = (distX * distX) + (distY * distY);
-
-                if (distSqToSegment <= hitThresholdSq)
+                foreach (var enemy in state.Enemies.Values)
                 {
-                    enemy.CurrentHp -= proj.Damage;
-                    proj.HitEnemies.Add(enemy.Id);
+                    if (enemy.ActionState == "Dead" || proj.HitEnemies.Contains(enemy.Id)) continue;
 
-                    tickDamageEvents.Add(new DamageEventDto { X = enemy.X, Y = enemy.Y, Amount = proj.Damage });
+                    float combinedRadius = proj.HitRadius + enemy.HitRadius;
+                    float hitThresholdSq = combinedRadius * combinedRadius;
 
-                    if (proj.ApplyEffectsOnHit != null)
+                    float dx = proj.X - prevX;
+                    float dy = proj.Y - prevY;
+                    float fx = enemy.X - prevX;
+                    float fy = enemy.Y - prevY;
+
+                    float lengthSq = (dx * dx) + (dy * dy);
+                    float t = lengthSq == 0 ? 0 : Math.Max(0, Math.Min(1, (fx * dx + fy * dy) / lengthSq));
+
+                    float closestX = prevX + t * dx;
+                    float closestY = prevY + t * dy;
+
+                    float distX = closestX - enemy.X;
+                    float distY = closestY - enemy.Y;
+                    float distSqToSegment = (distX * distX) + (distY * distY);
+
+                    if (distSqToSegment <= hitThresholdSq)
                     {
-                        foreach (var effectId in proj.ApplyEffectsOnHit)
+                        enemy.CurrentHp -= proj.Damage;
+                        proj.HitEnemies.Add(enemy.Id);
+
+                        tickDamageEvents.Add(new DamageEventDto { X = enemy.X, Y = enemy.Y, Amount = proj.Damage });
+
+                        if (proj.ApplyEffectsOnHit != null)
                         {
-                            if (configs.Effects.TryGetValue(effectId, out var effectConfig))
+                            foreach (var effectId in proj.ApplyEffectsOnHit)
                             {
-                                var existing = enemy.ActiveEffects.FirstOrDefault(e => e.ConfigId == effectId);
-                                if (existing != null) existing.TimeRemaining = effectConfig.Duration;
-                                else enemy.ActiveEffects.Add(new ActiveEffect { ConfigId = effectId, TimeRemaining = effectConfig.Duration });
+                                if (configs.Effects.TryGetValue(effectId, out var effectConfig))
+                                {
+                                    var existing = enemy.ActiveEffects.FirstOrDefault(e => e.ConfigId == effectId);
+                                    if (existing != null) existing.TimeRemaining = effectConfig.Duration;
+                                    else enemy.ActiveEffects.Add(new ActiveEffect { ConfigId = effectId, TimeRemaining = effectConfig.Duration });
+                                }
                             }
                         }
-                    }
 
-                    if (Random.Shared.NextDouble() < proj.LifeStealChance)
-                    {
-                        if (state.Players.TryGetValue(proj.OwnerId, out var p))
+                        if (Random.Shared.NextDouble() < proj.LifeStealChance)
                         {
-                            float maxHp = p.GetTotalStat("maxHp", configs);
-                            p.CurrentHp = Math.Min(maxHp, p.CurrentHp + 1f);
+                            if (state.Players.TryGetValue(proj.OwnerId, out var p))
+                            {
+                                float maxHp = p.GetTotalStat("maxHp", configs);
+                                p.CurrentHp = Math.Min(maxHp, p.CurrentHp + 1f);
+                            }
                         }
-                    }
 
-                    if (enemy.CurrentHp <= 0 && enemy.ActionState != "Dead")
-                    {
-                        enemy.ActionState = "Dead";
-                        var gold = new PickupEntity { X = enemy.X, Y = enemy.Y, Value = 1 };
-                        state.Pickups.TryAdd(gold.Id, gold);
-
-                        // >>> FIRE DEATH SKILLS <<<
-                        if (configs.Enemies.TryGetValue(enemy.ConfigId, out var eCfg))
+                        if (enemy.CurrentHp <= 0 && enemy.ActionState != "Dead")
                         {
-                            SkillSystem.FireOnDeathSkills(enemy.Id, enemy.X, enemy.Y, enemy.Team, eCfg.OnDeathSkills, state, configs, tickDamageEvents, tickAoeEvents);
-                        }
-                    }
+                            enemy.ActionState = "Dead";
 
-                    if (proj.HitEnemies.Count > proj.PierceCount)
-                    {
-                        projectilesToRemove.Add(proj.Id);
-                        break;
+                            // Gold drop
+                            var gold = new PickupEntity { X = enemy.X, Y = enemy.Y, Value = 1 };
+                            state.Pickups.TryAdd(gold.Id, gold);
+
+                            // Gear drops (weapon and item loot rolls)
+                            if (configs.Enemies.TryGetValue(enemy.ConfigId, out var eCfg))
+                            {
+                                SpawnGearDrops(enemy, eCfg, state, configs);
+
+                                // Death skills
+                                SkillSystem.FireOnDeathSkills(enemy.Id, enemy.X, enemy.Y, enemy.Team, eCfg.OnDeathSkills, state, configs, tickDamageEvents, tickAoeEvents);
+                            }
+                        }
+
+                        if (proj.HitEnemies.Count > proj.PierceCount)
+                        {
+                            projectilesToRemove.Add(proj.Id);
+                            break;
+                        }
                     }
                 }
             }
@@ -217,8 +311,24 @@ public static class CombatSystem
                 float distSq = (player.X - pickup.X) * (player.X - pickup.X) + (player.Y - pickup.Y) * (player.Y - pickup.Y);
                 if (distSq < 625) // 25 radius
                 {
-                    player.Gold += pickup.Value;
-                    player.GainXp(pickup.Value, configs);
+                    switch (pickup.Type)
+                    {
+                        case PickupType.Gold:
+                            player.Gold += pickup.Value;
+                            player.GainXp(pickup.Value, configs);
+                            break;
+
+                        case PickupType.Weapon when pickup.DroppedWeapon != null:
+                            pickup.DroppedWeapon.SlotIndex = player.Weapons.Count;
+                            player.Weapons.Add(pickup.DroppedWeapon);
+                            break;
+
+                        case PickupType.Item when pickup.DroppedItem != null:
+                            pickup.DroppedItem.SlotIndex = player.OwnedItems.Count;
+                            player.OwnedItems.Add(pickup.DroppedItem);
+                            break;
+                    }
+
                     pickupsToRemove.Add(pickup.Id);
                 }
             }
@@ -226,5 +336,47 @@ public static class CombatSystem
 
         foreach (var id in projectilesToRemove) state.Projectiles.TryRemove(id, out _);
         foreach (var id in pickupsToRemove) state.Pickups.TryRemove(id, out _);
+    }
+
+    // Rolls loot drops for all gear the dying enemy was carrying
+    private static void SpawnGearDrops(EnemyEntity enemy, EnemyConfig config, GameState state, ConfigManager configs)
+    {
+        float scatterRadius = 20f;
+
+        foreach (var weapon in enemy.Weapons)
+        {
+            if (config.WeaponDropChance <= 0f) continue;
+            if (Random.Shared.NextDouble() >= config.WeaponDropChance) continue;
+            if (!configs.Weapons.TryGetValue(weapon.ConfigId, out var wCfg) || !wCfg.CanDrop) continue;
+
+            float ox = (float)(Random.Shared.NextDouble() * scatterRadius * 2 - scatterRadius);
+            float oy = (float)(Random.Shared.NextDouble() * scatterRadius * 2 - scatterRadius);
+            var drop = new PickupEntity
+            {
+                X = enemy.X + ox,
+                Y = enemy.Y + oy,
+                Type = PickupType.Weapon,
+                DroppedWeapon = weapon
+            };
+            state.Pickups.TryAdd(drop.Id, drop);
+        }
+
+        foreach (var item in enemy.OwnedItems)
+        {
+            if (config.ItemDropChance <= 0f) continue;
+            if (Random.Shared.NextDouble() >= config.ItemDropChance) continue;
+            if (!configs.Items.TryGetValue(item.ConfigId, out var iCfg) || !iCfg.CanDrop) continue;
+
+            float ox = (float)(Random.Shared.NextDouble() * scatterRadius * 2 - scatterRadius);
+            float oy = (float)(Random.Shared.NextDouble() * scatterRadius * 2 - scatterRadius);
+            var drop = new PickupEntity
+            {
+                X = enemy.X + ox,
+                Y = enemy.Y + oy,
+                Type = PickupType.Item,
+                DroppedItem = item
+            };
+            state.Pickups.TryAdd(drop.Id, drop);
+        }
     }
 }

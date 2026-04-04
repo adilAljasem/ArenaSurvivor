@@ -9,13 +9,17 @@ namespace Server.Core.Systems;
 public static class ItemGenerator
 {
     public static EquippedItem GenerateItem(string configId, PlayerEntity player, ConfigManager configs, int startingLevel = 1)
+        => GenerateItem(configId, player.GetTotalStat("luck", configs), configs, startingLevel);
+
+    /// <summary>Generates an item using an explicit luck value — used when no PlayerEntity is available (e.g. enemy equipping).</summary>
+    public static EquippedItem GenerateItem(string configId, float luck, ConfigManager configs, int startingLevel = 1)
     {
         var itemConfig = configs.Items[configId];
         var newItem = new EquippedItem { ConfigId = configId, Level = startingLevel };
 
         for (int i = 0; i < startingLevel; i++) newItem.MergedConfigIds.Add(configId);
 
-        float luckMult = 1f + Math.Max(0, player.GetTotalStat("luck", configs) / 100f);
+        float luckMult = 1f + Math.Max(0, luck / 100f);
 
         // Roll Random Stats
         if (itemConfig.AllowedRandomStats != null && itemConfig.AllowedRandomStats.Count > 0

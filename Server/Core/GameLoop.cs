@@ -321,8 +321,8 @@ public class GameLoop : BackgroundService
     public static void GenerateShopForPlayer(PlayerEntity player, ConfigManager configManager, int currentWave)
     {
         int maxAllowedTier = (currentWave / 5) + 1;
-        var availableWeapons = configManager.Weapons.Values.Where(w => w.Tier <= maxAllowedTier).ToList();
-        var availableItems = configManager.Items.Values.ToList();
+        var availableWeapons = configManager.Weapons.Values.Where(w => w.Tier <= maxAllowedTier && w.AvailableInShop).ToList();
+        var availableItems = configManager.Items.Values.Where(i => i.AvailableInShop).ToList();
 
         player.CurrentShop = player.CurrentShop.Where(item => item.IsLocked).ToList();
         int slotsNeeded = 3 - player.CurrentShop.Count;

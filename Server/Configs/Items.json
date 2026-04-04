@@ -8,6 +8,8 @@
     "textureKey": "items_sheet",
     "scale": 1.0,
     "iconFrame": 0,
+    "canDrop": true,
+    "availableInShop": true,
     "traits": [],
     "effectsAtWaveEnd": [],
     "effectsOnPurchase": [],

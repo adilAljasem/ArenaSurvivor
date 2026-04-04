@@ -9,21 +9,21 @@ namespace Server.Core.Systems;
 public static class WeaponGenerator
 {
     public static EquippedWeapon GenerateWeapon(string configId, PlayerEntity player, ConfigManager configs, int startingLevel = 1)
+        => GenerateWeapon(configId, player.GetTotalStat("luck", configs), configs, startingLevel);
+
+    /// <summary>Generates a weapon using an explicit luck value — used when no PlayerEntity is available (e.g. enemy equipping).</summary>
+    public static EquippedWeapon GenerateWeapon(string configId, float luck, ConfigManager configs, int startingLevel = 1)
     {
         var weaponConfig = configs.Weapons[configId];
 
-        // >>> FIX 1: Removed `Level = startingLevel` <<<
         var newWeapon = new EquippedWeapon { ConfigId = configId, Level = startingLevel };
-        // >>> FIX 2: Add the JSON ID to the ancestry array! <<<
-        // If startingLevel is 1, it adds "pistol" once. 
-        // If you ever force-spawn a Level 2 weapon, it adds "pistol" twice!
         for (int i = 0; i < startingLevel; i++)
         {
             newWeapon.MergedConfigIds.Add(configId);
         }
 
         // 1. Calculate Luck Multiplier (e.g., 20 Luck = +20% chance to succeed)
-        float luckMult = 1f + Math.Max(0, player.GetTotalStat("luck", configs) / 100f);
+        float luckMult = 1f + Math.Max(0, luck / 100f);
 
         // 2. Roll Random Stats
         if (weaponConfig.AllowedRandomStats != null && weaponConfig.AllowedRandomStats.Count > 0
@@ -64,6 +64,8 @@ public static class WeaponGenerator
                 newWeapon.WeaponSkills.Add(new ActiveSkill { ConfigId = skillId, CurrentCooldown = skillCfg.CooldownSeconds });
             }
         }
+
+        CalculateTotalBaseStats(newWeapon, configs);
         return newWeapon;
     }
 

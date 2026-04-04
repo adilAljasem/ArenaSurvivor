@@ -153,7 +153,10 @@ public static class NetworkSystem
                 proj.Id, proj.ConfigId, (int)proj.X, (int)proj.Y, (int)proj.VelX, (int)proj.VelY
             }).ToList(),
 
-            Pickups = gameState.Pickups.Values.Select(pk => new object[] { pk.Id, (int)pk.X, (int)pk.Y, pk.Value }).ToList(),
+            Pickups = gameState.Pickups.Values.Select(pk => new object[] {
+                pk.Id, (int)pk.X, (int)pk.Y, pk.Value, (int)pk.Type,
+                pk.DroppedWeapon?.ConfigId ?? pk.DroppedItem?.ConfigId ?? ""
+            }).ToList(),
             Damage = dmgEvents.Select(d => new object[] { (int)d.X, (int)d.Y, (int)d.Amount }).ToList(),
             Aoe = aoeEvents.Select(a => new object[] { (int)a.X, (int)a.Y, (int)a.Radius, a.IsFriendly, a.ConfigId }).ToList()
         };
