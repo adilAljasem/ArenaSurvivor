@@ -408,6 +408,31 @@ export class EnemyRenderer {
         if (sprite) {
           sprite.x = wx;
           sprite.y = wy;
+
+          // Rotate the weapon sprite to aim at the enemy's current target
+          const eAimX = se.aimX ?? se.AimX;
+          const eAimY = se.aimY ?? se.AimY;
+          if (eAimX !== undefined && eAimY !== undefined && wConfig) {
+            const eX = se.x ?? se.X;
+            const eY = se.y ?? se.Y;
+            const angle = Math.atan2(eAimY - eY, eAimX - eX);
+            sprite.rotation = angle;
+            sprite.setFlipY(Math.abs(angle) > Math.PI / 2);
+
+            const firedList: number[] = se.firedWeapons || se.FiredWeapons || [];
+            if (firedList.includes(slotIndex) && !scene.tweens.isTweening(sprite)) {
+              const animType = wConfig.attackAnimType || 'recoil';
+              if (animType === 'stab') {
+                scene.tweens.add({ targets: sprite, x: wx + Math.cos(angle) * 20, y: wy + Math.sin(angle) * 20, yoyo: true, duration: 100, ease: 'Power2' });
+              } else if (animType === 'recoil') {
+                scene.tweens.add({ targets: sprite, x: wx + Math.cos(angle) * -15, y: wy + Math.sin(angle) * -15, yoyo: true, duration: 80, ease: 'Cubic.easeOut' });
+              } else if (animType === 'swing') {
+                scene.tweens.add({ targets: sprite, angle: sprite.angle + 360, duration: 150, ease: 'Linear' });
+              }
+            }
+
+            if (!scene.tweens.isTweening(sprite)) { sprite.x = wx; sprite.y = wy; }
+          }
         }
       });
 

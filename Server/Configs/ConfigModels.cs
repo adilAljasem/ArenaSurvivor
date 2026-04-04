@@ -124,6 +124,8 @@ public class EnemyConfig
     // --- Physics & Stats ---
     public float HitRadius { get; set; } = 15f;
     public float AttackDuration { get; set; } = 0.5f;
+    /// <summary>Max distance (px) at which this enemy fires its equipped weapons. Spells always bypass this.</summary>
+    public float AttackRadius { get; set; } = 300f;
     public Dictionary<string, float> BaseStats { get; set; } = new();
 
     public List<string> StartingSkills { get; set; } = new();
@@ -132,8 +134,14 @@ public class EnemyConfig
     /// <summary>Weapon config IDs this enemy spawns equipped with.</summary>
     public List<string> StartingWeapons { get; set; } = new();
 
+    /// <summary>Per-slot tier override for StartingWeapons (index-aligned). Omit to use tier 1.</summary>
+    public List<int>? StartingWeaponTiers { get; set; }
+
     /// <summary>Item config IDs this enemy spawns holding.</summary>
     public List<string> StartingItems { get; set; } = new();
+
+    /// <summary>Per-slot tier override for StartingItems (index-aligned). Omit to use tier 1.</summary>
+    public List<int>? StartingItemTiers { get; set; }
 
     // --- Drop Chances ---
     /// <summary>Per-weapon roll probability when the enemy dies (e.g. 0.05 = 5%).</summary>

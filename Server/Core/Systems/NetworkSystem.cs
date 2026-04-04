@@ -52,12 +52,15 @@ public static class NetworkSystem
         public const int Y = 3;
         public const int CurrentHp = 4;
         public const int MaxHp = 5;
-        public const int StateId = 6;
-        public const int CastingSkillId = 7;
-        public const int CastTimer = 8;
-        public const int MaxCastTimer = 9;
-        public const int ActiveEffects = 10;
-        public const int Weapons = 11;
+        public const int AimX = 6;
+        public const int AimY = 7;
+        public const int StateId = 8;
+        public const int CastingSkillId = 9;
+        public const int CastTimer = 10;
+        public const int MaxCastTimer = 11;
+        public const int ActiveEffects = 12;
+        public const int Weapons = 13;
+        public const int FiredWeapons = 14;
     }
 
     // =========================================================================
@@ -146,6 +149,7 @@ public static class NetworkSystem
 
             Enemies = gameState.Enemies.Values.Select(e => new object[] {
                 e.Id, e.ConfigId, (int)e.X, (int)e.Y, (int)e.CurrentHp, (int)e.GetTotalStat("maxHp", configManager),
+                (int)e.AimX, (int)e.AimY,
                 GetStateId(e.ActionState), e.CurrentCastingSkillId, Math.Round(e.CurrentCastTimer, 1), Math.Round(e.MaxCastTimer, 1),
                 e.ActiveEffects.Select(a => a.ConfigId).ToList(),
                 e.Weapons.Select(w => new object[] {
@@ -154,7 +158,8 @@ public static class NetworkSystem
                     w.Level,
                     w.RolledStats ?? new Dictionary<string, float>(),
                     w.TotalBaseStats ?? new Dictionary<string, float>()
-                }).ToList()
+                }).ToList(),
+                e.FiredWeaponsThisTick.ToList()
             }).ToList(),
 
             NewBullets = newProjectiles.Select(proj => new object[] {
@@ -227,11 +232,14 @@ public static class NetworkSystem
                         e[EnemyIdx.X],
                         e[EnemyIdx.Y],
                         e[EnemyIdx.CurrentHp],
+                        e[EnemyIdx.AimX],
+                        e[EnemyIdx.AimY],
                         e[EnemyIdx.StateId],
                         e[EnemyIdx.CastingSkillId],
                         e[EnemyIdx.CastTimer],
                         e[EnemyIdx.MaxCastTimer],
-                        e[EnemyIdx.ActiveEffects]
+                        e[EnemyIdx.ActiveEffects],
+                        e[EnemyIdx.FiredWeapons]
                           })
                           .ToList();
 
@@ -281,6 +289,11 @@ public static class NetworkSystem
         foreach (var p in gameState.Players.Values)
         {
             p.FiredWeaponsThisTick.Clear();
+        }
+
+        foreach (var e in gameState.Enemies.Values)
+        {
+            e.FiredWeaponsThisTick.Clear();
         }
 
         var disconnected = _clientKnownEnemies.Keys.Except(gameState.Players.Keys).ToList();

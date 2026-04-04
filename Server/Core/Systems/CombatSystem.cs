@@ -134,6 +134,18 @@ public static class CombatSystem
             float dirLength = (float)Math.Sqrt(dirToTargetX * dirToTargetX + dirToTargetY * dirToTargetY);
             if (dirLength <= 0) continue;
 
+            // Always update aim direction so weapon sprites point at target
+            enemy.AimX = target.X;
+            enemy.AimY = target.Y;
+
+            // Fetch the config to check the attack radius
+            float attackRadius = 300f;
+            if (configs.Enemies.TryGetValue(enemy.ConfigId, out var enemyCfg))
+                attackRadius = enemyCfg.AttackRadius;
+
+            // Weapons only fire when the player is inside the attack radius
+            if (bestDistSq > attackRadius * attackRadius) continue;
+
             foreach (var weapon in enemy.Weapons)
             {
                 weapon.CurrentCooldown -= dt;
@@ -175,6 +187,8 @@ public static class CombatSystem
                 var combinedEffects = new List<string>();
                 if (weaponConfig.ApplyEffectsOnHit != null) combinedEffects.AddRange(weaponConfig.ApplyEffectsOnHit);
                 if (projConfig.ApplyEffectsOnHit != null) combinedEffects.AddRange(projConfig.ApplyEffectsOnHit);
+
+                enemy.FiredWeaponsThisTick.Add(weapon.SlotIndex);
 
                 var bullet = new ProjectileEntity
                 {

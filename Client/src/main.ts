@@ -28,6 +28,7 @@ interface ServerEnemy {
   id: string; configId: string; x: number; y: number; velX?: number;
   currentHp: number; maxHp: number; actionState: string; activeEffects: string[];
   currentCastingSkillId: string; currentCastTimer: number; maxCastTimer: number;
+  aimX?: number; aimY?: number; firedWeapons: number[];
   weapons: { configId: string; slotIndex: number; level: number; rolledStats: Record<string, number>; totalBaseStats: Record<string, number>; }[];
 }
 interface ServerProjectile { id: string; configId: string; x: number; y: number; velX: number; velY: number; }
@@ -352,11 +353,13 @@ class GameScene extends Phaser.Scene {
       rawState.e?.forEach((e: any[]) => {
         this.enemyCache.set(e[0], {
           id: e[0], configId: e[1], x: e[2], y: e[3], currentHp: e[4], maxHp: e[5],
-          actionState: StateMap[e[6]], currentCastingSkillId: e[7], currentCastTimer: e[8],
-          maxCastTimer: e[9], activeEffects: e[10] || [],
-          weapons: e[11]?.map((w: any[]) => ({
+          aimX: e[6], aimY: e[7],
+          actionState: StateMap[e[8]], currentCastingSkillId: e[9], currentCastTimer: e[10],
+          maxCastTimer: e[11], activeEffects: e[12] || [],
+          weapons: e[13]?.map((w: any[]) => ({
             configId: w[0], slotIndex: w[1], level: w[2], rolledStats: w[3] || {}, totalBaseStats: w[4] || {}
-          })) || []
+          })) || [],
+          firedWeapons: e[14] || []
         });
       });
       rawState.pk?.forEach((pk: any[]) => {
@@ -373,13 +376,16 @@ class GameScene extends Phaser.Scene {
       rawState.me?.forEach((m: any[]) => {
         const cached = this.enemyCache.get(m[0]);
         if (cached) {
-          cached.x = m[1]; cached.y = m[2]; cached.currentHp = m[3]; cached.actionState = StateMap[m[4]];
+          cached.x = m[1]; cached.y = m[2]; cached.currentHp = m[3];
+          cached.aimX = m[4]; cached.aimY = m[5];
+          cached.actionState = StateMap[m[6]];
 
           // >>> FIX: Update the cache with Casts and Effects! <<<
-          cached.currentCastingSkillId = m[5];
-          cached.currentCastTimer = m[6];
-          cached.maxCastTimer = m[7];
-          cached.activeEffects = m[8] || [];
+          cached.currentCastingSkillId = m[7];
+          cached.currentCastTimer = m[8];
+          cached.maxCastTimer = m[9];
+          cached.activeEffects = m[10] || [];
+          cached.firedWeapons = m[11] || [];
         }
       });
 

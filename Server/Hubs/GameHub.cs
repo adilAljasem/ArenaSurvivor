@@ -351,13 +351,67 @@ public class GameHub : Hub
 
         if (pickup.Type == Entities.PickupType.Weapon && pickup.DroppedWeapon != null)
         {
-            pickup.DroppedWeapon.SlotIndex = player.Weapons.Count;
-            player.Weapons.Add(pickup.DroppedWeapon);
+            var droppedWeapon = pickup.DroppedWeapon;
+            _configManager.Weapons.TryGetValue(droppedWeapon.ConfigId, out var droppedWCfg);
+
+            // Look for an existing weapon of the same family to merge with
+            EquippedWeapon? matchingWeapon = null;
+            if (!string.IsNullOrEmpty(droppedWCfg?.WeaponFamily))
+            {
+                foreach (var ow in player.Weapons)
+                {
+                    if (_configManager.Weapons.TryGetValue(ow.ConfigId, out var owCfg) &&
+                        owCfg.WeaponFamily == droppedWCfg.WeaponFamily)
+                    {
+                        matchingWeapon = ow;
+                        break;
+                    }
+                }
+            }
+
+            if (matchingWeapon != null)
+            {
+                var merged = Server.Core.Systems.WeaponGenerator.MergeWeapons(matchingWeapon, droppedWeapon, _configManager);
+                merged.SlotIndex = matchingWeapon.SlotIndex;
+                player.Weapons[matchingWeapon.SlotIndex] = merged;
+            }
+            else
+            {
+                droppedWeapon.SlotIndex = player.Weapons.Count;
+                player.Weapons.Add(droppedWeapon);
+            }
         }
         else if (pickup.Type == Entities.PickupType.Item && pickup.DroppedItem != null)
         {
-            pickup.DroppedItem.SlotIndex = player.OwnedItems.Count;
-            player.OwnedItems.Add(pickup.DroppedItem);
+            var droppedItem = pickup.DroppedItem;
+            _configManager.Items.TryGetValue(droppedItem.ConfigId, out var droppedICfg);
+
+            // Look for an existing item of the same family to merge with
+            EquippedItem? matchingItem = null;
+            if (!string.IsNullOrEmpty(droppedICfg?.ItemFamily))
+            {
+                foreach (var oi in player.OwnedItems)
+                {
+                    if (_configManager.Items.TryGetValue(oi.ConfigId, out var oiCfg) &&
+                        oiCfg.ItemFamily == droppedICfg.ItemFamily)
+                    {
+                        matchingItem = oi;
+                        break;
+                    }
+                }
+            }
+
+            if (matchingItem != null)
+            {
+                var merged = Server.Core.Systems.ItemGenerator.MergeItems(matchingItem, droppedItem, _configManager);
+                merged.SlotIndex = matchingItem.SlotIndex;
+                player.OwnedItems[matchingItem.SlotIndex] = merged;
+            }
+            else
+            {
+                droppedItem.SlotIndex = player.OwnedItems.Count;
+                player.OwnedItems.Add(droppedItem);
+            }
         }
 
         await SendPlayerUI(player);
