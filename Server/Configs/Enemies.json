@@ -34,8 +34,12 @@
       "meleeDamage": 5,
       "dodge": 0.05
     },
-    "startingWeapons": ["pistol"],
-    "startingItems": ["ugly_tooth"],
+    "startingWeapons": [
+      "pistol"
+    ],
+    "startingItems": [
+      "ugly_tooth"
+    ],
     "weaponDropChance": 0.05,
     "itemDropChance": 0.10,
     "dynamicModifiers": []
@@ -236,12 +240,20 @@
     "onDeathSkills": [
       "frost_nova"
     ],
+    "startingWeapons": [
+      "pistol"
+    ],
+    "startingItems": [
+      "ugly_tooth"
+    ],
+    "weaponDropChance": 0.05,
+    "itemDropChance": 0.10,
     "dynamicSkills": [
       {
         "conditionType": "MissingHealthPercent",
         "conditionThreshold": 0.30,
         "skillId": "nature_pulse",
-        "cooldown":0.5,
+        "cooldown": 0.5,
         "overrideCastTime": 4.0
       }
     ]
