@@ -358,15 +358,9 @@ public class GameHub : Hub
             EquippedWeapon? matchingWeapon = null;
             if (!string.IsNullOrEmpty(droppedWCfg?.WeaponFamily))
             {
-                foreach (var ow in player.Weapons)
-                {
-                    if (_configManager.Weapons.TryGetValue(ow.ConfigId, out var owCfg) &&
-                        owCfg.WeaponFamily == droppedWCfg.WeaponFamily)
-                    {
-                        matchingWeapon = ow;
-                        break;
-                    }
-                }
+                matchingWeapon = player.Weapons.FirstOrDefault(ow =>
+                    _configManager.Weapons.TryGetValue(ow.ConfigId, out var owCfg) &&
+                    owCfg.WeaponFamily == droppedWCfg.WeaponFamily);
             }
 
             if (matchingWeapon != null)
@@ -390,15 +384,9 @@ public class GameHub : Hub
             EquippedItem? matchingItem = null;
             if (!string.IsNullOrEmpty(droppedICfg?.ItemFamily))
             {
-                foreach (var oi in player.OwnedItems)
-                {
-                    if (_configManager.Items.TryGetValue(oi.ConfigId, out var oiCfg) &&
-                        oiCfg.ItemFamily == droppedICfg.ItemFamily)
-                    {
-                        matchingItem = oi;
-                        break;
-                    }
-                }
+                matchingItem = player.OwnedItems.FirstOrDefault(oi =>
+                    _configManager.Items.TryGetValue(oi.ConfigId, out var oiCfg) &&
+                    oiCfg.ItemFamily == droppedICfg.ItemFamily);
             }
 
             if (matchingItem != null)
