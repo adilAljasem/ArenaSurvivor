@@ -783,7 +783,7 @@ export class ShopUI {
             this.inventoryDisplay.updateInventory(uiData.weapons, uiData.ownedItems, atlasConfigs);
 
             // During active gameplay, never render shop or level-up cards
-            const phase = uiData.phase ?? uiData.Phase;
+            const phase = uiData.phase;
             if (phase === 'WaveActive') {
                 this.levelUpContainer.setVisible(false);
                 this.shopCardsContainer.setVisible(false);

@@ -102,11 +102,8 @@ public static class MovementSystem
                     enemy.ActionState = "Idle";
                 }
 
-                if (enemy.X >= 0 && enemy.X <= mapW && enemy.Y >= 0 && enemy.Y <= mapH)
-                {
-                    enemy.X = Math.Clamp(enemy.X, 0, mapW);
-                    enemy.Y = Math.Clamp(enemy.Y, 0, mapH);
-                }
+                enemy.X = Math.Clamp(enemy.X, 0, mapW);
+                enemy.Y = Math.Clamp(enemy.Y, 0, mapH);
                 continue;
             }
 
