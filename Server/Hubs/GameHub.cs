@@ -137,7 +137,10 @@ public class GameHub : Hub
             PendingLevelUps = player.PendingLevelUps,
             LevelUpChoices = player.CurrentLevelUpChoices,
 
-            Stats = _configManager.AllStats.ToDictionary(k => k, k => player.GetTotalStat(k, _configManager))
+            Stats = _configManager.AllStats.ToDictionary(k => k, k => player.GetTotalStat(k, _configManager)),
+
+            // Include the current game phase so the client never renders shop/level-up cards during active waves
+            Phase = _gameState.Phase.ToString()
         };
         await Clients.Caller.SendAsync("UpdatePlayerUI", uiData);
     }

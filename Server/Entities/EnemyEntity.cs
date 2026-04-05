@@ -91,7 +91,7 @@ public class EnemyEntity : BaseActorEntity
             }
         }
 
-        CurrentHp = Stats.GetFinalStat("maxHp");
+        CurrentHp = GetTotalStat("maxHp", configManager);
     }
 
     public float GetTotalStat(string statName, ConfigManager configManager)

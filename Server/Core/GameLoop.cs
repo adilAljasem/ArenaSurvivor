@@ -158,9 +158,18 @@ public class GameLoop : BackgroundService
         _gameState.Enemies.Clear();
         _gameState.Projectiles.Clear();
 
-        // 2. The Co-Op Loot Sweep
-        int totalLootValue = _gameState.Pickups.Values.Sum(p => p.Value);
-        _gameState.Pickups.Clear();
+        // 2. The Co-Op Loot Sweep — auto-collect only Gold/XP; leave weapon & item drops on the ground
+        int totalLootValue = _gameState.Pickups.Values
+            .Where(p => p.Type == PickupType.Gold)
+            .Sum(p => p.Value);
+
+        // Remove only gold pickups; weapon/item pickups persist until the next wave starts
+        var goldPickupIds = _gameState.Pickups.Values
+            .Where(p => p.Type == PickupType.Gold)
+            .Select(p => p.Id)
+            .ToList();
+        foreach (var id in goldPickupIds)
+            _gameState.Pickups.TryRemove(id, out _);
 
         if (totalLootValue > 0 && !_gameState.Players.IsEmpty)
         {
@@ -229,6 +238,14 @@ public class GameLoop : BackgroundService
         _gameState.Phase = GamePhase.WaveActive;
         _gameState.PhaseTimer = 60f;
         _gameState.CurrentWave++;
+
+        // Clear any weapon/item loot that was not picked up during the shop phase
+        var leftoverLootIds = _gameState.Pickups.Values
+            .Where(p => p.Type == PickupType.Weapon || p.Type == PickupType.Item)
+            .Select(p => p.Id)
+            .ToList();
+        foreach (var id in leftoverLootIds)
+            _gameState.Pickups.TryRemove(id, out _);
     }
 
     // =================================================================================

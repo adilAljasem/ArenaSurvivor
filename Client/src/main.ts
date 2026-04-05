@@ -112,6 +112,9 @@ class GameScene extends Phaser.Scene {
   private currentCompressedKbps: string = "0.00";
   private currentUncompressedKbps: string = "0.00";
 
+  // Memory-leak prevention: store handles to be cleaned up on shutdown
+  private pingIntervalId: ReturnType<typeof setInterval> | null = null;
+
   constructor() { super('GameScene'); }
 
   preload() {
@@ -199,7 +202,7 @@ class GameScene extends Phaser.Scene {
       });
     }
 
-    setInterval(() => {
+    this.pingIntervalId = setInterval(() => {
       if (connection.state === HubConnectionState.Connected) {
         const startTime = Date.now();
         connection.invoke("Ping").then(() => { this.pingMs = Date.now() - startTime; }).catch(() => { });
@@ -491,6 +494,18 @@ class GameScene extends Phaser.Scene {
       this.cleanupSprites(this.playerSprites, activePlayers);
       this.cleanupSprites(this.enemySprites, activeEnemies);
       this.cleanupSprites(this.pickupSprites, activePickups);
+    });
+
+    // Clean up external event listeners when the scene shuts down to prevent memory leaks
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      if (this.pingIntervalId !== null) {
+        clearInterval(this.pingIntervalId);
+        this.pingIntervalId = null;
+      }
+      connection.off('UpdatePlayerUI');
+      connection.off('UpdateStateCompressed');
+      this.game.events.off(Phaser.Core.Events.PRE_RENDER);
+      this.game.events.off(Phaser.Core.Events.POST_RENDER);
     });
   }
 

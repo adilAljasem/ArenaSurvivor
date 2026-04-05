@@ -112,6 +112,94 @@ public static class CombatSystem
         {
             if (enemy.ActionState == "Dead" || enemy.Weapons.Count == 0) continue;
 
+            // Friendly summons (Team != "Enemy") shoot at hostile enemies; hostile enemies shoot at players
+            if (enemy.Team != "Enemy")
+            {
+                // Find the closest hostile enemy to aim at
+                EnemyEntity? summonTarget = null;
+                float bestSummonDistSq = float.MaxValue;
+                foreach (var hostile in state.Enemies.Values)
+                {
+                    if (hostile.Id == enemy.Id || hostile.ActionState == "Dead") continue;
+                    if (hostile.Team == enemy.Team) continue; // Skip same-team entities
+                    float dx = hostile.X - enemy.X;
+                    float dy = hostile.Y - enemy.Y;
+                    float distSq = dx * dx + dy * dy;
+                    if (distSq < bestSummonDistSq) { bestSummonDistSq = distSq; summonTarget = hostile; }
+                }
+
+                if (summonTarget == null) continue;
+
+                float summonDirX = summonTarget.X - enemy.X;
+                float summonDirY = summonTarget.Y - enemy.Y;
+                float summonDirLen = (float)Math.Sqrt(summonDirX * summonDirX + summonDirY * summonDirY);
+                if (summonDirLen <= 0) continue;
+
+                enemy.AimX = summonTarget.X;
+                enemy.AimY = summonTarget.Y;
+
+                float summonAttackRadius = 300f;
+                if (configs.Enemies.TryGetValue(enemy.ConfigId, out var summonEnemyCfg))
+                    summonAttackRadius = summonEnemyCfg.AttackRadius;
+
+                if (bestSummonDistSq > summonAttackRadius * summonAttackRadius) continue;
+
+                foreach (var weapon in enemy.Weapons)
+                {
+                    weapon.CurrentCooldown -= dt;
+                    if (weapon.CurrentCooldown > 0) continue;
+                    if (!configs.Weapons.TryGetValue(weapon.ConfigId, out var wCfgS)) continue;
+
+                    weapon.CurrentCooldown = wCfgS.CooldownSeconds;
+
+                    float baseMelee = weapon.TotalBaseStats.GetValueOrDefault("meleeDamage", 0f);
+                    float baseRanged = weapon.TotalBaseStats.GetValueOrDefault("rangedDamage", 0f);
+                    float baseElemental = weapon.TotalBaseStats.GetValueOrDefault("elementalDamage", 0f);
+
+                    if (weapon.RolledStats.TryGetValue("meleeDamage", out var rm2)) baseMelee += rm2;
+                    if (weapon.RolledStats.TryGetValue("rangedDamage", out var rr2)) baseRanged += rr2;
+                    if (weapon.RolledStats.TryGetValue("elementalDamage", out var re2)) baseElemental += re2;
+
+                    float finalDmg2 = (baseMelee + baseRanged + baseElemental) * (1f + enemy.GetTotalStat("damagePercent", configs));
+
+                    if (wCfgS.DamageScaling != null)
+                        foreach (var scale in wCfgS.DamageScaling)
+                            finalDmg2 += enemy.GetTotalStat(scale.Key, configs) * scale.Value;
+
+                    float finalRange2 = wCfgS.Range + enemy.GetTotalStat("range", configs);
+                    string projId2 = wCfgS.ProjectileId;
+                    if (string.IsNullOrEmpty(projId2) || !configs.Projectiles.TryGetValue(projId2, out var pCfg2)) continue;
+
+                    float finalSpeed2 = pCfg2.BaseSpeed;
+                    float lifespan2 = finalSpeed2 > 0 ? (finalRange2 / finalSpeed2) : 0.15f;
+                    if (pCfg2.Lifespan > 0) lifespan2 = pCfg2.Lifespan;
+                    if (wCfgS.Lifespan > 0) lifespan2 = wCfgS.Lifespan;
+
+                    var combined2 = new List<string>();
+                    if (wCfgS.ApplyEffectsOnHit != null) combined2.AddRange(wCfgS.ApplyEffectsOnHit);
+                    if (pCfg2.ApplyEffectsOnHit != null) combined2.AddRange(pCfg2.ApplyEffectsOnHit);
+
+                    enemy.FiredWeaponsThisTick.Add(weapon.SlotIndex);
+
+                    var bullet2 = new ProjectileEntity
+                    {
+                        ConfigId = pCfg2.Id,
+                        OwnerId = enemy.Id,
+                        X = enemy.X, Y = enemy.Y,
+                        VelX = (summonDirX / summonDirLen) * finalSpeed2,
+                        VelY = (summonDirY / summonDirLen) * finalSpeed2,
+                        Damage = finalDmg2,
+                        HitRadius = pCfg2.HitRadius,
+                        PierceCount = pCfg2.PierceCount,
+                        Lifespan = lifespan2,
+                        ApplyEffectsOnHit = combined2,
+                        Team = enemy.Team
+                    };
+                    state.Projectiles.TryAdd(bullet2.Id, bullet2);
+                }
+                continue;
+            }
+
             // Find the closest player to aim at
             PlayerEntity? target = null;
             float bestDistSq = float.MaxValue;
@@ -231,14 +319,16 @@ public static class CombatSystem
                 continue;
             }
 
-            // Only player-fired projectiles can hit enemies (OwnerId matches a player ConnectionId)
-            bool isPlayerProjectile = state.Players.ContainsKey(proj.OwnerId);
+            // Player-fired projectiles, and projectiles fired by friendly summons (Team != "Enemy"), can hit hostile enemies
+            bool isPlayerProjectile = state.Players.ContainsKey(proj.OwnerId) ||
+                (state.Enemies.TryGetValue(proj.OwnerId, out var projOwner) && projOwner.Team != "Enemy");
 
             if (isPlayerProjectile)
             {
                 foreach (var enemy in state.Enemies.Values)
                 {
                     if (enemy.ActionState == "Dead" || proj.HitEnemies.Contains(enemy.Id)) continue;
+                    if (enemy.Team != "Enemy") continue; // Never hit friendly summons
 
                     float combinedRadius = proj.HitRadius + enemy.HitRadius;
                     float hitThresholdSq = combinedRadius * combinedRadius;

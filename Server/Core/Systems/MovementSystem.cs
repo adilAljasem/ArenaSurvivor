@@ -64,6 +64,52 @@ public static class MovementSystem
                 continue;
             }
 
+            // Friendly summons (Team != "Enemy") chase enemy targets; hostile enemies chase players
+            if (enemy.Team != "Enemy")
+            {
+                // Find closest hostile enemy to target
+                EnemyEntity? summonTarget = null;
+                float closestSummonDistSq = float.MaxValue;
+                foreach (var hostile in state.Enemies.Values)
+                {
+                    if (hostile.Id == enemy.Id || hostile.ActionState == "Dead") continue;
+                    if (hostile.Team == enemy.Team) continue; // Skip same-team entities
+                    float distSq = (hostile.X - enemy.X) * (hostile.X - enemy.X) + (hostile.Y - enemy.Y) * (hostile.Y - enemy.Y);
+                    if (distSq < closestSummonDistSq) { closestSummonDistSq = distSq; summonTarget = hostile; }
+                }
+
+                if (summonTarget != null)
+                {
+                    float attackRadiusSq = config.AttackRadius * config.AttackRadius;
+                    if (closestSummonDistSq < attackRadiusSq)
+                    {
+                        enemy.ActionState = "Attacking";
+                        enemy.AttackCooldown = config.AttackDuration;
+                    }
+                    else
+                    {
+                        enemy.ActionState = "Moving";
+                        float dx = summonTarget.X - enemy.X;
+                        float dy = summonTarget.Y - enemy.Y;
+                        float length = (float)Math.Sqrt((dx * dx) + (dy * dy));
+                        float finalSpeed = Math.Max(0f, enemy.GetTotalStat("speed", configs));
+                        enemy.X += (dx / length) * finalSpeed * dt;
+                        enemy.Y += (dy / length) * finalSpeed * dt;
+                    }
+                }
+                else
+                {
+                    enemy.ActionState = "Idle";
+                }
+
+                if (enemy.X >= 0 && enemy.X <= mapW && enemy.Y >= 0 && enemy.Y <= mapH)
+                {
+                    enemy.X = Math.Clamp(enemy.X, 0, mapW);
+                    enemy.Y = Math.Clamp(enemy.Y, 0, mapH);
+                }
+                continue;
+            }
+
             PlayerEntity? target = null;
             float closestDistSq = float.MaxValue;
             foreach (var player in state.Players.Values)

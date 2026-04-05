@@ -230,6 +230,7 @@ public static class SkillSystem
                 foreach (var enemy in state.Enemies.Values)
                 {
                     if (enemy.ActionState == "Dead") continue;
+                    if (enemy.Team == team) continue; // Don't target friendlies
                     float distSq = (enemy.X - startX) * (enemy.X - startX) + (enemy.Y - startY) * (enemy.Y - startY);
                     if (distSq < closestDistSq)
                     {
@@ -370,6 +371,7 @@ public static class SkillSystem
                     foreach (var enemy in state.Enemies.Values)
                     {
                         if (enemy.ActionState == "Dead") continue;
+                        if (enemy.Team == team) continue; // Don't hurt friendlies
                         float distSq = (enemy.X - startX) * (enemy.X - startX) + (enemy.Y - startY) * (enemy.Y - startY);
                         if (distSq <= radiusSq)
                         {
@@ -433,6 +435,7 @@ public static class SkillSystem
                     foreach (var ally in state.Enemies.Values)
                     {
                         if (ally.ActionState == "Dead") continue;
+                        if (ally.Team != team) continue; // Only heal same-team entities
                         float distSq = (ally.X - startX) * (ally.X - startX) + (ally.Y - startY) * (ally.Y - startY);
                         if (distSq <= radiusSq)
                         {
