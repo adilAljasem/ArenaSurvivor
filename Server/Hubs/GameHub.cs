@@ -300,6 +300,8 @@ public class GameHub : Hub
     {
         if (_gameState.Players.TryGetValue(Context.ConnectionId, out var player))
         {
+            if (_gameState.Phase != GamePhase.ShopPhase) return;
+
             if (player.Gold >= player.CurrentRerollCost)
             {
                 // Deduct gold and increase cost for the next reroll

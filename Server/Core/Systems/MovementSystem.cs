@@ -115,7 +115,23 @@ public static class MovementSystem
                 if (distSq < closestDistSq) { closestDistSq = distSq; target = player; }
             }
 
-            if (target != null)
+            // Also consider friendly summons (Team != "Enemy") as valid targets for hostile enemies
+            float targetX = target?.X ?? 0;
+            float targetY = target?.Y ?? 0;
+            bool hasSummonTarget = false;
+            foreach (var summon in state.Enemies.Values)
+            {
+                if (summon.Id == enemy.Id || summon.ActionState == "Dead") continue;
+                if (summon.Team == "Enemy") continue; // skip other hostile enemies
+                float distSq = (summon.X - enemy.X) * (summon.X - enemy.X) + (summon.Y - enemy.Y) * (summon.Y - enemy.Y);
+                if (distSq < closestDistSq) { closestDistSq = distSq; targetX = summon.X; targetY = summon.Y; hasSummonTarget = true; }
+                else if (!hasSummonTarget && target == null) { targetX = summon.X; targetY = summon.Y; hasSummonTarget = true; }
+            }
+
+            bool hasAnyTarget = target != null || hasSummonTarget;
+            if (target != null && !hasSummonTarget) { targetX = target.X; targetY = target.Y; }
+
+            if (hasAnyTarget)
             {
                 float attackRadiusSq = config.AttackRadius * config.AttackRadius;
                 if (closestDistSq < attackRadiusSq)
@@ -126,8 +142,8 @@ public static class MovementSystem
                 else
                 {
                     enemy.ActionState = "Moving";
-                    float dx = target.X - enemy.X;
-                    float dy = target.Y - enemy.Y;
+                    float dx = targetX - enemy.X;
+                    float dy = targetY - enemy.Y;
                     float length = (float)Math.Sqrt((dx * dx) + (dy * dy));
 
                     float finalSpeed = Math.Max(0f, enemy.GetTotalStat("speed", configs));

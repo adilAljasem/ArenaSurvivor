@@ -200,7 +200,7 @@ public static class CombatSystem
                 continue;
             }
 
-            // Find the closest player to aim at
+            // Find the closest player or friendly summon to aim at
             PlayerEntity? target = null;
             float bestDistSq = float.MaxValue;
             foreach (var player in state.Players.Values)
@@ -215,23 +215,40 @@ public static class CombatSystem
                 }
             }
 
-            if (target == null) continue;
+            // Also consider friendly summons (Team != "Enemy") as valid targets
+            float combatTargetX = target?.X ?? 0;
+            float combatTargetY = target?.Y ?? 0;
+            bool hasCombatSummonTarget = false;
+            foreach (var summon in state.Enemies.Values)
+            {
+                if (summon.Id == enemy.Id || summon.ActionState == "Dead") continue;
+                if (summon.Team == "Enemy") continue; // skip other hostile enemies
+                float dx = summon.X - enemy.X;
+                float dy = summon.Y - enemy.Y;
+                float distSq = dx * dx + dy * dy;
+                if (distSq < bestDistSq) { bestDistSq = distSq; combatTargetX = summon.X; combatTargetY = summon.Y; hasCombatSummonTarget = true; }
+                else if (!hasCombatSummonTarget && target == null) { combatTargetX = summon.X; combatTargetY = summon.Y; hasCombatSummonTarget = true; }
+            }
 
-            float dirToTargetX = target.X - enemy.X;
-            float dirToTargetY = target.Y - enemy.Y;
+            if (target != null && !hasCombatSummonTarget) { combatTargetX = target.X; combatTargetY = target.Y; }
+
+            if (target == null && !hasCombatSummonTarget) continue;
+
+            float dirToTargetX = combatTargetX - enemy.X;
+            float dirToTargetY = combatTargetY - enemy.Y;
             float dirLength = (float)Math.Sqrt(dirToTargetX * dirToTargetX + dirToTargetY * dirToTargetY);
             if (dirLength <= 0) continue;
 
             // Always update aim direction so weapon sprites point at target
-            enemy.AimX = target.X;
-            enemy.AimY = target.Y;
+            enemy.AimX = combatTargetX;
+            enemy.AimY = combatTargetY;
 
             // Fetch the config to check the attack radius
             float attackRadius = 300f;
             if (configs.Enemies.TryGetValue(enemy.ConfigId, out var enemyCfg))
                 attackRadius = enemyCfg.AttackRadius;
 
-            // Weapons only fire when the player is inside the attack radius
+            // Weapons only fire when the target is inside the attack radius
             if (bestDistSq > attackRadius * attackRadius) continue;
 
             foreach (var weapon in enemy.Weapons)

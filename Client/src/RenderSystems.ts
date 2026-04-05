@@ -514,8 +514,17 @@ export class EnemyRenderer {
         }
 
         const isDefaultRight = config.defaultFacingRight !== false;
-        if (velX > 0.1) body.setFlipX(!isDefaultRight);
-        else if (velX < -0.1) body.setFlipX(isDefaultRight);
+        const eAimXFlip = se.aimX ?? se.AimX;
+        const eAimYFlip = se.aimY ?? se.AimY;
+        const eXFlip = se.x ?? se.X ?? eContainer.x;
+        if (eActionState === "Attacking" && eAimXFlip !== undefined && eAimYFlip !== undefined) {
+          const aimDirX = eAimXFlip - eXFlip;
+          if (aimDirX > 0.1) body.setFlipX(!isDefaultRight);
+          else if (aimDirX < -0.1) body.setFlipX(isDefaultRight);
+        } else {
+          if (velX > 0.1) body.setFlipX(!isDefaultRight);
+          else if (velX < -0.1) body.setFlipX(isDefaultRight);
+        }
 
         if (eActionState === "Casting") {
           if (!isObstacle && body.anims?.isPlaying) body.anims.pause();

@@ -787,6 +787,9 @@ export class ShopUI {
             if (phase === 'WaveActive') {
                 this.levelUpContainer.setVisible(false);
                 this.shopCardsContainer.setVisible(false);
+                this.rerollButtonContainer.setVisible(false);
+                this.overlay.setVisible(false);
+                this.headerText.setVisible(false);
                 return;
             }
 
