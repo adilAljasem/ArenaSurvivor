@@ -808,8 +808,10 @@ export class ShopUI {
 
                     const hitbox = this.scene.add.rectangle(cardX + 120, 160, 240, 320, 0x000000, 0)
                         .setScrollFactor(0).setInteractive({ useHandCursor: true });
-                    hitbox.on('pointerdown', () =>
-                        this.connection.invoke("SelectLevelUpStat", card.id || card.Id).catch((err: any) => console.error(err)));
+                    hitbox.on('pointerdown', () => {
+                        this.levelUpContainer.setVisible(false);
+                        this.connection.invoke("SelectLevelUpStat", card.id || card.Id).catch((err: any) => console.error(err));
+                    });
                     hitbox.on('pointerover', () => {
                         bgGraphics.lineStyle(4, 0xffffff, 1);
                         bgGraphics.strokeRoundedRect(cardX, 0, 240, 320, 12);

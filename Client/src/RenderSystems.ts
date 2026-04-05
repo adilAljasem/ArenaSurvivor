@@ -328,7 +328,7 @@ export class EnemyRenderer {
       const hpPercent = Math.max(0, currentHp / maxHp);
 
       eHpFill.width = eBaseW * hpPercent;
-      eHpFill.fillColor = 0xff0000;
+      eHpFill.fillColor = (se.team ?? se.Team) === 'Player' ? 0x00ff00 : 0xff0000;
 
       hpMarkers.clear();
       if (maxHp > 50) {

@@ -61,6 +61,7 @@ public static class NetworkSystem
         public const int ActiveEffects = 12;
         public const int Weapons = 13;
         public const int FiredWeapons = 14;
+        public const int Team = 15;
     }
 
     // =========================================================================
@@ -159,7 +160,8 @@ public static class NetworkSystem
                     w.RolledStats ?? new Dictionary<string, float>(),
                     w.TotalBaseStats ?? new Dictionary<string, float>()
                 }).ToList(),
-                e.FiredWeaponsThisTick.ToList()
+                e.FiredWeaponsThisTick.ToList(),
+                e.Team
             }).ToList(),
 
             NewBullets = newProjectiles.Select(proj => new object[] {
