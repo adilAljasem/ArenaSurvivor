@@ -125,7 +125,6 @@ public static class MovementSystem
                 if (summon.Team == "Enemy") continue; // skip other hostile enemies
                 float distSq = (summon.X - enemy.X) * (summon.X - enemy.X) + (summon.Y - enemy.Y) * (summon.Y - enemy.Y);
                 if (distSq < closestDistSq) { closestDistSq = distSq; targetX = summon.X; targetY = summon.Y; hasSummonTarget = true; }
-                else if (!hasSummonTarget && target == null) { targetX = summon.X; targetY = summon.Y; hasSummonTarget = true; }
             }
 
             bool hasAnyTarget = target != null || hasSummonTarget;

@@ -227,7 +227,6 @@ public static class CombatSystem
                 float dy = summon.Y - enemy.Y;
                 float distSq = dx * dx + dy * dy;
                 if (distSq < bestDistSq) { bestDistSq = distSq; combatTargetX = summon.X; combatTargetY = summon.Y; hasCombatSummonTarget = true; }
-                else if (!hasCombatSummonTarget && target == null) { combatTargetX = summon.X; combatTargetY = summon.Y; hasCombatSummonTarget = true; }
             }
 
             if (target != null && !hasCombatSummonTarget) { combatTargetX = target.X; combatTargetY = target.Y; }

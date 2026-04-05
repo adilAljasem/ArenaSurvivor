@@ -515,9 +515,8 @@ export class EnemyRenderer {
 
         const isDefaultRight = config.defaultFacingRight !== false;
         const eAimXFlip = se.aimX ?? se.AimX;
-        const eAimYFlip = se.aimY ?? se.AimY;
         const eXFlip = se.x ?? se.X ?? eContainer.x;
-        if (eActionState === "Attacking" && eAimXFlip !== undefined && eAimYFlip !== undefined) {
+        if (eActionState === "Attacking" && eAimXFlip !== undefined) {
           const aimDirX = eAimXFlip - eXFlip;
           if (aimDirX > 0.1) body.setFlipX(!isDefaultRight);
           else if (aimDirX < -0.1) body.setFlipX(isDefaultRight);
