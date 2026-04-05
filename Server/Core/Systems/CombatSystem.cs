@@ -200,31 +200,37 @@ public static class CombatSystem
                 continue;
             }
 
-            // Find the closest player to aim at
-            PlayerEntity? target = null;
+            // Find the closest target: players AND friendly summons are both valid targets
             float bestDistSq = float.MaxValue;
+            float closestTargetX = 0f, closestTargetY = 0f;
+            bool hasWeaponTarget = false;
+
             foreach (var player in state.Players.Values)
             {
                 float dx = player.X - enemy.X;
                 float dy = player.Y - enemy.Y;
                 float distSq = dx * dx + dy * dy;
-                if (distSq < bestDistSq)
-                {
-                    bestDistSq = distSq;
-                    target = player;
-                }
+                if (distSq < bestDistSq) { bestDistSq = distSq; closestTargetX = player.X; closestTargetY = player.Y; hasWeaponTarget = true; }
+            }
+            foreach (var summon in state.Enemies.Values)
+            {
+                if (summon.Id == enemy.Id || summon.ActionState == "Dead" || summon.Team == enemy.Team) continue;
+                float dx = summon.X - enemy.X;
+                float dy = summon.Y - enemy.Y;
+                float distSq = dx * dx + dy * dy;
+                if (distSq < bestDistSq) { bestDistSq = distSq; closestTargetX = summon.X; closestTargetY = summon.Y; hasWeaponTarget = true; }
             }
 
-            if (target == null) continue;
+            if (!hasWeaponTarget) continue;
 
-            float dirToTargetX = target.X - enemy.X;
-            float dirToTargetY = target.Y - enemy.Y;
+            float dirToTargetX = closestTargetX - enemy.X;
+            float dirToTargetY = closestTargetY - enemy.Y;
             float dirLength = (float)Math.Sqrt(dirToTargetX * dirToTargetX + dirToTargetY * dirToTargetY);
             if (dirLength <= 0) continue;
 
             // Always update aim direction so weapon sprites point at target
-            enemy.AimX = target.X;
-            enemy.AimY = target.Y;
+            enemy.AimX = closestTargetX;
+            enemy.AimY = closestTargetY;
 
             // Fetch the config to check the attack radius
             float attackRadius = 300f;

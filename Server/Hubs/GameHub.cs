@@ -104,8 +104,9 @@ public class GameHub : Hub
 
     private async Task SendPlayerUI(PlayerEntity player)
     {
-        // Generate choices if they leveled up!
-        if (player.PendingLevelUps > 0 && player.CurrentLevelUpChoices.Count == 0)
+        // Only generate level-up choices outside active combat so the popup never interrupts gameplay
+        if (player.PendingLevelUps > 0 && player.CurrentLevelUpChoices.Count == 0
+            && _gameState.Phase != GamePhase.WaveActive)
         {
             player.CurrentLevelUpChoices = _configManager.LevelUpCards.Values
                 .OrderBy(x => Random.Shared.Next())

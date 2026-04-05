@@ -514,8 +514,17 @@ export class EnemyRenderer {
         }
 
         const isDefaultRight = config.defaultFacingRight !== false;
-        if (velX > 0.1) body.setFlipX(!isDefaultRight);
-        else if (velX < -0.1) body.setFlipX(isDefaultRight);
+        const eAimX = se.aimX ?? se.AimX;
+        const eX = se.x ?? se.X;
+        if (eAimX !== undefined) {
+          // Use aim direction to face the target, guaranteeing the sprite flips even when stationary
+          const aimDX = eAimX - eX;
+          if (aimDX > 0.1) body.setFlipX(!isDefaultRight);
+          else if (aimDX < -0.1) body.setFlipX(isDefaultRight);
+        } else {
+          if (velX > 0.1) body.setFlipX(!isDefaultRight);
+          else if (velX < -0.1) body.setFlipX(isDefaultRight);
+        }
 
         if (eActionState === "Casting") {
           if (!isObstacle && body.anims?.isPlaying) body.anims.pause();

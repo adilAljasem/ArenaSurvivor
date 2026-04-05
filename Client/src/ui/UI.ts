@@ -688,7 +688,9 @@ export class ShopUI {
         });
 
         this.rerollButtonContainer.add([rerollBg, this.rerollText, rerollHitbox]);
-        this._elements.push(this.rerollButtonContainer);
+        // Intentionally NOT added to _elements – the reroll button remains visible and interactive
+        // even when the shop overlay is closed, so players can queue a reroll at any time.
+        this.rerollButtonContainer.setVisible(false); // Hidden until first UI data arrives
 
         this.tooltip = new Tooltip(scene);
 
@@ -787,6 +789,11 @@ export class ShopUI {
             if (phase === 'WaveActive') {
                 this.levelUpContainer.setVisible(false);
                 this.shopCardsContainer.setVisible(false);
+                // Reroll button stays accessible so players can queue a shop reroll mid-wave
+                const cost = uiData.currentRerollCost || 2;
+                this.rerollText.setText(`REROLL 💰 ${cost}`);
+                this.rerollText.setColor(uiData.gold >= cost ? '#ffffff' : '#ff4444');
+                this.rerollButtonContainer.setVisible(true);
                 return;
             }
 
@@ -797,7 +804,8 @@ export class ShopUI {
             // =========================================================
             // LEVEL UP CARDS RENDERER
             // =========================================================
-            if (uiData.pendingLevelUps > 0) {
+            // Strict check: only show level-up cards when there are both pending level-ups AND choices ready
+            if (uiData.pendingLevelUps > 0 && uiData.levelUpChoices?.length > 0) {
                 this.shopCardsContainer.setVisible(false);
                 this.rerollButtonContainer.setVisible(false);
                 this.levelUpContainer.setVisible(true);

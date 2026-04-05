@@ -80,6 +80,10 @@ public static class MovementSystem
 
                 if (summonTarget != null)
                 {
+                    // Always keep aim pointed at target so sprite faces correctly even when stationary
+                    enemy.AimX = summonTarget.X;
+                    enemy.AimY = summonTarget.Y;
+
                     float attackRadiusSq = config.AttackRadius * config.AttackRadius;
                     if (closestSummonDistSq < attackRadiusSq)
                     {
@@ -107,16 +111,29 @@ public static class MovementSystem
                 continue;
             }
 
-            PlayerEntity? target = null;
+            // Find closest target: players AND friendly summons are both valid targets
             float closestDistSq = float.MaxValue;
+            float targetX = 0f, targetY = 0f;
+            bool hasTarget = false;
+
             foreach (var player in state.Players.Values)
             {
                 float distSq = (player.X - enemy.X) * (player.X - enemy.X) + (player.Y - enemy.Y) * (player.Y - enemy.Y);
-                if (distSq < closestDistSq) { closestDistSq = distSq; target = player; }
+                if (distSq < closestDistSq) { closestDistSq = distSq; targetX = player.X; targetY = player.Y; hasTarget = true; }
+            }
+            foreach (var summon in state.Enemies.Values)
+            {
+                if (summon.Id == enemy.Id || summon.ActionState == "Dead" || summon.Team == enemy.Team) continue;
+                float distSq = (summon.X - enemy.X) * (summon.X - enemy.X) + (summon.Y - enemy.Y) * (summon.Y - enemy.Y);
+                if (distSq < closestDistSq) { closestDistSq = distSq; targetX = summon.X; targetY = summon.Y; hasTarget = true; }
             }
 
-            if (target != null)
+            if (hasTarget)
             {
+                // Always keep aim pointed at target so sprite faces correctly even when stationary
+                enemy.AimX = targetX;
+                enemy.AimY = targetY;
+
                 float attackRadiusSq = config.AttackRadius * config.AttackRadius;
                 if (closestDistSq < attackRadiusSq)
                 {
@@ -126,8 +143,8 @@ public static class MovementSystem
                 else
                 {
                     enemy.ActionState = "Moving";
-                    float dx = target.X - enemy.X;
-                    float dy = target.Y - enemy.Y;
+                    float dx = targetX - enemy.X;
+                    float dy = targetY - enemy.Y;
                     float length = (float)Math.Sqrt((dx * dx) + (dy * dy));
 
                     float finalSpeed = Math.Max(0f, enemy.GetTotalStat("speed", configs));
