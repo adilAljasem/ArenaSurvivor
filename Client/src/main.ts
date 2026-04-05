@@ -30,6 +30,7 @@ interface ServerEnemy {
   currentCastingSkillId: string; currentCastTimer: number; maxCastTimer: number;
   aimX?: number; aimY?: number; firedWeapons: number[];
   weapons: { configId: string; slotIndex: number; level: number; rolledStats: Record<string, number>; totalBaseStats: Record<string, number>; }[];
+  team: string;
 }
 interface ServerProjectile { id: string; configId: string; x: number; y: number; velX: number; velY: number; }
 interface ServerPickup {
@@ -363,7 +364,8 @@ class GameScene extends Phaser.Scene {
           weapons: e[13]?.map((w: any[]) => ({
             configId: w[0], slotIndex: w[1], level: w[2], rolledStats: w[3] || {}, totalBaseStats: w[4] || {}
           })) || [],
-          firedWeapons: e[14] || []
+          firedWeapons: e[14] || [],
+          team: e[15]
         });
       });
       rawState.pk?.forEach((pk: any[]) => {
