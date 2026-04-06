@@ -244,6 +244,8 @@ public static class SkillSystem
             else if (config.TargetType == SkillTargetType.ClosestPlayer && team == "Enemy")
             {
                 float closestDistSq = float.MaxValue;
+
+                // 1. Check Players
                 foreach (var player in state.Players.Values)
                 {
                     float distSq = (player.X - startX) * (player.X - startX) + (player.Y - startY) * (player.Y - startY);
@@ -254,6 +256,23 @@ public static class SkillSystem
                         targetY = player.Y;
                     }
                 }
+
+                // 2. Check Friendly Summons
+                foreach (var summon in state.Enemies.Values)
+                {
+                    if (summon.ActionState == "Dead") continue;
+                    if (summon.Team != team) // If enemy is Hostile, this targets "Player" team summons
+                    {
+                        float distSq = (summon.X - startX) * (summon.X - startX) + (summon.Y - startY) * (summon.Y - startY);
+                        if (distSq < closestDistSq)
+                        {
+                            closestDistSq = distSq;
+                            targetX = summon.X;
+                            targetY = summon.Y;
+                        }
+                    }
+                }
+
                 if (closestDistSq == float.MaxValue) return;
             }
             else if (config.TargetType == SkillTargetType.AimDirection && team == "Player")
@@ -396,8 +415,9 @@ public static class SkillSystem
                         }
                     }
                 }
-                else // Heal Players
+                else // Heal Players AND Friendly Summons
                 {
+                    // 1. Heal Players
                     foreach (var ally in state.Players.Values)
                     {
                         float distSq = (ally.X - startX) * (ally.X - startX) + (ally.Y - startY) * (ally.Y - startY);
@@ -409,16 +429,34 @@ public static class SkillSystem
 
                             if (healAmount > 0) damageEvents.Add(new DamageEventDto { X = ally.X, Y = ally.Y, Amount = -healAmount });
 
-                            // >>> Buffs (like Adrenaline) applied to healed allies! <<<
                             ApplyAoeEffects(ally.ActiveEffects);
+                        }
+                    }
+
+                    // 2. Heal Friendly Summons (The Trees!)
+                    foreach (var summon in state.Enemies.Values)
+                    {
+                        if (summon.ActionState == "Dead" || summon.Team != team) continue;
+
+                        float distSq = (summon.X - startX) * (summon.X - startX) + (summon.Y - startY) * (summon.Y - startY);
+                        if (distSq <= radiusSq)
+                        {
+                            float maxHp = summon.GetTotalStat("maxHp", configs);
+                            float healAmount = Math.Min(Math.Abs(actualDamage), maxHp - summon.CurrentHp);
+                            summon.CurrentHp += healAmount;
+
+                            if (healAmount > 0) damageEvents.Add(new DamageEventDto { X = summon.X, Y = summon.Y, Amount = -healAmount });
+
+                            ApplyAoeEffects(summon.ActiveEffects);
                         }
                     }
                 }
             }
             else if (team == "Enemy")
             {
-                if (!isHeal) // Hurt Players
+                if (!isHeal) // Hurt Players and Friendly Summons
                 {
+                    // 1. Hurt Players
                     foreach (var player in state.Players.Values)
                     {
                         float distSq = (player.X - startX) * (player.X - startX) + (player.Y - startY) * (player.Y - startY);
@@ -427,6 +465,31 @@ public static class SkillSystem
                             player.CurrentHp -= actualDamage;
                             damageEvents.Add(new DamageEventDto { X = player.X, Y = player.Y, Amount = actualDamage });
                             ApplyAoeEffects(player.ActiveEffects);
+                        }
+                    }
+
+                    // 2. Hurt Friendly Summons
+                    foreach (var summon in state.Enemies.Values)
+                    {
+                        if (summon.ActionState == "Dead") continue;
+                        if (summon.Team != team) // If enemy is Hostile, this hurts "Player" team summons
+                        {
+                            float distSq = (summon.X - startX) * (summon.X - startX) + (summon.Y - startY) * (summon.Y - startY);
+                            if (distSq <= radiusSq)
+                            {
+                                summon.CurrentHp -= actualDamage;
+                                damageEvents.Add(new DamageEventDto { X = summon.X, Y = summon.Y, Amount = actualDamage });
+                                ApplyAoeEffects(summon.ActiveEffects);
+
+                                if (summon.CurrentHp <= 0 && summon.ActionState != "Dead")
+                                {
+                                    summon.ActionState = "Dead";
+                                    if (configs.Enemies.TryGetValue(summon.ConfigId, out var eCfg))
+                                    {
+                                        FireOnDeathSkills(summon.Id, summon.X, summon.Y, summon.Team, eCfg.OnDeathSkills, state, configs, damageEvents, aoeEvents);
+                                    }
+                                }
+                            }
                         }
                     }
                 }

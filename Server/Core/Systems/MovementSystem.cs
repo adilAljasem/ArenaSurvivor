@@ -46,101 +46,85 @@ public static class MovementSystem
                 continue;
             }
 
-            // >>> THE FIX: Look at the Timer, not the State string! <<<
             bool canMoveEnemy = true;
             if (!string.IsNullOrEmpty(enemy.CurrentCastingSkillId) && enemy.CurrentCastTimer > 0)
             {
                 if (configs.Skills.TryGetValue(enemy.CurrentCastingSkillId, out var eCastCfg) && eCastCfg.StopMoving)
-                {
                     canMoveEnemy = false;
+            }
+            if (!canMoveEnemy) continue;
+
+            // Reduce attack cooldown natively
+            if (enemy.AttackCooldown > 0) enemy.AttackCooldown -= dt;
+
+            // Find Target Logic
+            float closestDistSq = float.MaxValue;
+            float targetX = 0;
+            float targetY = 0;
+            bool foundTarget = false;
+
+            // 1. Check for closest Player (Hostiles attack players, Friendly summons follow/protect players)
+            foreach (var player in state.Players.Values)
+            {
+                float distSq = (player.X - enemy.X) * (player.X - enemy.X) + (player.Y - enemy.Y) * (player.Y - enemy.Y);
+                if (distSq < closestDistSq) { closestDistSq = distSq; targetX = player.X; targetY = player.Y; foundTarget = true; }
+            }
+
+            // 2. Check for opposite Team Enemies
+            foreach (var otherEnemy in state.Enemies.Values)
+            {
+                if (otherEnemy.ActionState == "Dead" || otherEnemy.Id == enemy.Id) continue;
+                if (otherEnemy.Team != enemy.Team) // Only target opposite teams
+                {
+                    float distSq = (otherEnemy.X - enemy.X) * (otherEnemy.X - enemy.X) + (otherEnemy.Y - enemy.Y) * (otherEnemy.Y - enemy.Y);
+                    if (distSq < closestDistSq) { closestDistSq = distSq; targetX = otherEnemy.X; targetY = otherEnemy.Y; foundTarget = true; }
                 }
             }
-            if (!canMoveEnemy) continue; // Skip movement completely if rooted by a spell!
 
-            if (enemy.AttackCooldown > 0)
+            if (foundTarget)
             {
-                enemy.AttackCooldown -= dt;
-                enemy.ActionState = "Attacking";
-                continue;
-            }
+                enemy.AimX = targetX;
+                enemy.AimY = targetY;
 
-            // Friendly summons (Team != "Enemy") chase enemy targets; hostile enemies chase players
-            if (enemy.Team != "Enemy")
-            {
-                // Find closest hostile enemy to target
-                EnemyEntity? summonTarget = null;
-                float closestSummonDistSq = float.MaxValue;
-                foreach (var hostile in state.Enemies.Values)
+                float attackRadiusSq = config.AttackRadius * config.AttackRadius;
+                if (closestDistSq <= attackRadiusSq)
                 {
-                    if (hostile.Id == enemy.Id || hostile.ActionState == "Dead") continue;
-                    if (hostile.Team == enemy.Team) continue; // Skip same-team entities
-                    float distSq = (hostile.X - enemy.X) * (hostile.X - enemy.X) + (hostile.Y - enemy.Y) * (hostile.Y - enemy.Y);
-                    if (distSq < closestSummonDistSq) { closestSummonDistSq = distSq; summonTarget = hostile; }
-                }
-
-                if (summonTarget != null)
-                {
-                    float attackRadiusSq = config.AttackRadius * config.AttackRadius;
-                    if (closestSummonDistSq < attackRadiusSq)
+                    if (enemy.AttackCooldown <= 0)
                     {
                         enemy.ActionState = "Attacking";
                         enemy.AttackCooldown = config.AttackDuration;
                     }
-                    else
+                    else if (enemy.ActionState != "Attacking")
                     {
-                        enemy.ActionState = "Moving";
-                        float dx = summonTarget.X - enemy.X;
-                        float dy = summonTarget.Y - enemy.Y;
-                        float length = (float)Math.Sqrt((dx * dx) + (dy * dy));
-                        float finalSpeed = Math.Max(0f, enemy.GetTotalStat("speed", configs));
-                        enemy.X += (dx / length) * finalSpeed * dt;
-                        enemy.Y += (dy / length) * finalSpeed * dt;
+                        enemy.ActionState = "Idle";
                     }
                 }
                 else
                 {
-                    enemy.ActionState = "Idle";
-                }
+                    if (enemy.AttackCooldown <= 0)
+                    {
+                        enemy.ActionState = "Moving";
+                        float dx = targetX - enemy.X;
+                        float dy = targetY - enemy.Y;
+                        float length = (float)Math.Sqrt((dx * dx) + (dy * dy));
 
-                enemy.X = Math.Clamp(enemy.X, 0, mapW);
-                enemy.Y = Math.Clamp(enemy.Y, 0, mapH);
-                continue;
-            }
-
-            PlayerEntity? target = null;
-            float closestDistSq = float.MaxValue;
-            foreach (var player in state.Players.Values)
-            {
-                float distSq = (player.X - enemy.X) * (player.X - enemy.X) + (player.Y - enemy.Y) * (player.Y - enemy.Y);
-                if (distSq < closestDistSq) { closestDistSq = distSq; target = player; }
-            }
-
-            if (target != null)
-            {
-                float attackRadiusSq = config.AttackRadius * config.AttackRadius;
-                if (closestDistSq < attackRadiusSq)
-                {
-                    enemy.ActionState = "Attacking";
-                    enemy.AttackCooldown = config.AttackDuration;
-                }
-                else
-                {
-                    enemy.ActionState = "Moving";
-                    float dx = target.X - enemy.X;
-                    float dy = target.Y - enemy.Y;
-                    float length = (float)Math.Sqrt((dx * dx) + (dy * dy));
-
-                    float finalSpeed = Math.Max(0f, enemy.GetTotalStat("speed", configs));
-                    enemy.X += (dx / length) * finalSpeed * dt;
-                    enemy.Y += (dy / length) * finalSpeed * dt;
+                        // >>> THE FIX: PREVENT DIVIDE BY ZERO / NaN <<<
+                        if (length > 0)
+                        {
+                            float finalSpeed = Math.Max(0f, enemy.GetTotalStat("speed", configs));
+                            enemy.X += (dx / length) * finalSpeed * dt;
+                            enemy.Y += (dy / length) * finalSpeed * dt;
+                        }
+                    }
                 }
             }
-
-            if (enemy.X >= 0 && enemy.X <= mapW && enemy.Y >= 0 && enemy.Y <= mapH)
+            else
             {
-                enemy.X = Math.Clamp(enemy.X, 0, mapW);
-                enemy.Y = Math.Clamp(enemy.Y, 0, mapH);
+                enemy.ActionState = "Idle";
             }
+
+            enemy.X = Math.Clamp(enemy.X, 0, mapW);
+            enemy.Y = Math.Clamp(enemy.Y, 0, mapH);
         }
     }
 }

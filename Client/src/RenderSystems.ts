@@ -7,19 +7,19 @@ export class PlayerRenderer {
 
     state.players.forEach((sp: any) => {
       activeIds.add(sp.connectionId || sp.ConnectionId);
-      targets.set(sp.connectionId || sp.ConnectionId, { x: sp.x || sp.X, y: sp.y || sp.Y });
+      targets.set(sp.connectionId || sp.ConnectionId, { x: sp.x ?? sp.X, y: sp.y ?? sp.Y });
 
       const safeId = sp.connectionId || sp.ConnectionId;
 
       // 1. CREATE CONTAINER
       if (!sprites.has(safeId)) {
-        const container = scene.add.container(sp.x || sp.X, sp.y || sp.Y);
+        const container = scene.add.container(sp.x ?? sp.X, sp.y ?? sp.Y);
 
         const castCircle = scene.add.ellipse(0, 16, 40, 15, 0x00ffff, 0.4);
         castCircle.setStrokeStyle(2, 0x00ffff, 1);
         castCircle.setVisible(false);
 
-        let bodySprite; 
+        let bodySprite;
         if (configs.characters && configs.characters["char_well_rounded"] && scene.textures.exists(configs.characters["char_well_rounded"].textureKey)) {
           const charCfg = configs.characters["char_well_rounded"];
           bodySprite = scene.add.sprite(0, 0, charCfg.textureKey, charCfg.iconFrame);
@@ -27,7 +27,7 @@ export class PlayerRenderer {
           bodySprite = scene.add.rectangle(0, 0, 32, 32, 0x000000).setStrokeStyle(2, 0x00ff00) as any;
         }
 
-        const uiWidth = 32; 
+        const uiWidth = 32;
         const hpBg = scene.add.rectangle(0, 0, uiWidth, 6, 0x000000);
         const hpFill = scene.add.rectangle(-uiWidth / 2, 0, uiWidth, 6, 0x00ff00).setOrigin(0, 0.5);
 
@@ -46,7 +46,7 @@ export class PlayerRenderer {
         container.setData('hpBg', hpBg);
         container.setData('hpFill', hpFill);
         container.setData('hpMarkers', hpMarkers);
-        container.setData('baseWidth', uiWidth); 
+        container.setData('baseWidth', uiWidth);
         container.setData('weaponsContainer', weaponsContainer);
         container.setData('castCircle', castCircle);
         container.setData('castBarBg', castBarBg);
@@ -87,16 +87,16 @@ export class PlayerRenderer {
 
       hpMarkers.clear();
       if (maxHp > 50) {
-        hpMarkers.lineStyle(2, 0x000000, 1.0); 
+        hpMarkers.lineStyle(2, 0x000000, 1.0);
         const segments = Math.floor(maxHp / 50);
-        const pixelsPer50 = pBaseW / Math.floor(maxHp / 50); 
+        const pixelsPer50 = pBaseW / Math.floor(maxHp / 50);
 
         for (let i = 1; i <= segments; i++) {
           const lineX = -(pBaseW / 2) + (i * pixelsPer50);
           if (lineX >= (pBaseW / 2) - 1.5) continue;
 
           hpMarkers.beginPath();
-          hpMarkers.moveTo(lineX, -4); 
+          hpMarkers.moveTo(lineX, -4);
           hpMarkers.lineTo(lineX, 4);
           hpMarkers.strokePath();
         }
@@ -143,7 +143,7 @@ export class PlayerRenderer {
         if (!isCorrectAnim || isFinishedAttacking) body.play(targetAnim);
 
         const isDefaultRight = config.defaultFacingRight !== false;
-        const velX = sp.velX ?? sp.VelX ?? ((sp.x || sp.X) - pContainer.x);
+        const velX = sp.velX ?? sp.VelX ?? ((sp.x ?? sp.X) - pContainer.x);
         if (velX > 0.5) body.setFlipX(!isDefaultRight);
         else if (velX < -0.5) body.setFlipX(isDefaultRight);
 
@@ -174,7 +174,7 @@ export class PlayerRenderer {
         }
         pContainer.setData('prevHp', currentHp);
 
-        applyVisualFX(scene, pContainer, body as Phaser.GameObjects.Sprite, sp, configs, topY); 
+        applyVisualFX(scene, pContainer, body as Phaser.GameObjects.Sprite, sp, configs, topY);
       }
 
       // 4. WEAPONS
@@ -246,20 +246,20 @@ export class EnemyRenderer {
     state.enemies.forEach((se: any) => {
       const safeId = se.id || se.Id;
       activeIds.add(safeId);
-      targets.set(safeId, { x: se.x || se.X, y: se.y || se.Y });
+      targets.set(safeId, { x: se.x ?? se.X, y: se.y ?? se.Y });
 
       const configId = se.configId || se.ConfigId;
       const config = configs.enemies ? (configs.enemies[configId] || (configs.Enemies && configs.Enemies[configId])) : null;
 
       // 1. CREATE CONTAINER
       if (!sprites.has(safeId)) {
-        const container = scene.add.container(se.x || se.X, se.y || se.Y);
+        const container = scene.add.container(se.x ?? se.X, se.y ?? se.Y);
 
         const castCircle = scene.add.ellipse(0, 0, 40, 15, 0xffa500, 0.4);
         castCircle.setStrokeStyle(2, 0xffa500, 1);
         castCircle.setVisible(false);
 
-        let bodySprite; 
+        let bodySprite;
         if (config && config.textureKey && scene.textures.exists(config.textureKey)) {
           bodySprite = scene.add.sprite(0, 0, config.textureKey);
           bodySprite.setScale(config.scale || 1.0);
@@ -269,7 +269,7 @@ export class EnemyRenderer {
           bodySprite = scene.add.rectangle(0, 0, 32, 32, 0x000000).setStrokeStyle(2, 0x00ff00) as any;
         }
 
-        const uiWidth = config?.isBoss ? 80 : 32; 
+        const uiWidth = config?.isBoss ? 80 : 32;
         const hpBg = scene.add.rectangle(0, 0, uiWidth, 6, 0x000000);
         const hpFill = scene.add.rectangle(-uiWidth / 2, 0, uiWidth, 6, 0x00ff00).setOrigin(0, 0.5);
 
@@ -288,7 +288,7 @@ export class EnemyRenderer {
         container.setData('hpBg', hpBg);
         container.setData('hpFill', hpFill);
         container.setData('hpMarkers', hpMarkers);
-        container.setData('baseWidth', uiWidth); 
+        container.setData('baseWidth', uiWidth);
         container.setData('weaponsContainer', weaponsContainer);
         container.setData('castCircle', castCircle);
         container.setData('castBarBg', castBarBg);
@@ -332,16 +332,16 @@ export class EnemyRenderer {
 
       hpMarkers.clear();
       if (maxHp > 50) {
-        hpMarkers.lineStyle(2, 0x000000, 1.0); 
+        hpMarkers.lineStyle(2, 0x000000, 1.0);
         const segments = Math.floor(maxHp / 50);
-        const pixelsPer50 = eBaseW / Math.floor(maxHp / 50); 
+        const pixelsPer50 = eBaseW / Math.floor(maxHp / 50);
 
         for (let i = 1; i <= segments; i++) {
           const lineX = -(eBaseW / 2) + (i * pixelsPer50);
           if (lineX >= (eBaseW / 2) - 1.5) continue;
 
           hpMarkers.beginPath();
-          hpMarkers.moveTo(lineX, -4); 
+          hpMarkers.moveTo(lineX, -4);
           hpMarkers.lineTo(lineX, 4);
           hpMarkers.strokePath();
         }
@@ -480,8 +480,8 @@ export class EnemyRenderer {
         const baseStats = config.baseStats || config.BaseStats;
         const isObstacle = baseStats && baseStats.speed === 0;
 
-        const targetX = se.x || se.X;
-        const targetY = se.y || se.Y;
+        const targetX = se.x ?? se.X;
+        const targetY = se.y ?? se.Y;
         const velX = se.velX ?? (targetX - eContainer.x);
         const velY = se.velY ?? (targetY - eContainer.y);
         const isActuallyMoving = Math.abs(velX) > 0.5 || Math.abs(velY) > 0.5;
@@ -514,8 +514,23 @@ export class EnemyRenderer {
         }
 
         const isDefaultRight = config.defaultFacingRight !== false;
-        if (velX > 0.1) body.setFlipX(!isDefaultRight);
-        else if (velX < -0.1) body.setFlipX(isDefaultRight);
+
+        let faceRight = velX > 0.1;
+        let faceLeft = velX < -0.1;
+
+        // If the enemy is actively attacking/casting, override movement direction with aim direction
+        if ((eActionState === "Attacking" || eActionState === "Casting") && se.aimX !== undefined) {
+          faceRight = se.aimX > targetX + 1;
+          faceLeft = se.aimX < targetX - 1;
+        }
+
+        // Apply the flip to the sprite
+        if (faceRight) {
+          body.setFlipX(!isDefaultRight);
+        } else if (faceLeft) {
+          body.setFlipX(isDefaultRight);
+        }
+
 
         if (eActionState === "Casting") {
           if (!isObstacle && body.anims?.isPlaying) body.anims.pause();
@@ -544,7 +559,7 @@ export class EnemyRenderer {
         }
         eContainer.setData('prevHp', currentHp);
 
-        applyVisualFX(scene, eContainer, body as Phaser.GameObjects.Sprite, se, configs, topY); 
+        applyVisualFX(scene, eContainer, body as Phaser.GameObjects.Sprite, se, configs, topY);
       }
     });
 
@@ -561,7 +576,7 @@ export class WorldRenderer {
     projList.forEach((proj: any) => {
       const safeId = proj.id || proj.Id;
       activeProjectiles.add(safeId);
-      targets.set(safeId, { x: proj.x || proj.X, y: proj.y || proj.Y });
+      targets.set(safeId, { x: proj.x ?? proj.X, y: proj.y ?? proj.Y });
 
       let sprite = projectiles.get(safeId) as Phaser.GameObjects.Sprite;
       const configId = proj.configId || proj.ConfigId;
@@ -569,12 +584,12 @@ export class WorldRenderer {
 
       if (!sprite) {
         if (pConfig && pConfig.textureKey && scene.textures.exists(pConfig.textureKey)) {
-          sprite = scene.add.sprite(proj.x || proj.X, proj.y || proj.Y, pConfig.textureKey);
+          sprite = scene.add.sprite(proj.x ?? proj.X, proj.y ?? proj.Y, pConfig.textureKey);
           if (pConfig.animFly) sprite.play(`${pConfig.id}_fly`);
           else if (pConfig.iconFrame !== undefined) sprite.setFrame(pConfig.iconFrame);
           sprite.setScale(pConfig.scale || 1.0);
         } else {
-          sprite = scene.add.rectangle(proj.x || proj.X, proj.y || proj.Y, 10, 10, 0x000000).setStrokeStyle(2, 0x00ff00) as any;
+          sprite = scene.add.rectangle(proj.x ?? proj.X, proj.y ?? proj.Y, 10, 10, 0x000000).setStrokeStyle(2, 0x00ff00) as any;
         }
         sprite.setDepth(10);
         (sprite as any).setData('configId', configId);
@@ -605,27 +620,27 @@ export class WorldRenderer {
           // Weapon drop — draw the weapon's icon
           const wConfig = configs.weapons ? (configs.weapons[gearConfigId] || (configs.Weapons && configs.Weapons[gearConfigId])) : null;
           if (wConfig && wConfig.textureKey && scene.textures.exists(wConfig.textureKey)) {
-            sprite = scene.add.sprite(pickup.x || pickup.X, pickup.y || pickup.Y, wConfig.textureKey);
+            sprite = scene.add.sprite(pickup.x ?? pickup.X, pickup.y ?? pickup.Y, wConfig.textureKey);
             if (wConfig.iconFrame !== undefined) (sprite as Phaser.GameObjects.Sprite).setFrame(wConfig.iconFrame);
             sprite.setScale(wConfig.scale || 1.0);
           } else {
-            sprite = scene.add.rectangle(pickup.x || pickup.X, pickup.y || pickup.Y, 14, 14, 0xffaa00).setStrokeStyle(2, 0xffffff) as any;
+            sprite = scene.add.rectangle(pickup.x ?? pickup.X, pickup.y ?? pickup.Y, 14, 14, 0xffaa00).setStrokeStyle(2, 0xffffff) as any;
           }
         } else if (pType === 2 && gearConfigId) {
           // Item drop — draw the item's icon
           const iConfig = configs.items ? (configs.items[gearConfigId] || (configs.Items && configs.Items[gearConfigId])) : null;
           if (iConfig && iConfig.textureKey && scene.textures.exists(iConfig.textureKey)) {
-            sprite = scene.add.sprite(pickup.x || pickup.X, pickup.y || pickup.Y, iConfig.textureKey);
+            sprite = scene.add.sprite(pickup.x ?? pickup.X, pickup.y ?? pickup.Y, iConfig.textureKey);
             if (iConfig.iconFrame !== undefined) (sprite as Phaser.GameObjects.Sprite).setFrame(iConfig.iconFrame);
             sprite.setScale(iConfig.scale || 1.0);
           } else {
-            sprite = scene.add.rectangle(pickup.x || pickup.X, pickup.y || pickup.Y, 14, 14, 0x00aaff).setStrokeStyle(2, 0xffffff) as any;
+            sprite = scene.add.rectangle(pickup.x ?? pickup.X, pickup.y ?? pickup.Y, 14, 14, 0x00aaff).setStrokeStyle(2, 0xffffff) as any;
           }
         } else {
           // Gold — use the existing coins sprite
           sprite = scene.textures.exists('items_sheet')
-            ? scene.add.sprite(pickup.x || pickup.X, pickup.y || pickup.Y, 'items_sheet', 6)
-            : scene.add.rectangle(pickup.x || pickup.X, pickup.y || pickup.Y, 12, 12, 0x000000).setStrokeStyle(2, 0x00ff00) as any;
+            ? scene.add.sprite(pickup.x ?? pickup.X, pickup.y ?? pickup.Y, 'items_sheet', 6)
+            : scene.add.rectangle(pickup.x ?? pickup.X, pickup.y ?? pickup.Y, 12, 12, 0x000000).setStrokeStyle(2, 0x00ff00) as any;
         }
 
         (sprite as any).setDepth(5);
@@ -680,7 +695,7 @@ export class WorldRenderer {
               key: animKey,
               frames: scene.anims.generateFrameNumbers(textureKey, { start: animArray[0], end: animArray[1] }),
               frameRate: frameRate,
-              repeat: 0 
+              repeat: 0
             });
           }
 
@@ -815,8 +830,8 @@ export function precalculateSpriteTops(scene: Phaser.Scene, masterConfigs: any) 
 
       for (let y = 0; y < canvas.height; y++) {
         for (let x = 0; x < canvas.width; x++) {
-          const alpha = data[(y * canvas.width + x) * 4 + 3]; 
-          if (alpha > 10) { 
+          const alpha = data[(y * canvas.width + x) * 4 + 3];
+          if (alpha > 10) {
             topY = y;
             foundTop = true;
             break;

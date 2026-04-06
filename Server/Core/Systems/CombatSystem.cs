@@ -185,7 +185,8 @@ public static class CombatSystem
                     {
                         ConfigId = pCfg2.Id,
                         OwnerId = enemy.Id,
-                        X = enemy.X, Y = enemy.Y,
+                        X = enemy.X,
+                        Y = enemy.Y,
                         VelX = (summonDirX / summonDirLen) * finalSpeed2,
                         VelY = (summonDirY / summonDirLen) * finalSpeed2,
                         Damage = finalDmg2,
@@ -200,31 +201,45 @@ public static class CombatSystem
                 continue;
             }
 
-            // Find the closest player to aim at
-            PlayerEntity? target = null;
+            // Find the closest player OR friendly summon to aim at
             float bestDistSq = float.MaxValue;
+            float targetX = 0;
+            float targetY = 0;
+            bool foundTarget = false;
+
+            // 1. Check for closest Player
             foreach (var player in state.Players.Values)
             {
                 float dx = player.X - enemy.X;
                 float dy = player.Y - enemy.Y;
                 float distSq = dx * dx + dy * dy;
-                if (distSq < bestDistSq)
+                if (distSq < bestDistSq) { bestDistSq = distSq; targetX = player.X; targetY = player.Y; foundTarget = true; }
+            }
+
+            // 2. Check for closest Friendly Summon
+            foreach (var summon in state.Enemies.Values)
+            {
+                if (summon.ActionState == "Dead" || summon.Id == enemy.Id) continue;
+                if (summon.Team != "Enemy")
                 {
-                    bestDistSq = distSq;
-                    target = player;
+                    float dx = summon.X - enemy.X;
+                    float dy = summon.Y - enemy.Y;
+                    float distSq = dx * dx + dy * dy;
+                    if (distSq < bestDistSq) { bestDistSq = distSq; targetX = summon.X; targetY = summon.Y; foundTarget = true; }
                 }
             }
 
-            if (target == null) continue;
+            if (!foundTarget) continue;
 
-            float dirToTargetX = target.X - enemy.X;
-            float dirToTargetY = target.Y - enemy.Y;
+            float dirToTargetX = targetX - enemy.X;
+            float dirToTargetY = targetY - enemy.Y;
+
             float dirLength = (float)Math.Sqrt(dirToTargetX * dirToTargetX + dirToTargetY * dirToTargetY);
             if (dirLength <= 0) continue;
 
             // Always update aim direction so weapon sprites point at target
-            enemy.AimX = target.X;
-            enemy.AimY = target.Y;
+            enemy.AimX = targetX;
+            enemy.AimY = targetY;
 
             // Fetch the config to check the attack radius
             float attackRadius = 300f;
@@ -403,6 +418,111 @@ public static class CombatSystem
                     }
                 }
             }
+            else // <<< ADD THIS ENTIRE ELSE BLOCK
+            {
+                // 1. Hostile projectiles hitting Players
+                foreach (var player in state.Players.Values)
+                {
+                    if (proj.HitEnemies.Contains(player.ConnectionId)) continue;
+
+                    // Assuming a standard player hit radius of 15f
+                    float combinedRadius = proj.HitRadius + 15f;
+                    float hitThresholdSq = combinedRadius * combinedRadius;
+
+                    float dx = proj.X - prevX; float dy = proj.Y - prevY;
+                    float fx = player.X - prevX; float fy = player.Y - prevY;
+
+                    float lengthSq = (dx * dx) + (dy * dy);
+                    float t = lengthSq == 0 ? 0 : Math.Max(0, Math.Min(1, (fx * dx + fy * dy) / lengthSq));
+
+                    float closestX = prevX + t * dx; float closestY = prevY + t * dy;
+                    float distX = closestX - player.X; float distY = closestY - player.Y;
+                    float distSqToSegment = (distX * distX) + (distY * distY);
+
+                    if (distSqToSegment <= hitThresholdSq)
+                    {
+                        player.CurrentHp -= proj.Damage;
+                        proj.HitEnemies.Add(player.ConnectionId);
+
+                        tickDamageEvents.Add(new DamageEventDto { X = player.X, Y = player.Y, Amount = proj.Damage });
+
+                        if (proj.ApplyEffectsOnHit != null)
+                        {
+                            foreach (var effectId in proj.ApplyEffectsOnHit)
+                            {
+                                if (configs.Effects.TryGetValue(effectId, out var effectConfig))
+                                {
+                                    var existing = player.ActiveEffects.FirstOrDefault(e => e.ConfigId == effectId);
+                                    if (existing != null) existing.TimeRemaining = effectConfig.Duration;
+                                    else player.ActiveEffects.Add(new ActiveEffect { ConfigId = effectId, TimeRemaining = effectConfig.Duration });
+                                }
+                            }
+                        }
+
+                        if (proj.HitEnemies.Count > proj.PierceCount)
+                        {
+                            projectilesToRemove.Add(proj.Id);
+                            break;
+                        }
+                    }
+                }
+
+                // 2. Hostile projectiles hitting Friendly Summons
+                if (!projectilesToRemove.Contains(proj.Id))
+                {
+                    foreach (var summon in state.Enemies.Values)
+                    {
+                        if (summon.ActionState == "Dead" || summon.Team == "Enemy" || proj.HitEnemies.Contains(summon.Id)) continue;
+
+                        float combinedRadius = proj.HitRadius + summon.HitRadius;
+                        float hitThresholdSq = combinedRadius * combinedRadius;
+
+                        float dx = proj.X - prevX; float dy = proj.Y - prevY;
+                        float fx = summon.X - prevX; float fy = summon.Y - prevY;
+
+                        float lengthSq = (dx * dx) + (dy * dy);
+                        float t = lengthSq == 0 ? 0 : Math.Max(0, Math.Min(1, (fx * dx + fy * dy) / lengthSq));
+
+                        float closestX = prevX + t * dx; float closestY = prevY + t * dy;
+                        float distX = closestX - summon.X; float distY = closestY - summon.Y;
+                        float distSqToSegment = (distX * distX) + (distY * distY);
+
+                        if (distSqToSegment <= hitThresholdSq)
+                        {
+                            summon.CurrentHp -= proj.Damage;
+                            proj.HitEnemies.Add(summon.Id);
+
+                            tickDamageEvents.Add(new DamageEventDto { X = summon.X, Y = summon.Y, Amount = proj.Damage });
+
+                            if (proj.ApplyEffectsOnHit != null)
+                            {
+                                foreach (var effectId in proj.ApplyEffectsOnHit)
+                                {
+                                    if (configs.Effects.TryGetValue(effectId, out var effectConfig))
+                                    {
+                                        var existing = summon.ActiveEffects.FirstOrDefault(e => e.ConfigId == effectId);
+                                        if (existing != null) existing.TimeRemaining = effectConfig.Duration;
+                                        else summon.ActiveEffects.Add(new ActiveEffect { ConfigId = effectId, TimeRemaining = effectConfig.Duration });
+                                    }
+                                }
+                            }
+
+                            if (summon.CurrentHp <= 0 && summon.ActionState != "Dead")
+                            {
+                                summon.ActionState = "Dead";
+                                if (configs.Enemies.TryGetValue(summon.ConfigId, out var eCfg))
+                                    SkillSystem.FireOnDeathSkills(summon.Id, summon.X, summon.Y, summon.Team, eCfg.OnDeathSkills, state, configs, tickDamageEvents, tickAoeEvents);
+                            }
+
+                            if (proj.HitEnemies.Count > proj.PierceCount)
+                            {
+                                projectilesToRemove.Add(proj.Id);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // 2. Players vs Pickups (Gold / XP only – weapons and items require manual spacebar pickup)
@@ -422,6 +542,63 @@ public static class CombatSystem
                         pickupsToRemove.Add(pickup.Id);
                     }
                     // Weapon and Item pickups are handled by TryPickupLoot (manual spacebar)
+                }
+            }
+        }
+        // 3. Enemy Normal Attacks (Contact / Bump Damage)
+        foreach (var enemy in state.Enemies.Values)
+        {
+            if (enemy.ActionState == "Dead") continue;
+            if (!configs.Enemies.TryGetValue(enemy.ConfigId, out var enemyCfg)) continue;
+
+            if (enemy.Weapons.Count > 0) continue;
+
+            // Only apply damage on the exact frame the attack initiates
+            if (enemy.ActionState == "Attacking" && Math.Abs(enemy.AttackCooldown - enemyCfg.AttackDuration) < (dt * 2))
+            {
+                float meleeDmg = enemy.GetTotalStat("meleeDamage", configs);
+                if (meleeDmg <= 0) continue;
+
+                float attackRadiusSq = enemyCfg.AttackRadius * enemyCfg.AttackRadius;
+
+                if (enemy.Team == "Enemy")
+                {
+                    // Hostile bumps Player
+                    foreach (var player in state.Players.Values)
+                    {
+                        float distSq = (player.X - enemy.X) * (player.X - enemy.X) + (player.Y - enemy.Y) * (player.Y - enemy.Y);
+                        if (distSq <= attackRadiusSq)
+                        {
+                            player.CurrentHp -= meleeDmg;
+                            tickDamageEvents.Add(new DamageEventDto { X = player.X, Y = player.Y, Amount = meleeDmg });
+                        }
+                    }
+
+                    // Hostile bumps Friendly Summon
+                    foreach (var summon in state.Enemies.Values)
+                    {
+                        if (summon.ActionState == "Dead" || summon.Team == "Enemy") continue;
+                        float distSq = (summon.X - enemy.X) * (summon.X - enemy.X) + (summon.Y - enemy.Y) * (summon.Y - enemy.Y);
+                        if (distSq <= attackRadiusSq)
+                        {
+                            summon.CurrentHp -= meleeDmg;
+                            tickDamageEvents.Add(new DamageEventDto { X = summon.X, Y = summon.Y, Amount = meleeDmg });
+                        }
+                    }
+                }
+                else
+                {
+                    // Friendly Summon bumps Hostile Enemy
+                    foreach (var hostile in state.Enemies.Values)
+                    {
+                        if (hostile.ActionState == "Dead" || hostile.Team != "Enemy") continue;
+                        float distSq = (hostile.X - enemy.X) * (hostile.X - enemy.X) + (hostile.Y - enemy.Y) * (hostile.Y - enemy.Y);
+                        if (distSq <= attackRadiusSq)
+                        {
+                            hostile.CurrentHp -= meleeDmg;
+                            tickDamageEvents.Add(new DamageEventDto { X = hostile.X, Y = hostile.Y, Amount = meleeDmg });
+                        }
+                    }
                 }
             }
         }
