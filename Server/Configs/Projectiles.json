@@ -2,9 +2,9 @@
     "9mm_bullet": {
         "id": "9mm_bullet",
         "name": "9mm Round",
-        "textureKey": "ammo_sheet",
-        "iconFrame": 26,
-        "scale": 4.5,
+        "textureKey": "ammo_sheet2",
+        "iconFrame": 0,
+        "scale": 0.2,
         "baseSpeed": 800,
         "hitRadius": 10,
         "pierceCount": 0,
@@ -13,10 +13,21 @@
     "sniper_round": {
         "id": "sniper_round",
         "name": "Heavy Caliber",
-        "textureKey": "ammo_sheet",
-        "iconFrame": 11,
-        "scale": 0.5,
+        "textureKey": "ammo_sheet2",
+        "iconFrame": 2,
+        "scale": 0.2,
         "baseSpeed": 1500,
+        "hitRadius": 15,
+        "pierceCount": 3,
+        "soundHit": "sfx_sniper_impact"
+    },
+    "shotgun_shell": {
+        "id": "shotgun_shell",
+        "name": "Shotgun Shell",
+        "textureKey": "ammo_sheet2",
+        "iconFrame": 5,
+        "scale": 0.2,
+        "baseSpeed": 600,
         "hitRadius": 15,
         "pierceCount": 3,
         "soundHit": "sfx_sniper_impact"

@@ -26,8 +26,7 @@ public static class CombatSystem
                     // >>> DYNAMIC OFFSET FIX: Match Client Exactly! <<<
                     float entityScale = 1.0f;
                     if (configs.Characters.TryGetValue(player.ConfigId, out var pCfg)) entityScale = pCfg.Scale;
-                    float offset = (16f * entityScale) + 20f;
-
+                    float offset = (10f * entityScale) + 15f; // <<< NEW MATCHING SMALL GAP
 
                     float spawnX = player.X;
                     float spawnY = player.Y;
