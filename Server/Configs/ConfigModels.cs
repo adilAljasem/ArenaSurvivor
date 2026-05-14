@@ -78,6 +78,7 @@ public class CharacterConfig
     public string TextureKey { get; set; } = string.Empty;
     public int IconFrame { get; set; }
     public bool DefaultFacingRight { get; set; } = true;
+    public float Scale { get; set; } = 1.0f; // <<< ADD THIS
 
     public int[]? AnimIdle { get; set; }
     public int AnimIdleFrameRate { get; set; } = 10;
@@ -89,12 +90,17 @@ public class CharacterConfig
     public int AnimDeathFrameRate { get; set; } = 15;
 
     // --- Stats & Mechanics ---
-    public Dictionary<string, float> BaseStats { get; set; } = new(); // "maxHp": 150, "speed": 180
-    public List<string> Traits { get; set; } = new(); // "CannotHeal", "MoreEnemies"
+    public Dictionary<string, float> BaseStats { get; set; } = new();
+    public List<string> Traits { get; set; } = new();
     public List<DynamicModifier> DynamicModifiers { get; set; } = new();
+
+    // >>> ADD THESE STARTING GEAR LISTS <<<
+    public List<string> StartingWeapons { get; set; } = new();
+    public List<string> StartingItems { get; set; } = new();
+
     public List<string> StartingSkills { get; set; } = new();
     public List<string> OnDeathSkills { get; set; } = new();
-    public List<DynamicSkillTrigger> DynamicSkills { get; set; } = new();       // "adrenaline_surge"
+    public List<DynamicSkillTrigger> DynamicSkills { get; set; } = new();
 }
 
 public class EnemyConfig
@@ -125,7 +131,7 @@ public class EnemyConfig
     public float HitRadius { get; set; } = 15f;
     public float AttackDuration { get; set; } = 0.5f;
     /// <summary>Max distance (px) at which this enemy fires its equipped weapons. Spells always bypass this.</summary>
-    public float AttackRadius { get; set; } = 300f;
+    public float AttackRadius { get; set; } = 10f;
     public Dictionary<string, float> BaseStats { get; set; } = new();
 
     public List<string> StartingSkills { get; set; } = new();
@@ -297,7 +303,7 @@ public class SkillConfig
     public float BaseDamage { get; set; } = 0f;
     public float Lifespan { get; set; } = 0f;
     public List<string> ApplyEffects { get; set; } = new();
-    public bool StopMoving { get; set; } = true; // By default, casting roots the player in place!
+    public bool StopMoving { get; set; } = false; // By default, casting roots the player in place!
 
     // --- Audio ---
     public string SoundCast { get; set; } = string.Empty;

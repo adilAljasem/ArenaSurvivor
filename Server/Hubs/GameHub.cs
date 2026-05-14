@@ -40,13 +40,7 @@ public class GameHub : Hub
             newPlayer.CurrentHp = 100f;
         }
 
-        var w1 = Server.Core.Systems.WeaponGenerator.GenerateWeapon("pistol", newPlayer, _configManager, 1);
-        w1.SlotIndex = 0;
-        newPlayer.Weapons.Add(w1);
 
-        var w2 = Server.Core.Systems.WeaponGenerator.GenerateWeapon("smg", newPlayer, _configManager, 1);
-        w2.SlotIndex = 1;
-        newPlayer.Weapons.Add(w2);
 
         _gameState.Players.TryAdd(Context.ConnectionId, newPlayer);
 
@@ -168,12 +162,13 @@ public class GameHub : Hub
                 }
 
                 var existingItem = player.OwnedItems.FirstOrDefault(i =>
-                    _configManager.Items.TryGetValue(i.ConfigId, out var existingCfg) &&
-                    (
-                        (!string.IsNullOrEmpty(itemConfig.ItemFamily) && existingCfg.ItemFamily == itemConfig.ItemFamily)
-                        || i.ConfigId == configId
-                    )
-                );
+                                    _configManager.Items.TryGetValue(i.ConfigId, out var existingCfg) &&
+                                    existingCfg.Tier == itemConfig.Tier && // >>> THE FIX: Must be same Tier! <<<
+                                    (
+                                        (!string.IsNullOrEmpty(itemConfig.ItemFamily) && existingCfg.ItemFamily == itemConfig.ItemFamily)
+                                        || i.ConfigId == configId
+                                    )
+                                );
 
                 if (existingItem != null)
                 {
@@ -230,15 +225,13 @@ public class GameHub : Hub
                 }
 
                 var existingWeapon = player.Weapons.FirstOrDefault(w =>
-                        _configManager.Weapons.TryGetValue(w.ConfigId, out var existingCfg) &&
-                        (
-                            // If both have a family, merge them!
-                            (!string.IsNullOrEmpty(weaponConfig.WeaponFamily) && existingCfg.WeaponFamily == weaponConfig.WeaponFamily)
-                            ||
-                            // Fallback: If no family is defined, merge by exact ID
-                            w.ConfigId == configId
-                        )
-                    );
+                                        _configManager.Weapons.TryGetValue(w.ConfigId, out var existingCfg) &&
+                                        existingCfg.Tier == weaponConfig.Tier && // >>> THE FIX: Must be same Tier! <<<
+                                        (
+                                            (!string.IsNullOrEmpty(weaponConfig.WeaponFamily) && existingCfg.WeaponFamily == weaponConfig.WeaponFamily)
+                                            || w.ConfigId == configId
+                                        )
+                                    );
 
                 if (existingWeapon != null)
                 {
@@ -357,13 +350,19 @@ public class GameHub : Hub
             var droppedWeapon = pickup.DroppedWeapon;
             _configManager.Weapons.TryGetValue(droppedWeapon.ConfigId, out var droppedWCfg);
 
-            // Look for an existing weapon of the same family to merge with
+            // >>> THE LEVEL JUMP FIX: Force dropped weapons to act purely as a Level 1 material! <<<
+            droppedWeapon.Level = 1;
+            droppedWeapon.MergedConfigIds.Clear();
+            droppedWeapon.MergedConfigIds.Add(droppedWeapon.ConfigId);
+
+            // Look for an existing weapon of the same family AND tier to merge with
             EquippedWeapon? matchingWeapon = null;
-            if (!string.IsNullOrEmpty(droppedWCfg?.WeaponFamily))
+            if (droppedWCfg != null && !string.IsNullOrEmpty(droppedWCfg.WeaponFamily))
             {
                 matchingWeapon = player.Weapons.FirstOrDefault(ow =>
                     _configManager.Weapons.TryGetValue(ow.ConfigId, out var owCfg) &&
-                    owCfg.WeaponFamily == droppedWCfg.WeaponFamily);
+                    owCfg.WeaponFamily == droppedWCfg.WeaponFamily &&
+                    owCfg.Tier == droppedWCfg.Tier); // >>> THE TIER FIX <<<
             }
 
             if (matchingWeapon != null)
@@ -383,13 +382,19 @@ public class GameHub : Hub
             var droppedItem = pickup.DroppedItem;
             _configManager.Items.TryGetValue(droppedItem.ConfigId, out var droppedICfg);
 
-            // Look for an existing item of the same family to merge with
+            // >>> THE LEVEL JUMP FIX: Force dropped items to act purely as a Level 1 material! <<<
+            droppedItem.Level = 1;
+            droppedItem.MergedConfigIds.Clear();
+            droppedItem.MergedConfigIds.Add(droppedItem.ConfigId);
+
+            // Look for an existing item of the same family AND tier to merge with
             EquippedItem? matchingItem = null;
-            if (!string.IsNullOrEmpty(droppedICfg?.ItemFamily))
+            if (droppedICfg != null && !string.IsNullOrEmpty(droppedICfg.ItemFamily))
             {
                 matchingItem = player.OwnedItems.FirstOrDefault(oi =>
                     _configManager.Items.TryGetValue(oi.ConfigId, out var oiCfg) &&
-                    oiCfg.ItemFamily == droppedICfg.ItemFamily);
+                    oiCfg.ItemFamily == droppedICfg.ItemFamily &&
+                    oiCfg.Tier == droppedICfg.Tier); // >>> THE TIER FIX <<<
             }
 
             if (matchingItem != null)
@@ -408,5 +413,5 @@ public class GameHub : Hub
         await SendPlayerUI(player);
     }
 
-    
+
 }

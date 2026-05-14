@@ -277,14 +277,12 @@ export class Tooltip extends Phaser.GameObjects.Container {
     }
 
     public show(
-        config: any, x: number, y: number, tier: number, atlasConfigs: any,
-        totalBaseStats?: any, // <<< NEW: Pass the server's math!
-        rolledStats?: any, rolledSkills?: any
+        config: any, x: number, y: number, incomingLevel: number, atlasConfigs: any,
+        totalBaseStats?: any, rolledStats?: any, rolledSkills?: any
     ) {
         if (!config) return;
 
         // >>> FIX 1: ANTI-FLICKER TIMER CANCEL <<<
-        // If the tooltip was about to hide because you moved between hitboxes, cancel it!
         if (this.hideTimer) {
             this.hideTimer.remove();
             this.hideTimer = undefined;
@@ -294,10 +292,11 @@ export class Tooltip extends Phaser.GameObjects.Container {
             this.dynamicTexts.forEach(t => t.destroy());
             this.dynamicTexts = [];
 
+            // Grab the base Tier from JSON
             const tier = config.tier ?? config.Tier ?? 1;
-            this.titleText.setText(config.name ?? config.Name ?? '').setColor(UIHelpers.getTierColorStr(tier));
 
-            // Note: combinePreview removed!
+            // >>> THE FIX: Show BOTH the Tier and the Level dynamically! <<<
+            this.titleText.setText(`${config.name ?? config.Name ?? ''} (Tier ${tier} - Lv.${incomingLevel})`).setColor(UIHelpers.getTierColorStr(tier));            // Note: combinePreview removed!
             const blocks = UIHelpers.buildStatBlocks(config, totalBaseStats, rolledStats, rolledSkills, atlasConfigs);
 
             let currentY = 38;
@@ -586,16 +585,15 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
 
                     // Inside your weapon slots loop:
                     hitbox.on('pointerover', (p: Phaser.Input.Pointer) => {
-                        // >>> FIX 1: Change bgRect to slotBg <<<
                         slotBg.lineStyle(2, 0xffffff, 1);
                         slotBg.strokeRoundedRect(slotX, slotY, 65, 65, 8);
 
-                        // >>> FIX 2: Change weapon to weaponData <<<
+                        // >>> THE FIX: Use wLevel instead of config.tier! <<<
                         this.tooltip.show(
                             config,
                             p.x,
                             p.y,
-                            config.tier ?? config.Tier ?? 1,
+                            wLevel,
                             atlasConfigs,
                             weaponData.totalBaseStats ?? weaponData.TotalBaseStats,
                             weaponData.rolledStats ?? weaponData.RolledStats,
@@ -719,7 +717,19 @@ export class ShopUI {
     public setVisible(value: boolean): this {
         this._visible = value;
         if (!value && this.tooltip) this.tooltip.hide();
-        this._elements.forEach(el => el.setVisible(value));
+
+        // >>> THE FIX: Smart visibility routing! <<<
+        this._elements.forEach(el => {
+            if (el === this.levelUpContainer) {
+                // Only show Level Up if it actually has cards!
+                el.setVisible(value && this.levelUpContainer.list.length > 0);
+            } else if (el === this.shopCardsContainer || el === this.rerollButtonContainer) {
+                // Only show Shop Cards if there are no Level Up cards!
+                el.setVisible(value && this.levelUpContainer.list.length === 0);
+            } else {
+                el.setVisible(value);
+            }
+        });
         return this;
     }
 
@@ -782,13 +792,6 @@ export class ShopUI {
             this.statDisplay.updateStats(uiData.stats, uiData.level || 1);
             this.inventoryDisplay.updateInventory(uiData.weapons, uiData.ownedItems, atlasConfigs);
 
-            // During active gameplay, never render shop or level-up cards
-            const phase = uiData.phase;
-            if (phase === 'WaveActive') {
-                this.levelUpContainer.setVisible(false);
-                this.shopCardsContainer.setVisible(false);
-                return;
-            }
 
             this.tooltip.hide();
             this.shopCardsContainer.removeAll(true);
@@ -800,7 +803,7 @@ export class ShopUI {
             if (uiData.pendingLevelUps > 0) {
                 this.shopCardsContainer.setVisible(false);
                 this.rerollButtonContainer.setVisible(false);
-                this.levelUpContainer.setVisible(true);
+                this.levelUpContainer.setVisible(this._visible); // <<< CHANGE TO this._visible
 
                 this.headerText.setText(`LEVEL UP! (x${uiData.pendingLevelUps})`);
                 this.headerText.setColor('#ffb300');
@@ -854,8 +857,8 @@ export class ShopUI {
             // SHOP CARDS RENDERER (Stencil-less Scrolling + Colorful Blocks)
             // =========================================================
             this.levelUpContainer.setVisible(false);
-            this.shopCardsContainer.setVisible(true);
-            this.rerollButtonContainer.setVisible(true);
+            this.shopCardsContainer.setVisible(this._visible);    // <<< CHANGE TO this._visible
+            this.rerollButtonContainer.setVisible(this._visible); // <<< CHANGE TO this._visible
 
             this.headerText.setText(`Shop (Wave ${uiData.currentWave})`);
             this.headerText.setColor('#ffffff');

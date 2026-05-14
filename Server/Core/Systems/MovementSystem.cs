@@ -19,7 +19,14 @@ public static class MovementSystem
         // 1. PLAYER PHYSICS (Players always move!)
         foreach (var player in state.Players.Values)
         {
-            if (player.InputX != 0 || player.InputY != 0)
+            bool canMovePlayer = true;
+            if (!string.IsNullOrEmpty(player.CurrentCastingSkillId) && player.CurrentCastTimer > 0)
+            {
+                if (configs.Skills.TryGetValue(player.CurrentCastingSkillId, out var pCastCfg) && pCastCfg.StopMoving)
+                    canMovePlayer = false;
+            }
+
+            if (canMovePlayer && player.InputX != 0 || player.InputY != 0)
             {
                 float finalSpeed = Math.Max(0f, player.GetTotalStat("speed", configs));
                 player.X += player.InputX * finalSpeed * dt;

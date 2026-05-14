@@ -2,23 +2,20 @@
   "char_well_rounded": {
     "id": "char_well_rounded",
     "name": "Well Rounded",
-    "textureKey": "characters_sheet",
+    "textureKey": "characters_sheet1",
     "iconFrame": 0,
+    "scale": 2.0,
+    "defaultFacingRight": true,
     "animIdle": [
       0,
-      5
+      1
     ],
-    "animIdleFrameRate": 15,
+    "animIdleFrameRate": 3,
     "animMove": [
-      6,
-      11
+      24,
+      31
     ],
     "animMoveFrameRate": 20,
-    "animAttack": [
-      12,
-      16
-    ],
-    "animAttackFrameRate": 20,
     "animDeath": [
       17,
       22
@@ -31,7 +28,17 @@
       "rangedDamage": 50,
       "harvesting": 5
     },
-    "startingSkills": ["frost_nova","summon_trees"],
+    "startingWeapons": [
+      "pistol"
+    ],
+    "startingItems": [
+      "ugly_tooth"
+    ],
+    "startingSkills": [
+      "frost_nova",
+      "summon_trees"
+    ],
+    "dynamicModifiers": [],
     "traits": []
   },
   "char_chunky": {

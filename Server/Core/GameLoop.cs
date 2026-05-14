@@ -133,8 +133,8 @@ public class GameLoop : BackgroundService
         if (_gameState.Phase == GamePhase.WaitingForPlayers && !_gameState.Players.IsEmpty)
         {
             _gameState.Phase = GamePhase.WaveActive;
-            _gameState.PhaseTimer = 60f;
-            _gameState.CurrentWave = 1;
+            _gameState.PhaseTimer = 180f;
+            _gameState.CurrentWave = 50;
         }
 
         if (_gameState.Phase != GamePhase.WaitingForPlayers)
@@ -236,7 +236,7 @@ public class GameLoop : BackgroundService
     private void StartNextWave()
     {
         _gameState.Phase = GamePhase.WaveActive;
-        _gameState.PhaseTimer = 60f;
+        _gameState.PhaseTimer = 180f;
         _gameState.CurrentWave++;
 
         // Clear any weapon/item loot that was not picked up during the shop phase

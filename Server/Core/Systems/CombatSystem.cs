@@ -23,18 +23,28 @@ public static class CombatSystem
                     var config = configs.Weapons[weapon.ConfigId];
                     weapon.CurrentCooldown = config.CooldownSeconds;
 
+                    // >>> DYNAMIC OFFSET FIX: Match Client Exactly! <<<
+                    float entityScale = 1.0f;
+                    if (configs.Characters.TryGetValue(player.ConfigId, out var pCfg)) entityScale = pCfg.Scale;
+                    float offset = (16f * entityScale) + 20f;
+
+
                     float spawnX = player.X;
                     float spawnY = player.Y;
-                    float offset = 24f;
 
                     if (weapon.SlotIndex == 0) spawnX += offset;
                     else if (weapon.SlotIndex == 1) spawnX -= offset;
                     else if (weapon.SlotIndex == 2) spawnY -= offset;
                     else if (weapon.SlotIndex == 3) spawnY += offset;
 
-                    float dirX = player.AimX - spawnX;
-                    float dirY = player.AimY - spawnY;
+                    // >>> THE FIX: Parallel Aiming (Goal 2) <<<
+                    // We calculate direction FROM character center, even though 
+                    // bullet spawns from barrel. This makes bullet travel straight 
+                    // based on character's general look direction.
+                    float dirX = player.AimX - player.X;
+                    float dirY = player.AimY - player.Y;
                     float length = (float)Math.Sqrt(dirX * dirX + dirY * dirY);
+
 
                     if (length > 0)
                     {
@@ -130,10 +140,6 @@ public static class CombatSystem
 
                 if (summonTarget == null) continue;
 
-                float summonDirX = summonTarget.X - enemy.X;
-                float summonDirY = summonTarget.Y - enemy.Y;
-                float summonDirLen = (float)Math.Sqrt(summonDirX * summonDirX + summonDirY * summonDirY);
-                if (summonDirLen <= 0) continue;
 
                 enemy.AimX = summonTarget.X;
                 enemy.AimY = summonTarget.Y;
@@ -151,6 +157,24 @@ public static class CombatSystem
                     if (!configs.Weapons.TryGetValue(weapon.ConfigId, out var wCfgS)) continue;
 
                     weapon.CurrentCooldown = wCfgS.CooldownSeconds;
+
+                    // >>> DYNAMIC OFFSET FIX: Match Client Exactly! <<<
+                    float entityScale = 1.0f;
+                    if (configs.Enemies.TryGetValue(enemy.ConfigId, out var eCfg)) entityScale = eCfg.Scale;
+                    float offset = (40f * entityScale) + 30f;
+                    float spawnX = enemy.X;
+                    float spawnY = enemy.Y;
+
+                    if (weapon.SlotIndex == 0) spawnX += offset;
+                    else if (weapon.SlotIndex == 1) spawnX -= offset;
+                    else if (weapon.SlotIndex == 2) spawnY -= offset;
+                    else if (weapon.SlotIndex == 3) spawnY += offset;
+
+                    // >>> Recalculate direction strictly from the weapon's muzzle! <<<
+                    float summonDirX = summonTarget.X - spawnX;
+                    float summonDirY = summonTarget.Y - spawnY;
+                    float summonDirLen = (float)Math.Sqrt(summonDirX * summonDirX + summonDirY * summonDirY);
+                    if (summonDirLen <= 0) continue;
 
                     float baseMelee = weapon.TotalBaseStats.GetValueOrDefault("meleeDamage", 0f);
                     float baseRanged = weapon.TotalBaseStats.GetValueOrDefault("rangedDamage", 0f);
@@ -185,8 +209,8 @@ public static class CombatSystem
                     {
                         ConfigId = pCfg2.Id,
                         OwnerId = enemy.Id,
-                        X = enemy.X,
-                        Y = enemy.Y,
+                        X = spawnX,
+                        Y = spawnY,
                         VelX = (summonDirX / summonDirLen) * finalSpeed2,
                         VelY = (summonDirY / summonDirLen) * finalSpeed2,
                         Damage = finalDmg2,
@@ -231,11 +255,7 @@ public static class CombatSystem
 
             if (!foundTarget) continue;
 
-            float dirToTargetX = targetX - enemy.X;
-            float dirToTargetY = targetY - enemy.Y;
 
-            float dirLength = (float)Math.Sqrt(dirToTargetX * dirToTargetX + dirToTargetY * dirToTargetY);
-            if (dirLength <= 0) continue;
 
             // Always update aim direction so weapon sprites point at target
             enemy.AimX = targetX;
@@ -257,6 +277,25 @@ public static class CombatSystem
                 if (!configs.Weapons.TryGetValue(weapon.ConfigId, out var weaponConfig)) continue;
 
                 weapon.CurrentCooldown = weaponConfig.CooldownSeconds;
+
+                // >>> DYNAMIC OFFSET FIX: Match Client Exactly! (Goal 3) <<<
+                float entityScale = 1.0f;
+                if (configs.Enemies.TryGetValue(enemy.ConfigId, out var eCfg)) entityScale = eCfg.Scale;
+                float offset = (40f * entityScale) + 30f; // <<< NEW DYNAMIC GAP
+
+                float spawnX = enemy.X;
+                float spawnY = enemy.Y;
+
+                if (weapon.SlotIndex == 0) spawnX += offset;
+                else if (weapon.SlotIndex == 1) spawnX -= offset;
+                else if (weapon.SlotIndex == 2) spawnY -= offset;
+                else if (weapon.SlotIndex == 3) spawnY += offset;
+
+                float dirToTargetX = targetX - spawnX;
+                float dirToTargetY = targetY - spawnY;
+                float dirLength = (float)Math.Sqrt(dirToTargetX * dirToTargetX + dirToTargetY * dirToTargetY);
+                if (dirLength <= 0) continue;
+
 
                 float baseMelee = weapon.TotalBaseStats.GetValueOrDefault("meleeDamage", 0f);
                 float baseRanged = weapon.TotalBaseStats.GetValueOrDefault("rangedDamage", 0f);
@@ -297,8 +336,8 @@ public static class CombatSystem
                 {
                     ConfigId = projConfig.Id,
                     OwnerId = enemy.Id,
-                    X = enemy.X,
-                    Y = enemy.Y,
+                    X = spawnX,
+                    Y = spawnY,
                     VelX = (dirToTargetX / dirLength) * finalSpeed,
                     VelY = (dirToTargetY / dirLength) * finalSpeed,
                     Damage = finalDamage,

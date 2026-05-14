@@ -70,14 +70,41 @@ public class PlayerEntity : BaseActorEntity
 
         // Set starting health to whatever the dictionary calculated for maxHp
         CurrentHp = Stats.GetFinalStat("maxHp");
+
+        // >>> ADD THIS BLOCK: Give Starting Gear <<<
+        if (config.StartingWeapons != null)
+        {
+            foreach (var wId in config.StartingWeapons)
+            {
+                if (configManager.Weapons.ContainsKey(wId))
+                {
+                    var newWeapon = Server.Core.Systems.WeaponGenerator.GenerateWeapon(wId, this, configManager, 1);
+                    newWeapon.SlotIndex = Weapons.Count;
+                    Weapons.Add(newWeapon);
+                }
+            }
+        }
+
+        if (config.StartingItems != null)
+        {
+            foreach (var itemId in config.StartingItems)
+            {
+                if (configManager.Items.ContainsKey(itemId))
+                {
+                    var newItem = Server.Core.Systems.ItemGenerator.GenerateItem(itemId, this, configManager, 1);
+                    newItem.SlotIndex = OwnedItems.Count;
+                    OwnedItems.Add(newItem);
+                }
+            }
+        }
     }
 
     // Calculates dynamic stats, passive item buffs, and weapon buffs on the fly
     public float GetTotalStat(string statName, ConfigManager configManager)
     {
         float baseStat = Stats.GetFinalStat(statName);
-        float dynamicFlat = 0f; 
-        
+        float dynamicFlat = 0f;
+
         // --- 1. ITEMS ---
         foreach (var item in OwnedItems)
         {
@@ -131,6 +158,26 @@ public class PlayerEntity : BaseActorEntity
                 if (effectConfig.StatModifiers != null && effectConfig.StatModifiers.TryGetValue(statName, out float amount))
                 {
                     dynamicFlat += amount;
+                }
+            }
+        }
+
+        if (configManager.Characters.TryGetValue(ConfigId, out var charConfig) && charConfig.DynamicModifiers != null)
+        {
+            foreach (var mod in charConfig.DynamicModifiers.Where(m => m.TargetStat == statName))
+            {
+                if (mod.ConditionType == "MissingHealthPercent")
+                {
+                    float maxHp = Stats.GetFinalStat("maxHp");
+                    float missingHpPercent = 1f - (CurrentHp / Math.Max(1f, maxHp));
+                    int chunks = (int)Math.Floor(missingHpPercent / Math.Max(0.01f, mod.ConditionThreshold));
+                    dynamicFlat += (mod.Amount * chunks);
+                }
+                else if (mod.ConditionType == "PerXStat" && !string.IsNullOrEmpty(mod.ConditionStat))
+                {
+                    float sourceStatValue = GetTotalStat(mod.ConditionStat, configManager);
+                    int chunks = (int)Math.Floor(sourceStatValue / Math.Max(0.01f, mod.ConditionThreshold));
+                    dynamicFlat += (mod.Amount * chunks);
                 }
             }
         }

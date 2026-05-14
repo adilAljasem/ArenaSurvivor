@@ -130,30 +130,64 @@ export class PlayerRenderer {
 
       // 3. ANIMATIONS & TINTING
       if (body && body.type === 'Sprite' && config) {
+
+        body.setScale(config.scale || 1.0);
+
+        // >>> THE FIX: Distance-to-Target Interpolation Tracking <<<
+        const targetX = sp.x ?? sp.X;
+        const targetY = sp.y ?? sp.Y;
+
+        // If the visual container is more than 1 pixel away from the server's target, it is visibly moving/interpolating!
+        const distToTarget = Math.abs(targetX - pContainer.x) + Math.abs(targetY - pContainer.y);
+        const isMoving = distToTarget > 1.0;
+
+        // Safely check StopMoving (defaults to false)
+        let stopMoving = false;
+        const castingSkillId = sp.currentCastingSkillId || sp.CurrentCastingSkillId;
+        if (castingSkillId) {
+          const skillCfg = (configs.skills || configs.Skills)?.[castingSkillId];
+          if (skillCfg && (skillCfg.stopMoving === true || skillCfg.StopMoving === true)) stopMoving = true;
+        }
+
         let targetAnim = `${config.id}_idle`;
 
-        if (pActionState === "Dead" && config.animDeath) targetAnim = `${config.id}_death`;
-        else if (pActionState === "Casting") targetAnim = config.animAttack ? `${config.id}_attack` : `${config.id}_idle`;
-        else if (pActionState === "Attacking" && config.animAttack) targetAnim = `${config.id}_attack`;
-        else if (pActionState === "Moving" && config.animMove) targetAnim = `${config.id}_move`;
+        if (pActionState === "Dead" && config.animDeath) {
+          targetAnim = `${config.id}_death`;
+        } else if (pActionState === "Attacking" && config.animAttack) {
+          targetAnim = `${config.id}_attack`;
+        } else {
+          // Smoothly play move animation if visually moving!
+          if (isMoving && !stopMoving && config.animMove) {
+            targetAnim = `${config.id}_move`;
+          } else if (config.animIdle) {
+            targetAnim = `${config.id}_idle`;
+          }
+        }
 
         const isCorrectAnim = body.anims && body.anims.currentAnim?.key === targetAnim;
         const isFinishedAttacking = body.anims && !body.anims.isPlaying && pActionState === "Attacking";
 
-        if (!isCorrectAnim || isFinishedAttacking) body.play(targetAnim);
-
-        const isDefaultRight = config.defaultFacingRight !== false;
-        const velX = sp.velX ?? sp.VelX ?? ((sp.x ?? sp.X) - pContainer.x);
-        if (velX > 0.5) body.setFlipX(!isDefaultRight);
-        else if (velX < -0.5) body.setFlipX(isDefaultRight);
-
-        if (pActionState === "Casting") {
-          if (body.anims.isPlaying) body.anims.pause();
-        } else {
-          if (!body.anims.isPlaying && pActionState !== "Dead") body.anims.resume();
+        if (targetAnim !== '' && (!isCorrectAnim || isFinishedAttacking)) {
+          body.play(targetAnim);
         }
 
-        // Detect skill cast completion: Casting → non-Casting transition
+        const isDefaultRight = config.defaultFacingRight !== false;
+        const aimX = sp.aimX ?? sp.AimX;
+        const velX = sp.velX ?? sp.VelX ?? (targetX - pContainer.x);
+
+        let faceRight = isDefaultRight;
+        if (aimX !== undefined && Math.abs(aimX - targetX) > 1) {
+          faceRight = aimX > targetX;
+        } else {
+          if (velX > 0.5) faceRight = true;
+          else if (velX < -0.5) faceRight = false;
+        }
+
+        if (faceRight) body.setFlipX(!isDefaultRight);
+        else body.setFlipX(isDefaultRight);
+
+        if (!body.anims.isPlaying && pActionState !== "Dead") body.anims.resume();
+
         const prevActionState = pContainer.getData('prevActionState');
         const prevCastSkillId = pContainer.getData('prevCastSkillId') as string | undefined;
         if (prevActionState === 'Casting' && pActionState !== 'Casting' && prevCastSkillId) {
@@ -162,14 +196,12 @@ export class PlayerRenderer {
         }
         pContainer.setData('prevActionState', pActionState);
         if (pActionState === 'Casting') {
-          const castingSkillId = sp.currentCastingSkillId || sp.CurrentCastingSkillId;
           if (castingSkillId) pContainer.setData('prevCastSkillId', castingSkillId);
         }
 
         const prevHp = pContainer.getData('prevHp');
         if (prevHp !== undefined && currentHp < prevHp) {
           pContainer.setData('flashTimer', scene.time.now + 150);
-          // Play the hit sound of the most recently destroyed projectile
           AudioManager.getInstance().playLastProjectileHitSound();
         }
         pContainer.setData('prevHp', currentHp);
@@ -182,12 +214,16 @@ export class PlayerRenderer {
       const activeWeaponSlots = new Set<number>();
       const weaponsList = sp.weapons || sp.Weapons || [];
 
+      // >>> DYNAMIC OFFSET FIX: Match Server Exactly! (Goal 1) <<<
+      const entityScale = config.scale || 1.0;
+      const offset = (10 * entityScale) + 15; // NEW "Smaller" gap
+
       weaponsList.forEach((w: any) => {
         const slotIndex = w.slotIndex ?? w.SlotIndex;
         const wConfigId = w.configId || w.ConfigId;
         activeWeaponSlots.add(slotIndex);
 
-        let wx = 0, wy = 0; const offset = 26;
+        let wx = 0, wy = 0;
         if (slotIndex === 0) { wx = offset; wy = 0; }
         else if (slotIndex === 1) { wx = -offset; wy = 0; }
         else if (slotIndex === 2) { wx = 0; wy = -offset; }
@@ -378,9 +414,9 @@ export class EnemyRenderer {
       const activeWeaponSlots = new Set<number>();
       const weaponsList = se.weapons || se.Weapons || [];
 
-      // Dynamic offsets using the enemy's actual rendered sprite dimensions
-      const halfW = (body && body.displayWidth) ? body.displayWidth / 2 : 16;
-      const halfH = (body && body.displayHeight) ? body.displayHeight / 2 : 16;
+      // >>> DYNAMIC OFFSET FIX: Match Server Exactly! <<<
+      const entityScale = config.scale || 1.0;
+      const offset = (40 * entityScale) + 30;
 
       weaponsList.forEach((w: any) => {
         const slotIndex = w.slotIndex ?? w.SlotIndex;
@@ -388,10 +424,10 @@ export class EnemyRenderer {
         activeWeaponSlots.add(slotIndex);
 
         let wx = 0, wy = 0;
-        if (slotIndex === 0) { wx = halfW + 8; wy = 0; }
-        else if (slotIndex === 1) { wx = -(halfW + 8); wy = 0; }
-        else if (slotIndex === 2) { wx = 0; wy = -(halfH + 8); }
-        else if (slotIndex === 3) { wx = 0; wy = halfH + 8; }
+        if (slotIndex === 0) { wx = offset; wy = 0; }
+        else if (slotIndex === 1) { wx = -offset; wy = 0; }
+        else if (slotIndex === 2) { wx = 0; wy = -offset; }
+        else if (slotIndex === 3) { wx = 0; wy = offset; }
 
         const wConfig = configs.weapons ? (configs.weapons[wConfigId] || (configs.Weapons && configs.Weapons[wConfigId])) : null;
         let sprite = weaponsContainer.getByName(`weapon_${slotIndex}`) as Phaser.GameObjects.Sprite;
@@ -480,28 +516,34 @@ export class EnemyRenderer {
         const baseStats = config.baseStats || config.BaseStats;
         const isObstacle = baseStats && baseStats.speed === 0;
 
+        // >>> THE FIX: Distance-to-Target Interpolation Tracking <<<
         const targetX = se.x ?? se.X;
         const targetY = se.y ?? se.Y;
-        const velX = se.velX ?? (targetX - eContainer.x);
-        const velY = se.velY ?? (targetY - eContainer.y);
-        const isActuallyMoving = Math.abs(velX) > 0.5 || Math.abs(velY) > 0.5;
+
+        // If the visual container is more than 1 pixel away from the server's target, it is visibly moving/interpolating!
+        const distToTarget = Math.abs(targetX - eContainer.x) + Math.abs(targetY - eContainer.y);
+        const isActuallyMoving = distToTarget > 1.0;
+
+        // Safely check StopMoving (defaults to false)
+        let stopMoving = false;
+        const castingSkillId = se.currentCastingSkillId || se.CurrentCastingSkillId;
+        if (castingSkillId) {
+          const skillCfg = (configs.skills || configs.Skills)?.[castingSkillId];
+          if (skillCfg && (skillCfg.stopMoving === true || skillCfg.StopMoving === true)) stopMoving = true;
+        }
 
         let targetAnim = '';
 
         if (eActionState === "Dead" && config.animDeath) {
           targetAnim = `${config.id}_death`;
-        } else if (eActionState === "Casting") {
-          if (isObstacle) {
-            targetAnim = config.animIdle ? `${config.id}_idle` : '';
-          } else {
-            targetAnim = config.animAttack ? `${config.id}_attack` : (config.animIdle ? `${config.id}_idle` : '');
-          }
         } else if (eActionState === "Attacking" && config.animAttack) {
           targetAnim = `${config.id}_attack`;
-        } else if (eActionState === "Moving" && isActuallyMoving && config.animMove) {
-          targetAnim = `${config.id}_move`;
-        } else if (config.animIdle) {
-          targetAnim = `${config.id}_idle`;
+        } else {
+          if (isActuallyMoving && !stopMoving && !isObstacle && config.animMove) {
+            targetAnim = `${config.id}_move`;
+          } else if (config.animIdle) {
+            targetAnim = `${config.id}_idle`;
+          }
         }
 
         if (targetAnim !== '') {
@@ -514,31 +556,24 @@ export class EnemyRenderer {
         }
 
         const isDefaultRight = config.defaultFacingRight !== false;
+        const velX = se.velX ?? se.VelX ?? (targetX - eContainer.x);
 
         let faceRight = velX > 0.1;
         let faceLeft = velX < -0.1;
 
-        // If the enemy is actively attacking/casting, override movement direction with aim direction
         if ((eActionState === "Attacking" || eActionState === "Casting") && se.aimX !== undefined) {
           faceRight = se.aimX > targetX + 1;
           faceLeft = se.aimX < targetX - 1;
         }
 
-        // Apply the flip to the sprite
         if (faceRight) {
           body.setFlipX(!isDefaultRight);
         } else if (faceLeft) {
           body.setFlipX(isDefaultRight);
         }
 
+        if (!body.anims?.isPlaying && eActionState !== "Dead" && targetAnim !== '') body.anims?.resume();
 
-        if (eActionState === "Casting") {
-          if (!isObstacle && body.anims?.isPlaying) body.anims.pause();
-        } else {
-          if (!body.anims?.isPlaying && eActionState !== "Dead" && targetAnim !== '') body.anims?.resume();
-        }
-
-        // Detect skill cast completion: Casting → non-Casting transition
         const prevActionState = eContainer.getData('prevActionState');
         const prevCastSkillId = eContainer.getData('prevCastSkillId') as string | undefined;
         if (prevActionState === 'Casting' && eActionState !== 'Casting' && prevCastSkillId) {
@@ -547,14 +582,12 @@ export class EnemyRenderer {
         }
         eContainer.setData('prevActionState', eActionState);
         if (eActionState === 'Casting') {
-          const castingSkillId = se.currentCastingSkillId || se.CurrentCastingSkillId;
           if (castingSkillId) eContainer.setData('prevCastSkillId', castingSkillId);
         }
 
         const prevHp = eContainer.getData('prevHp');
         if (prevHp !== undefined && currentHp < prevHp) {
           eContainer.setData('flashTimer', scene.time.now + 150);
-          // Play the hit sound of the most recently destroyed projectile
           AudioManager.getInstance().playLastProjectileHitSound();
         }
         eContainer.setData('prevHp', currentHp);
@@ -780,8 +813,8 @@ export function applyVisualFX(scene: Phaser.Scene, container: Phaser.GameObjects
       container.add(fxSprite);
       yOffset -= 24;
     }
-    else if (colorTint && !isFlashing) {
-      const tintValue = parseInt(colorTint.replace('#', '0x'), 16);
+    else if (colorTint && !isFlashing && !isSkill) {
+      const tintValue = parseInt(colorTint.replace(/^#|^0x/i, ''), 16);
       mainSprite.setTint(tintValue);
     }
   };
