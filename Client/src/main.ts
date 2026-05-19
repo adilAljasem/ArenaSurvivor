@@ -2,15 +2,19 @@ import * as Phaser from 'phaser';
 import { HubConnectionBuilder, HubConnectionState } from '@microsoft/signalr';
 import { ShopUI, Tooltip } from './ui/UI';
 import { EscMenu } from './ui/EscMenu';
-import { PlayerRenderer, EnemyRenderer, WorldRenderer, precalculateSpriteTops } from './RenderSystems';
+import { ActorRenderer, WorldRenderer, precalculateSpriteTops } from './RenderSystems';
 import { AudioManager } from './AudioManager';
 import pako from 'pako';
+
 
 // --- SIGNALR CONNECTION ---
 const connection = new HubConnectionBuilder()
   .withUrl("http://localhost:5000/gameHub")
   .withAutomaticReconnect()
   .build();
+
+
+
 
 // --- INTERFACES ---
 interface EquippedWeapon { configId: string; slotIndex: number; level: number; }
@@ -484,9 +488,11 @@ class GameScene extends Phaser.Scene {
 
       state.projectiles = [];
 
-      const activePlayers = PlayerRenderer.render(this, state, this.playerSprites, masterConfigs, this.targetPositions);
-      const activeEnemies = EnemyRenderer.render(this, state, this.enemySprites, masterConfigs, this.targetPositions);
+      const activePlayers = ActorRenderer.render(this, state.players, this.playerSprites, masterConfigs, this.targetPositions, true);
 
+      // The 'false' flag at the end identifies them as Enemies
+      const activeEnemies = ActorRenderer.render(this, state.enemies, this.enemySprites, masterConfigs, this.targetPositions, false);
+      
       // Pass a dummy map to WorldRenderer so it ignores our local bullets
       const dummyMap = new Map();
       const { activePickups } = WorldRenderer.render(this, state, dummyMap, this.pickupSprites, masterConfigs, this.targetPositions) as any;

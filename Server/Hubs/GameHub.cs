@@ -141,168 +141,137 @@ public class GameHub : Hub
 
     public async Task BuyItem(string configId)
     {
-        if (_gameState.Players.TryGetValue(Context.ConnectionId, out var player))
+        if (!_gameState.Players.TryGetValue(Context.ConnectionId, out var player)) return;
+
+        lock (player)
         {
-            var shopItem = player.CurrentShop.FirstOrDefault(x => x.ConfigId == configId);
+            // Find the item in the player's personal shop
+            var shopItem = player.CurrentShop.FirstOrDefault(i => i.ConfigId == configId && !i.IsLocked);
             if (shopItem == null || player.Gold < shopItem.Price) return;
 
-            // 1. IS IT AN ITEM?
-            if (_configManager.Items.TryGetValue(configId, out var itemConfig))
-            {
-                var newlyBoughtItem = Server.Core.Systems.ItemGenerator.GenerateItem(configId, player, _configManager, 1);
-                newlyBoughtItem.RolledStats = shopItem.RolledStats ?? new Dictionary<string, float>();
+            bool success = false;
 
-                if (shopItem.WeaponSkills != null)
-                {
-                    foreach (var skillId in shopItem.WeaponSkills)
-                    {
-                        if (_configManager.Skills.TryGetValue(skillId, out var sCfg))
-                            newlyBoughtItem.ItemSkills.Add(new Server.Entities.ActiveSkill { ConfigId = skillId, CurrentCooldown = sCfg.CooldownSeconds });
-                    }
-                }
-
-                var existingItem = player.OwnedItems.FirstOrDefault(i =>
-                                    _configManager.Items.TryGetValue(i.ConfigId, out var existingCfg) &&
-                                    existingCfg.Tier == itemConfig.Tier && // >>> THE FIX: Must be same Tier! <<<
-                                    (
-                                        (!string.IsNullOrEmpty(itemConfig.ItemFamily) && existingCfg.ItemFamily == itemConfig.ItemFamily)
-                                        || i.ConfigId == configId
-                                    )
-                                );
-
-                if (existingItem != null)
-                {
-                    player.Gold -= shopItem.Price;
-                    var upgradedItem = Server.Core.Systems.ItemGenerator.MergeItems(existingItem, newlyBoughtItem, _configManager);
-                    player.OwnedItems.Remove(existingItem);
-                    player.OwnedItems.Add(upgradedItem);
-                }
-                else
-                {
-                    if (player.OwnedItems.Count < 5) // Assuming 5 max item slots
-                    {
-                        player.Gold -= shopItem.Price;
-                        var usedSlots = player.OwnedItems.Select(i => i.SlotIndex).ToList();
-                        int nextSlot = 0;
-                        while (usedSlots.Contains(nextSlot)) nextSlot++;
-
-                        newlyBoughtItem.SlotIndex = nextSlot;
-                        player.OwnedItems.Add(newlyBoughtItem);
-
-                        // Apply one-time traits
-                        foreach (var trait in itemConfig.Traits) player.Traits.Add(trait);
-                        if (itemConfig.EffectsOnPurchase.Contains("DuplicateNextItem")) player.DuplicateNextPurchase = true;
-                    }
-                    else return;
-                }
-
-                player.CurrentShop.Remove(shopItem);
-                await SendPlayerUI(player);
-                return;
-            }
-
-            // 2. IS IT A WEAPON?
+            // --- 1. IS IT A WEAPON? ---
             if (_configManager.Weapons.TryGetValue(configId, out var weaponConfig))
             {
-                var newlyBoughtWeapon = new Server.Entities.EquippedWeapon
+                var newWeapon = new Server.Entities.EquippedWeapon
                 {
-                    ConfigId = configId,
+                    ConfigId = shopItem.ConfigId,
                     Level = 1,
-                    SlotIndex = 0,
-                    RolledStats = shopItem.RolledStats ?? new Dictionary<string, float>()
+                    RolledStats = shopItem.RolledStats ?? new Dictionary<string, float>(),
+                    TotalBaseStats = shopItem.TotalBaseStats ?? new Dictionary<string, float>()
                 };
-                newlyBoughtWeapon.MergedConfigIds.Add(configId);
+
+                // Add the base config ID to the ancestry so future merges calculate stats correctly
+                newWeapon.MergedConfigIds.Add(configId);
 
                 if (shopItem.WeaponSkills != null)
                 {
                     foreach (var skillId in shopItem.WeaponSkills)
                     {
-                        if (_configManager.Skills.TryGetValue(skillId, out var sCfg))
-                        {
-                            newlyBoughtWeapon.WeaponSkills.Add(new Server.Entities.ActiveSkill { ConfigId = skillId, CurrentCooldown = sCfg.CooldownSeconds });
-                        }
+                        if (_configManager.Skills.TryGetValue(skillId, out var skillCfg))
+                            newWeapon.WeaponSkills.Add(new Server.Entities.ActiveSkill { ConfigId = skillId, CurrentCooldown = skillCfg.CooldownSeconds });
                     }
                 }
 
-                var existingWeapon = player.Weapons.FirstOrDefault(w =>
-                                        _configManager.Weapons.TryGetValue(w.ConfigId, out var existingCfg) &&
-                                        existingCfg.Tier == weaponConfig.Tier && // >>> THE FIX: Must be same Tier! <<<
-                                        (
-                                            (!string.IsNullOrEmpty(weaponConfig.WeaponFamily) && existingCfg.WeaponFamily == weaponConfig.WeaponFamily)
-                                            || w.ConfigId == configId
-                                        )
-                                    );
-
-                if (existingWeapon != null)
+                // >>> USE THE NEW HELPER <<<
+                success = player.TryAddOrMergeWeapon(newWeapon, _configManager);
+            }
+            // --- 2. IS IT AN ITEM? ---
+            else if (_configManager.Items.TryGetValue(configId, out var itemConfig))
+            {
+                var newItem = new Server.Entities.EquippedItem
                 {
-                    player.Gold -= shopItem.Price;
+                    ConfigId = shopItem.ConfigId,
+                    Level = 1,
+                    RolledStats = shopItem.RolledStats ?? new Dictionary<string, float>(),
+                    TotalBaseStats = shopItem.TotalBaseStats ?? new Dictionary<string, float>()
+                };
 
-                    // Merge using our pre-generated stats
-                    var upgradedWeapon = Server.Core.Systems.WeaponGenerator.MergeWeapons(existingWeapon, newlyBoughtWeapon, _configManager);
+                newItem.MergedConfigIds.Add(configId);
 
-                    player.Weapons.Remove(existingWeapon);
-                    player.Weapons.Add(upgradedWeapon);
-                }
-                else
+                if (shopItem.WeaponSkills != null)
                 {
-                    if (player.Weapons.Count < 4)
+                    foreach (var skillId in shopItem.WeaponSkills)
                     {
-                        player.Gold -= shopItem.Price;
-
-                        var usedSlots = player.Weapons.Select(w => w.SlotIndex).ToList();
-                        int nextSlot = 0;
-                        while (usedSlots.Contains(nextSlot)) nextSlot++;
-
-                        newlyBoughtWeapon.SlotIndex = nextSlot;
-                        player.Weapons.Add(newlyBoughtWeapon);
-                    }
-                    else
-                    {
-                        return; // Inventory full, gold is saved.
+                        if (_configManager.Skills.TryGetValue(skillId, out var skillCfg))
+                            newItem.ItemSkills.Add(new Server.Entities.ActiveSkill { ConfigId = skillId, CurrentCooldown = skillCfg.CooldownSeconds });
                     }
                 }
 
+                // >>> USE THE NEW HELPER <<<
+                success = player.TryAddOrMergeItem(newItem, _configManager);
+
+                // If it's a new item, safely apply any permanent traits it grants
+                if (success && itemConfig.Traits != null)
+                {
+                    foreach (var trait in itemConfig.Traits)
+                    {
+                        if (!player.Traits.Contains(trait)) player.Traits.Add(trait);
+                    }
+                }
+            }
+
+            // --- 3. FINALIZE TRANSACTION ---
+            if (success)
+            {
+                player.Gold -= shopItem.Price;
                 player.CurrentShop.Remove(shopItem);
-                await SendPlayerUI(player);
             }
         }
+
+        // Always update the UI instantly so the client sees the new gold and inventory!
+        await SendPlayerUI(player);
     }
 
     public async Task SelectLevelUpStat(string cardId)
     {
-        if (_gameState.Players.TryGetValue(Context.ConnectionId, out var player))
+        if (!_gameState.Players.TryGetValue(Context.ConnectionId, out var player)) return;
+
+        lock (player)
         {
-            if (player.PendingLevelUps > 0)
+            if (player.PendingLevelUps > 0 && player.CurrentLevelUpChoices.Any(c => c.Id == cardId))
             {
-                var card = player.CurrentLevelUpChoices.FirstOrDefault(c => c.Id == cardId);
-                if (card != null)
+                var card = player.CurrentLevelUpChoices.First(c => c.Id == cardId);
+
+                // Apply the stat bonus
+                player.Stats.AddModifier(card.StatName, card.Amount, 0);
+
+                player.PendingLevelUps--;
+                player.CurrentLevelUpChoices.Clear();
+
+                // If they leveled up multiple times at once, generate the next batch of choices immediately
+                if (player.PendingLevelUps > 0)
                 {
-                    // >>> FIX: We just pass the single Amount. The math engine handles the rest! <<<
-                    player.Stats.AddModifier(card.StatName, card.Amount, 0);
-
-                    player.PendingLevelUps--;
-                    player.CurrentLevelUpChoices.Clear();
-
-                    await SendPlayerUI(player);
+                    player.CurrentLevelUpChoices = _configManager.LevelUpCards.Values
+                        .OrderBy(x => Random.Shared.Next())
+                        .Take(3)
+                        .ToList();
                 }
             }
         }
+
+        // >>> THE FIX: Tell the client that the card was successfully consumed! <<<
+        await SendPlayerUI(player);
     }
 
     public async Task RerollShop()
     {
         if (_gameState.Players.TryGetValue(Context.ConnectionId, out var player))
         {
-            if (player.Gold >= player.CurrentRerollCost)
+            lock (player)
             {
-                // Deduct gold and increase cost for the next reroll
-                player.Gold -= player.CurrentRerollCost;
-                player.CurrentRerollCost += 1;
+                if (player.Gold >= player.CurrentRerollCost)
+                {
+                    // Deduct gold and increase cost for the next reroll
+                    player.Gold -= player.CurrentRerollCost;
+                    player.CurrentRerollCost += 1;
 
-                // Regenerate the non-locked items
-                Core.GameLoop.GenerateShopForPlayer(player, _configManager, _gameState.CurrentWave);
-                await SendPlayerUI(player); // Add this at the end of the success blocks!
+                    // Regenerate the non-locked items
+                    Core.GameLoop.GenerateShopForPlayer(player, _configManager, _gameState.CurrentWave);
+                }
             }
+            await SendPlayerUI(player);
         }
     }
 
@@ -332,86 +301,49 @@ public class GameHub : Hub
     public async Task TryPickupLoot(string pickupId)
     {
         if (!_gameState.Players.TryGetValue(Context.ConnectionId, out var player)) return;
-        if (!_gameState.Pickups.TryGetValue(pickupId, out var pickup)) return;
 
-        // Validate the pickup is a weapon or item (gold is auto-collected)
-        if (pickup.Type == Entities.PickupType.Gold) return;
-
-        // Validate the player is close enough (50px radius, larger than the 25px auto-gold radius)
-        float dx = player.X - pickup.X;
-        float dy = player.Y - pickup.Y;
-        if (dx * dx + dy * dy > 2500f) return; // 50² = 2500
-
-        // Atomically remove the pickup so two players can't grab the same drop
-        if (!_gameState.Pickups.TryRemove(pickupId, out _)) return;
-
-        if (pickup.Type == Entities.PickupType.Weapon && pickup.DroppedWeapon != null)
+        lock (player)
         {
-            var droppedWeapon = pickup.DroppedWeapon;
-            _configManager.Weapons.TryGetValue(droppedWeapon.ConfigId, out var droppedWCfg);
-
-            // >>> THE LEVEL JUMP FIX: Force dropped weapons to act purely as a Level 1 material! <<<
-            droppedWeapon.Level = 1;
-            droppedWeapon.MergedConfigIds.Clear();
-            droppedWeapon.MergedConfigIds.Add(droppedWeapon.ConfigId);
-
-            // Look for an existing weapon of the same family AND tier to merge with
-            EquippedWeapon? matchingWeapon = null;
-            if (droppedWCfg != null && !string.IsNullOrEmpty(droppedWCfg.WeaponFamily))
+            if (_gameState.Pickups.TryGetValue(pickupId, out var pickup))
             {
-                matchingWeapon = player.Weapons.FirstOrDefault(ow =>
-                    _configManager.Weapons.TryGetValue(ow.ConfigId, out var owCfg) &&
-                    owCfg.WeaponFamily == droppedWCfg.WeaponFamily &&
-                    owCfg.Tier == droppedWCfg.Tier); // >>> THE TIER FIX <<<
-            }
+                float distSq = (player.X - pickup.X) * (player.X - pickup.X) + (player.Y - pickup.Y) * (player.Y - pickup.Y);
+                if (distSq > 2500) return; // Must be within 50 pixels
 
-            if (matchingWeapon != null)
-            {
-                var merged = Server.Core.Systems.WeaponGenerator.MergeWeapons(matchingWeapon, droppedWeapon, _configManager);
-                merged.SlotIndex = matchingWeapon.SlotIndex;
-                player.Weapons[matchingWeapon.SlotIndex] = merged;
-            }
-            else
-            {
-                droppedWeapon.SlotIndex = player.Weapons.Count;
-                player.Weapons.Add(droppedWeapon);
-            }
-        }
-        else if (pickup.Type == Entities.PickupType.Item && pickup.DroppedItem != null)
-        {
-            var droppedItem = pickup.DroppedItem;
-            _configManager.Items.TryGetValue(droppedItem.ConfigId, out var droppedICfg);
+                bool success = false;
 
-            // >>> THE LEVEL JUMP FIX: Force dropped items to act purely as a Level 1 material! <<<
-            droppedItem.Level = 1;
-            droppedItem.MergedConfigIds.Clear();
-            droppedItem.MergedConfigIds.Add(droppedItem.ConfigId);
+                if (pickup.Type == Server.Entities.PickupType.Weapon && pickup.DroppedWeapon != null)
+                {
+                    // Force dropped gear to act purely as a Level 1 material before merging!
+                    pickup.DroppedWeapon.Level = 1;
+                    pickup.DroppedWeapon.MergedConfigIds.Clear();
+                    pickup.DroppedWeapon.MergedConfigIds.Add(pickup.DroppedWeapon.ConfigId);
 
-            // Look for an existing item of the same family AND tier to merge with
-            EquippedItem? matchingItem = null;
-            if (droppedICfg != null && !string.IsNullOrEmpty(droppedICfg.ItemFamily))
-            {
-                matchingItem = player.OwnedItems.FirstOrDefault(oi =>
-                    _configManager.Items.TryGetValue(oi.ConfigId, out var oiCfg) &&
-                    oiCfg.ItemFamily == droppedICfg.ItemFamily &&
-                    oiCfg.Tier == droppedICfg.Tier); // >>> THE TIER FIX <<<
-            }
+                    success = player.TryAddOrMergeWeapon(pickup.DroppedWeapon, _configManager);
+                }
+                else if (pickup.Type == Server.Entities.PickupType.Item && pickup.DroppedItem != null)
+                {
+                    // Force dropped gear to act purely as a Level 1 material before merging!
+                    pickup.DroppedItem.Level = 1;
+                    pickup.DroppedItem.MergedConfigIds.Clear();
+                    pickup.DroppedItem.MergedConfigIds.Add(pickup.DroppedItem.ConfigId);
 
-            if (matchingItem != null)
-            {
-                var merged = Server.Core.Systems.ItemGenerator.MergeItems(matchingItem, droppedItem, _configManager);
-                merged.SlotIndex = matchingItem.SlotIndex;
-                player.OwnedItems[matchingItem.SlotIndex] = merged;
-            }
-            else
-            {
-                droppedItem.SlotIndex = player.OwnedItems.Count;
-                player.OwnedItems.Add(droppedItem);
+                    success = player.TryAddOrMergeItem(pickup.DroppedItem, _configManager);
+                }
+
+                if (success)
+                {
+                    _gameState.Pickups.TryRemove(pickupId, out _);
+                }
             }
         }
 
+        // >>> FIX: Tell the UI to instantly update so the Shop/Inventory reflects the new gear! <<<
         await SendPlayerUI(player);
     }
+
+
+
+
 
 
 }

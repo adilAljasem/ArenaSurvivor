@@ -198,4 +198,75 @@ public class PlayerEntity : BaseActorEntity
             PendingLevelUps++; // Stores the level up for the shop phase!
         }
     }
+
+    public bool TryAddOrMergeWeapon(EquippedWeapon incomingWeapon, ConfigManager configs)
+    {
+        configs.Weapons.TryGetValue(incomingWeapon.ConfigId, out var incomingCfg);
+
+        // 1. Find a match based on TIER and (FAMILY or EXACT ID)
+        var match = Weapons.FirstOrDefault(w =>
+        {
+            if (!configs.Weapons.TryGetValue(w.ConfigId, out var existingCfg) || incomingCfg == null) return false;
+
+            return existingCfg.Tier == incomingCfg.Tier &&
+                   (
+                       (!string.IsNullOrEmpty(incomingCfg.WeaponFamily) && existingCfg.WeaponFamily == incomingCfg.WeaponFamily)
+                       || w.ConfigId == incomingWeapon.ConfigId
+                   );
+        });
+
+        // 2. If we found a match, Merge them!
+        if (match != null)
+        {
+            Weapons.Remove(match);
+            var mergedWeapon = Server.Core.Systems.WeaponGenerator.MergeWeapons(match, incomingWeapon, configs);
+            mergedWeapon.SlotIndex = match.SlotIndex;
+            Weapons.Add(mergedWeapon);
+            return true;
+        }
+
+        // 3. Otherwise, try to put it in an empty slot (Max 4 slots)
+        for (int i = 0; i < 4; i++)
+        {
+            if (!Weapons.Any(w => w.SlotIndex == i))
+            {
+                incomingWeapon.SlotIndex = i;
+                Weapons.Add(incomingWeapon);
+                return true;
+            }
+        }
+        return false; // Inventory is full
+    }
+
+    public bool TryAddOrMergeItem(EquippedItem incomingItem, ConfigManager configs)
+    {
+        configs.Items.TryGetValue(incomingItem.ConfigId, out var incomingCfg);
+
+        // 1. Find a match based on TIER and (FAMILY or EXACT ID)
+        var match = OwnedItems.FirstOrDefault(i =>
+        {
+            if (!configs.Items.TryGetValue(i.ConfigId, out var existingCfg) || incomingCfg == null) return false;
+
+            return existingCfg.Tier == incomingCfg.Tier &&
+                   (
+                       (!string.IsNullOrEmpty(incomingCfg.ItemFamily) && existingCfg.ItemFamily == incomingCfg.ItemFamily)
+                       || i.ConfigId == incomingItem.ConfigId
+                   );
+        });
+
+        // 2. If we found a match, Merge them!
+        if (match != null)
+        {
+            OwnedItems.Remove(match);
+            var mergedItem = Server.Core.Systems.ItemGenerator.MergeItems(match, incomingItem, configs);
+            mergedItem.SlotIndex = match.SlotIndex;
+            OwnedItems.Add(mergedItem);
+            return true;
+        }
+
+        // 3. Otherwise, add to endless item inventory
+        incomingItem.SlotIndex = OwnedItems.Count;
+        OwnedItems.Add(incomingItem);
+        return true;
+    }
 }

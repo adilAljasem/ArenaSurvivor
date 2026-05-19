@@ -61,92 +61,57 @@ public class ConfigManager
     }
     public void LoadConfigs()
     {
-        // Reads the JSON file into memory
-        var enemyJson = File.ReadAllText("Configs/Enemies.json");
-        Enemies = JsonSerializer.Deserialize<Dictionary<string, EnemyConfig>>(
-            enemyJson,
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-        ) ?? new();
-
-        Console.WriteLine($"Loaded {Enemies.Count} Enemy Configs.");
-
-        var weaponJson = File.ReadAllText("Configs/Weapons.json");
-        Weapons = JsonSerializer.Deserialize<Dictionary<string, WeaponConfig>>(
-            weaponJson,
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-        ) ?? new();
-        Console.WriteLine($"Loaded {Weapons.Count} Weapon Configs.");
-
-        if (File.Exists("Configs/Items.json"))
+        try
         {
-            var itemJson = File.ReadAllText("Configs/Items.json");
-            Items = JsonSerializer.Deserialize<Dictionary<string, ItemConfig>>(
-                itemJson,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-            ) ?? new();
-            Console.WriteLine($"Loaded {Items.Count} Item Configs.");
+            // 1. Load EVERYTHING into TEMPORARY variables first
+            var newEnemies = JsonSerializer.Deserialize<Dictionary<string, EnemyConfig>>(
+                File.ReadAllText("Configs/Enemies.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
+
+            var newWeapons = JsonSerializer.Deserialize<Dictionary<string, WeaponConfig>>(
+                File.ReadAllText("Configs/Weapons.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
+
+            var newItems = File.Exists("Configs/Items.json") ? JsonSerializer.Deserialize<Dictionary<string, ItemConfig>>(
+                File.ReadAllText("Configs/Items.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
+
+            var newCharacters = File.Exists("Configs/Characters.json") ? JsonSerializer.Deserialize<Dictionary<string, CharacterConfig>>(
+                File.ReadAllText("Configs/Characters.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
+
+            var newEffects = File.Exists("Configs/Effects.json") ? JsonSerializer.Deserialize<Dictionary<string, EffectConfig>>(
+                File.ReadAllText("Configs/Effects.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
+
+            var newSkills = File.Exists("Configs/Skills.json") ? JsonSerializer.Deserialize<Dictionary<string, SkillConfig>>(
+                File.ReadAllText("Configs/Skills.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
+
+            var newMaps = File.Exists("Configs/Maps.json") ? JsonSerializer.Deserialize<Dictionary<string, MapConfig>>(
+                File.ReadAllText("Configs/Maps.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
+
+            // >>> THE ONES I FORGOT! <<<
+            var newProjectiles = File.Exists("Configs/Projectiles.json") ? JsonSerializer.Deserialize<Dictionary<string, ProjectileConfig>>(
+                File.ReadAllText("Configs/Projectiles.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
+
+            var newLevelUpCards = File.Exists("Configs/LevelUpCards.json") ? JsonSerializer.Deserialize<Dictionary<string, LevelUpCardConfig>>(
+                File.ReadAllText("Configs/LevelUpCards.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
+
+            var newStats = File.Exists("Configs/Stats.json") ? JsonSerializer.Deserialize<List<string>>(
+                File.ReadAllText("Configs/Stats.json")) ?? new() : new();
+
+            // 2. ATOMIC SWAP: Reassign everything at the exact same time!
+            Enemies = newEnemies;
+            Weapons = newWeapons;
+            Items = newItems;
+            Characters = newCharacters;
+            Effects = newEffects;
+            Skills = newSkills;
+            Maps = newMaps;
+            Projectiles = newProjectiles;
+            LevelUpCards = newLevelUpCards;
+            AllStats = newStats;
+
+            Console.WriteLine($"[CONFIG] Loaded successfully: {Enemies.Count} Enemies, {Weapons.Count} Weapons, {Projectiles.Count} Projectiles.");
         }
-
-        if (File.Exists("Configs/Characters.json"))
+        catch (Exception ex)
         {
-            var charJson = File.ReadAllText("Configs/Characters.json");
-            Characters = JsonSerializer.Deserialize<Dictionary<string, CharacterConfig>>(
-                charJson,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-            ) ?? new();
-            Console.WriteLine($"Loaded {Characters.Count} Character Configs.");
-        }
-
-        if (File.Exists("Configs/Stats.json"))
-        {
-            var statsJson = File.ReadAllText("Configs/Stats.json");
-            AllStats = System.Text.Json.JsonSerializer.Deserialize<List<string>>(statsJson) ?? new();
-            Console.WriteLine($"Loaded {AllStats.Count} Master Stats.");
-        }
-
-        if (File.Exists("Configs/LevelUpCards.json"))
-        {
-            var lvlJson = File.ReadAllText("Configs/LevelUpCards.json");
-            LevelUpCards = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, LevelUpCardConfig>>(
-                lvlJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-            ) ?? new();
-            Console.WriteLine($"Loaded {LevelUpCards.Count} Level Up Cards.");
-        }
-
-        if (File.Exists("Configs/Projectiles.json"))
-        {
-            var projJson = File.ReadAllText("Configs/Projectiles.json");
-            Projectiles = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, ProjectileConfig>>(
-                projJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-            ) ?? new();
-            Console.WriteLine($"Loaded {Projectiles.Count} Projectiles.");
-        }
-
-        if (File.Exists("Configs/Effects.json"))
-        {
-            var effectJson = File.ReadAllText("Configs/Effects.json");
-            Effects = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, EffectConfig>>(
-                effectJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-            ) ?? new();
-            Console.WriteLine($"Loaded {Effects.Count} Effects.");
-        }
-
-        if (File.Exists("Configs/Skills.json"))
-        {
-            var skillsJson = File.ReadAllText("Configs/Skills.json");
-            Skills = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, SkillConfig>>(
-                skillsJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-            ) ?? new();
-            Console.WriteLine($"Loaded {Skills.Count} Skills.");
-        }
-
-        if (File.Exists("Configs/Maps.json"))
-        {
-            var mapsJson = File.ReadAllText("Configs/Maps.json");
-            Maps = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, MapConfig>>(
-                mapsJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-            ) ?? new();
-            Console.WriteLine($"Loaded {Maps.Count} Maps.");    
+            Console.WriteLine($"[CONFIG ERROR] Failed to parse JSON. Game will continue using old configs. Error: {ex.Message}");
         }
     }
 }

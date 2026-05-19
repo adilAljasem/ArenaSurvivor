@@ -106,7 +106,7 @@
     "projectileSpeed": 500,
     "projectileId": "shotgun_shell",
     "range": 300,
-    "textureKey": "ammo_sheet2",
+    "textureKey": "weapons_sheet",
     "scale": 0.15,
     "iconFrame": 12,
     "defaultFacingRight": true,
@@ -294,13 +294,13 @@
     "damageScaling": {
       "elementalDamage": 1.0
     },
-    "grantedSkills": [],
+    "grantedSkills": ["magic_missile"],
     "statRollChance": 0.50,
     "maxRandomStats": 2,
     "allowedRandomStats": ["critChance", "elementalDamage", "maxHp"],
     "skillRollChance": 0.15,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": ["magic_missile", "frost_nova", "nature_pulse"]
+    "allowedRandomSkills": [ "frost_nova", "nature_pulse"]
   },
   "potato_thrower": {
     "id": "potato_thrower",

@@ -36,7 +36,7 @@
         "id": "fireball",
         "name": "Fireball",
         "textureKey": "ammo_sheet",
-        "scale": 0.5,
+        "scale": 1.5,
         "animFly": [
             8,
             11

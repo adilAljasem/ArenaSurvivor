@@ -467,7 +467,6 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
         this.weaponGrid.add(this.scene.add.text(0, -25, 'Weapons', titleStyle));
 
         // ---- Item slots ----
-        // ---- Item slots ----
         for (let i = 0; i < 5; i++) {
             const slotX = i * 75;
             const slotBg = this.scene.add.graphics();
@@ -483,9 +482,11 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
 
                 // >>> FIX: Items now have Levels! <<<
                 const iLevel = itemData.level || itemData.Level || 1;
+                const iTier = config?.tier ?? config?.Tier ?? 1;
 
                 if (config) {
-                    slotBg.lineStyle(2, UIHelpers.getTierColorHex(iLevel), 1);
+                    // >>> USE TIER FOR COLOR <<<
+                    slotBg.lineStyle(2, UIHelpers.getTierColorHex(iTier), 1);
                     slotBg.strokeRoundedRect(slotX, 0, 65, 65, 8);
                 }
 
@@ -509,8 +510,6 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                     hitbox.on('pointerover', (p: Phaser.Input.Pointer) => {
                         slotBg.lineStyle(2, 0xffffff, 1);
                         slotBg.strokeRoundedRect(slotX, 0, 65, 65, 8);
-
-                        // >>> FIX: Pass all the new random stats and skills to the Tooltip! <<<
                         this.tooltip.show(
                             config, p.x, p.y, iLevel, this.atlasConfigs,
                             itemData.totalBaseStats ?? itemData.TotalBaseStats,
@@ -522,7 +521,8 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                     hitbox.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip.updatePosition(p.x, p.y));
 
                     hitbox.on('pointerout', () => {
-                        slotBg.lineStyle(2, UIHelpers.getTierColorHex(iLevel), 1);
+                        // >>> USE TIER FOR COLOR <<<
+                        slotBg.lineStyle(2, UIHelpers.getTierColorHex(iTier), 1);
                         slotBg.strokeRoundedRect(slotX, 0, 65, 65, 8);
                         this.tooltip.hide();
                     });
@@ -556,9 +556,11 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                 const weaponData = weapons[i];
                 const config = atlasConfigs?.weapons?.[weaponData.configId] ?? null;
                 const wLevel = weaponData.level || 1;
+                const wTier = config?.tier ?? config?.Tier ?? 1;
 
                 if (config) {
-                    slotBg.lineStyle(2, UIHelpers.getTierColorHex(wLevel), 1);
+                    // >>> USE TIER FOR COLOR <<<
+                    slotBg.lineStyle(2, UIHelpers.getTierColorHex(wTier), 1);
                     slotBg.strokeRoundedRect(slotX, slotY, 65, 65, 8);
                 }
 
@@ -579,34 +581,22 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                     .setScrollFactor(0);
 
                 if (config) {
-                    const toolTipConfig = { ...config, tier: wLevel };
-                    const rolledStats = weaponData.rolledStats ?? weaponData.RolledStats;
-                    const weaponSkills = weaponData.weaponSkills ?? weaponData.WeaponSkills;
-
-                    // Inside your weapon slots loop:
                     hitbox.on('pointerover', (p: Phaser.Input.Pointer) => {
                         slotBg.lineStyle(2, 0xffffff, 1);
                         slotBg.strokeRoundedRect(slotX, slotY, 65, 65, 8);
-
-                        // >>> THE FIX: Use wLevel instead of config.tier! <<<
                         this.tooltip.show(
-                            config,
-                            p.x,
-                            p.y,
-                            wLevel,
-                            atlasConfigs,
+                            config, p.x, p.y, wLevel, atlasConfigs,
                             weaponData.totalBaseStats ?? weaponData.TotalBaseStats,
                             weaponData.rolledStats ?? weaponData.RolledStats,
                             weaponData.weaponSkills ?? weaponData.WeaponSkills
                         );
                     });
 
-                    hitbox.on('pointermove', (p: Phaser.Input.Pointer) =>
-                        this.tooltip.updatePosition(p.x, p.y));
+                    hitbox.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip.updatePosition(p.x, p.y));
 
                     hitbox.on('pointerout', () => {
-                        // >>> BONUS FIX: Revert the border color back to normal when mouse leaves! <<<
-                        slotBg.lineStyle(2, UIHelpers.getTierColorHex(wLevel), 1);
+                        // >>> USE TIER FOR COLOR <<<
+                        slotBg.lineStyle(2, UIHelpers.getTierColorHex(wTier), 1);
                         slotBg.strokeRoundedRect(slotX, slotY, 65, 65, 8);
                         this.tooltip.hide();
                     });
