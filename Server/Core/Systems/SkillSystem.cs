@@ -9,7 +9,8 @@ namespace Server.Core.Systems;
 
 public static class SkillSystem
 {
-    public static void Process(float dt, GameState state, ConfigManager configs, List<DamageEventDto> damageEvents, List<AoeEventDto> aoeEvents)
+    public static void Process(float dt, GameState state, ConfigManager configs,
+        List<DamageEventDto> damageEvents, List<AoeEventDto> aoeEvents, List<BeamEventDto> beamEvents)
     {
         // 1. Process Enemy Skills
         foreach (var enemy in state.Enemies.Values)
@@ -39,14 +40,15 @@ public static class SkillSystem
 
                             if (castTime <= 0)
                             {
-                                ExecuteSkill(skillConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team, damageEvents, aoeEvents, state, configs);
-                                enemy.ActionState = "Idle";
+                                ExecuteSkill(skillConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team, damageEvents, aoeEvents, beamEvents, state, configs); enemy.ActionState = "Idle";
                                 enemy.CurrentCastingSkillId = string.Empty;
                             }
                         }
                     }
                 }
             }
+
+
 
             // >>> THE BULLETPROOF CASTING PIPELINE <<<
             // By checking the Timer instead of the State, spells can never be accidentally aborted!
@@ -58,7 +60,8 @@ public static class SkillSystem
                 {
                     if (configs.Skills.TryGetValue(enemy.CurrentCastingSkillId, out var castConfig))
                     {
-                        ExecuteSkill(castConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team, damageEvents, aoeEvents, state, configs);
+                        // FIXED: Using castConfig instead of skillConfig
+                        ExecuteSkill(castConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team, damageEvents, aoeEvents, beamEvents, state, configs);
                     }
                     enemy.ActionState = "Idle";
                     enemy.CurrentCastingSkillId = string.Empty;
@@ -110,8 +113,7 @@ public static class SkillSystem
 
                             if (castTime <= 0)
                             {
-                                ExecuteSkill(skillConfig, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, state, configs);
-                                player.ActionState = "Idle";
+                                ExecuteSkill(skillConfig, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, beamEvents, state, configs);
                                 player.CurrentCastingSkillId = string.Empty;
                             }
                         }
@@ -128,7 +130,7 @@ public static class SkillSystem
                 {
                     if (configs.Skills.TryGetValue(player.CurrentCastingSkillId, out var castConfig))
                     {
-                        ExecuteSkill(castConfig, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, state, configs);
+                        ExecuteSkill(castConfig, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, beamEvents, state, configs);
                     }
                     player.ActionState = "Idle";
                     player.CurrentCastingSkillId = string.Empty;
@@ -163,7 +165,7 @@ public static class SkillSystem
                     {
                         if (config.TriggerType == SkillTriggerType.Auto)
                         {
-                            ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, state, configs);
+                            ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, beamEvents, state, configs);
                             iSkill.CurrentCooldown = config.CooldownSeconds;
                         }
                     }
@@ -182,7 +184,7 @@ public static class SkillSystem
                         if (config.TriggerType == SkillTriggerType.Auto)
                         {
                             // Instantly fires the skill in the background without locking the player!
-                            ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, state, configs);
+                            ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, beamEvents, state, configs);
                             wSkill.CurrentCooldown = config.CooldownSeconds;
                         }
                     }
@@ -192,7 +194,7 @@ public static class SkillSystem
     }
 
     public static void ExecuteSkill(SkillConfig config, string casterId, float startX, float startY, string team,
-        List<DamageEventDto> damageEvents, List<AoeEventDto> aoeEvents, GameState state, ConfigManager configs)
+        List<DamageEventDto> damageEvents, List<AoeEventDto> aoeEvents, List<BeamEventDto> beamEvents, GameState state, ConfigManager configs)
     {
         // --- ACTION: SELF BUFF ---
         if (config.ActionType == SkillActionType.SelfBuff)
@@ -295,22 +297,86 @@ public static class SkillSystem
 
             if (length > 0)
             {
-                var bullet = new ProjectileEntity
-                {
-                    ConfigId = projConfig.Id,
-                    OwnerId = casterId,
-                    X = startX,
-                    Y = startY,
-                    VelX = (dirX / length) * projConfig.BaseSpeed,
-                    VelY = (dirY / length) * projConfig.BaseSpeed,
-                    Damage = config.BaseDamage,
-                    HitRadius = projConfig.HitRadius,
-                    Lifespan = 5f,
-                    ApplyEffectsOnHit = new List<string>(config.ApplyEffects),
-                    Team = team
-                };
+                // >>> NEW: Multi-Projectile & Orbital Support <<<
+                int pCount = Math.Max(1, config.ProjectileCount);
+                float angleStep = (float)(Math.PI * 2 / pCount);
+                float baseAngle = (float)Math.Atan2(dirY, dirX);
 
-                state.Projectiles.TryAdd(bullet.Id, bullet);
+                for (int i = 0; i < pCount; i++)
+                {
+                    float currentAngle = baseAngle;
+                    if (projConfig.MovementBehavior == "Orbital") currentAngle = angleStep * i;
+                    var bullet = new ProjectileEntity
+                    {
+                        ConfigId = projConfig.Id,
+                        OwnerId = casterId,
+                        X = startX,
+                        Y = startY,
+                        // If linear, store standard velocity. If orbital, store angular speed in VelX!
+                        VelX = projConfig.MovementBehavior == "Orbital" ? projConfig.BaseSpeed : (float)Math.Cos(currentAngle) * projConfig.BaseSpeed,
+                        VelY = projConfig.MovementBehavior == "Orbital" ? 0 : (float)Math.Sin(currentAngle) * projConfig.BaseSpeed,
+                        Damage = config.BaseDamage,
+                        HitRadius = projConfig.HitRadius,
+                        Lifespan = projConfig.Lifespan > 0 ? projConfig.Lifespan : 5f,
+                        ApplyEffectsOnHit = new List<string>(config.ApplyEffects),
+                        Team = team,
+
+                        MovementBehavior = projConfig.MovementBehavior,
+                        OrbitRadius = projConfig.OrbitRadius,
+                        OrbitAngleOffset = currentAngle, // Start position on the circle
+                        OnDeathSkillId = projConfig.OnDeathSkillId
+                    };
+
+                    state.Projectiles.TryAdd(bullet.Id, bullet);
+                }
+            }
+        }
+
+        // --- ACTION: BEAM (NEW) ---
+        if (config.ActionType == SkillActionType.Beam)
+        {
+            // 1. Find Target (same logic as projectiles)
+            float aimX = startX + 1; float aimY = startY;
+            // ... (Implement your TargetType checking here to get aimX/aimY) ...
+
+            float dirX = aimX - startX; float dirY = aimY - startY;
+            float length = (float)Math.Sqrt(dirX * dirX + dirY * dirY);
+            if (length == 0) return;
+
+            // Normalize and extend to Beam Range
+            float endX = startX + (dirX / length) * config.Range;
+            float endY = startY + (dirY / length) * config.Range;
+
+            beamEvents.Add(new BeamEventDto { StartX = startX, StartY = startY, TargetX = endX, TargetY = endY, Width = config.BeamWidth, ColorTint = config.ColorTint });
+
+            float hitThresholdSq = (config.BeamWidth / 2) * (config.BeamWidth / 2);
+
+            // 2. Line Segment Collision (Zero Garbage Collection Raycast)
+            var targets = team == "Player" ? state.Enemies.Values.Cast<BaseActorEntity>() : state.Players.Values.Cast<BaseActorEntity>();
+
+            foreach (var target in targets)
+            {
+                if (target.ActionState == "Dead" || target.Team == team) continue;
+
+                float fx = target.X - startX; float fy = target.Y - startY;
+                float rx = endX - startX; float ry = endY - startY;
+                float rayLenSq = rx * rx + ry * ry;
+
+                float t = rayLenSq == 0 ? 0 : Math.Max(0, Math.Min(1, (fx * rx + fy * ry) / rayLenSq));
+                float closestX = startX + t * rx; float closestY = startY + t * ry;
+
+                float distX = closestX - target.X; float distY = closestY - target.Y;
+                float distSqToSegment = (distX * distX) + (distY * distY);
+
+                // Adjust threshold to account for target's own hit radius
+                float effectiveRadius = (config.BeamWidth / 2) + 15f; // Assume 15f base radius
+
+                if (distSqToSegment <= (effectiveRadius * effectiveRadius))
+                {
+                    target.CurrentHp -= config.BaseDamage;
+                    damageEvents.Add(new DamageEventDto { X = target.X, Y = target.Y, Amount = config.BaseDamage });
+                    // Apply effects...
+                }
             }
         }
 
@@ -354,7 +420,6 @@ public static class SkillSystem
             bool isHeal = config.BaseDamage < 0;
             float actualDamage = isHeal ? -Math.Abs(config.BaseDamage) : config.BaseDamage;
 
-            // >>> FIX: Pass the config.Id to the DTO! <<<
             aoeEvents.Add(new AoeEventDto
             {
                 X = startX,
@@ -366,7 +431,6 @@ public static class SkillSystem
 
             float radiusSq = config.Radius * config.Radius;
 
-            // Helper function to apply effects
             void ApplyAoeEffects(List<ActiveEffect> targetEffects)
             {
                 if (config.ApplyEffects != null)
@@ -383,21 +447,23 @@ public static class SkillSystem
                 }
             }
 
-            if (team == "Player")
+            // Bulletproof team checking
+            bool isPlayerTeam = string.IsNullOrEmpty(team) || team == "Player";
+
+            if (isPlayerTeam)
             {
-                if (!isHeal) // Hurt Enemies
+                if (!isHeal) // ⚔️ HURT ENEMIES
                 {
                     foreach (var enemy in state.Enemies.Values)
                     {
                         if (enemy.ActionState == "Dead") continue;
-                        if (enemy.Team == team) continue; // Don't hurt friendlies
+                        if (enemy.Team == "Player") continue; // Don't hurt friendly summons
+
                         float distSq = (enemy.X - startX) * (enemy.X - startX) + (enemy.Y - startY) * (enemy.Y - startY);
                         if (distSq <= radiusSq)
                         {
                             enemy.CurrentHp -= actualDamage;
                             damageEvents.Add(new DamageEventDto { X = enemy.X, Y = enemy.Y, Amount = actualDamage });
-
-                            // >>> FIX 1: Apply Stuns/Debuffs here! <<<
                             ApplyAoeEffects(enemy.ActiveEffects);
 
                             if (enemy.CurrentHp <= 0 && enemy.ActionState != "Dead")
@@ -406,16 +472,15 @@ public static class SkillSystem
                                 var gold = new PickupEntity { X = enemy.X, Y = enemy.Y, Value = 1 };
                                 state.Pickups.TryAdd(gold.Id, gold);
 
-                                // >>> THE FIX: Enemies killed by AoE spells now trigger Death Skills! <<<
                                 if (configs.Enemies.TryGetValue(enemy.ConfigId, out var eCfg))
                                 {
-                                    FireOnDeathSkills(enemy.Id, enemy.X, enemy.Y, enemy.Team, eCfg.OnDeathSkills, state, configs, damageEvents, aoeEvents);
+                                    FireOnDeathSkills(enemy.Id, enemy.X, enemy.Y, enemy.Team, eCfg.OnDeathSkills, state, configs, damageEvents, aoeEvents, beamEvents);
                                 }
                             }
                         }
                     }
                 }
-                else // Heal Players AND Friendly Summons
+                else // 💖 HEAL PLAYERS & SUMMONS
                 {
                     // 1. Heal Players
                     foreach (var ally in state.Players.Values)
@@ -425,38 +490,41 @@ public static class SkillSystem
                         {
                             float maxHp = ally.GetTotalStat("maxHp", configs);
                             float healAmount = Math.Min(Math.Abs(actualDamage), maxHp - ally.CurrentHp);
-                            ally.CurrentHp += healAmount;
 
-                            if (healAmount > 0) damageEvents.Add(new DamageEventDto { X = ally.X, Y = ally.Y, Amount = -healAmount });
-
+                            if (healAmount > 0)
+                            {
+                                ally.CurrentHp += healAmount;
+                                damageEvents.Add(new DamageEventDto { X = ally.X, Y = ally.Y, Amount = -healAmount });
+                            }
                             ApplyAoeEffects(ally.ActiveEffects);
                         }
                     }
 
-                    // 2. Heal Friendly Summons (The Trees!)
+                    // 2. Heal Friendly Summons
                     foreach (var summon in state.Enemies.Values)
                     {
-                        if (summon.ActionState == "Dead" || summon.Team != team) continue;
+                        if (summon.ActionState == "Dead" || summon.Team != "Player") continue;
 
                         float distSq = (summon.X - startX) * (summon.X - startX) + (summon.Y - startY) * (summon.Y - startY);
                         if (distSq <= radiusSq)
                         {
                             float maxHp = summon.GetTotalStat("maxHp", configs);
                             float healAmount = Math.Min(Math.Abs(actualDamage), maxHp - summon.CurrentHp);
-                            summon.CurrentHp += healAmount;
 
-                            if (healAmount > 0) damageEvents.Add(new DamageEventDto { X = summon.X, Y = summon.Y, Amount = -healAmount });
-
+                            if (healAmount > 0)
+                            {
+                                summon.CurrentHp += healAmount;
+                                damageEvents.Add(new DamageEventDto { X = summon.X, Y = summon.Y, Amount = -healAmount });
+                            }
                             ApplyAoeEffects(summon.ActiveEffects);
                         }
                     }
                 }
             }
-            else if (team == "Enemy")
+            else // ENEMY TEAM CASTING
             {
-                if (!isHeal) // Hurt Players and Friendly Summons
+                if (!isHeal) // ⚔️ HURT PLAYERS & SUMMONS
                 {
-                    // 1. Hurt Players
                     foreach (var player in state.Players.Values)
                     {
                         float distSq = (player.X - startX) * (player.X - startX) + (player.Y - startY) * (player.Y - startY);
@@ -468,45 +536,45 @@ public static class SkillSystem
                         }
                     }
 
-                    // 2. Hurt Friendly Summons
                     foreach (var summon in state.Enemies.Values)
                     {
-                        if (summon.ActionState == "Dead") continue;
-                        if (summon.Team != team) // If enemy is Hostile, this hurts "Player" team summons
-                        {
-                            float distSq = (summon.X - startX) * (summon.X - startX) + (summon.Y - startY) * (summon.Y - startY);
-                            if (distSq <= radiusSq)
-                            {
-                                summon.CurrentHp -= actualDamage;
-                                damageEvents.Add(new DamageEventDto { X = summon.X, Y = summon.Y, Amount = actualDamage });
-                                ApplyAoeEffects(summon.ActiveEffects);
+                        if (summon.ActionState == "Dead" || summon.Team == "Enemy") continue; // Only hurt player team
 
-                                if (summon.CurrentHp <= 0 && summon.ActionState != "Dead")
+                        float distSq = (summon.X - startX) * (summon.X - startX) + (summon.Y - startY) * (summon.Y - startY);
+                        if (distSq <= radiusSq)
+                        {
+                            summon.CurrentHp -= actualDamage;
+                            damageEvents.Add(new DamageEventDto { X = summon.X, Y = summon.Y, Amount = actualDamage });
+                            ApplyAoeEffects(summon.ActiveEffects);
+
+                            if (summon.CurrentHp <= 0 && summon.ActionState != "Dead")
+                            {
+                                summon.ActionState = "Dead";
+                                if (configs.Enemies.TryGetValue(summon.ConfigId, out var eCfg))
                                 {
-                                    summon.ActionState = "Dead";
-                                    if (configs.Enemies.TryGetValue(summon.ConfigId, out var eCfg))
-                                    {
-                                        FireOnDeathSkills(summon.Id, summon.X, summon.Y, summon.Team, eCfg.OnDeathSkills, state, configs, damageEvents, aoeEvents);
-                                    }
+                                    FireOnDeathSkills(summon.Id, summon.X, summon.Y, summon.Team, eCfg.OnDeathSkills, state, configs, damageEvents, aoeEvents, beamEvents);
                                 }
                             }
                         }
                     }
                 }
-                else // Heal Enemies (Boss healing its minions!)
+                else // 💖 HEAL ENEMIES
                 {
                     foreach (var ally in state.Enemies.Values)
                     {
-                        if (ally.ActionState == "Dead") continue;
-                        if (ally.Team != team) continue; // Only heal same-team entities
+                        if (ally.ActionState == "Dead" || ally.Team != "Enemy") continue;
+
                         float distSq = (ally.X - startX) * (ally.X - startX) + (ally.Y - startY) * (ally.Y - startY);
                         if (distSq <= radiusSq)
                         {
                             float maxHp = ally.GetTotalStat("maxHp", configs);
                             float healAmount = Math.Min(Math.Abs(actualDamage), maxHp - ally.CurrentHp);
-                            ally.CurrentHp += healAmount;
 
-                            if (healAmount > 0) damageEvents.Add(new DamageEventDto { X = ally.X, Y = ally.Y, Amount = -healAmount });
+                            if (healAmount > 0)
+                            {
+                                ally.CurrentHp += healAmount;
+                                damageEvents.Add(new DamageEventDto { X = ally.X, Y = ally.Y, Amount = -healAmount });
+                            }
                             ApplyAoeEffects(ally.ActiveEffects);
                         }
                     }
@@ -515,7 +583,7 @@ public static class SkillSystem
             return;
         }
     }
-    public static void FireOnDeathSkills(string entityId, float x, float y, string team, List<string> onDeathSkills, GameState state, ConfigManager configs, List<DamageEventDto> damageEvents, List<AoeEventDto> aoeEvents)
+    public static void FireOnDeathSkills(string entityId, float x, float y, string team, List<string> onDeathSkills, GameState state, ConfigManager configs, List<DamageEventDto> damageEvents, List<AoeEventDto> aoeEvents, List<BeamEventDto> beamEvents)
     {
         if (onDeathSkills == null) return;
         foreach (var skillId in onDeathSkills)
@@ -523,7 +591,7 @@ public static class SkillSystem
             if (configs.Skills.TryGetValue(skillId, out var skillConfig))
             {
                 // Instantly execute the skill at the location where they died!
-                ExecuteSkill(skillConfig, entityId, x, y, team, damageEvents, aoeEvents, state, configs);
+                ExecuteSkill(skillConfig, entityId, x, y, team, damageEvents, aoeEvents, beamEvents, state, configs);
             }
         }
     }

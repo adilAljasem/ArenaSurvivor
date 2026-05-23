@@ -107,7 +107,10 @@ public static class CombatSystem
                                 HitRadius = projConfig.HitRadius,
                                 PierceCount = projConfig.PierceCount,
                                 Lifespan = computedLifespan,
-                                ApplyEffectsOnHit = combinedEffects
+                                ApplyEffectsOnHit = combinedEffects,
+                                OnDeathSkillId = projConfig.OnDeathSkillId,
+                                MovementBehavior = projConfig.MovementBehavior,
+                                OrbitRadius = projConfig.OrbitRadius
                             };
                             state.Projectiles.TryAdd(bullet.Id, bullet);
                         }
@@ -217,7 +220,11 @@ public static class CombatSystem
                         PierceCount = pCfg2.PierceCount,
                         Lifespan = lifespan2,
                         ApplyEffectsOnHit = combined2,
-                        Team = enemy.Team
+                        Team = enemy.Team,
+                        OnDeathSkillId = pCfg2.OnDeathSkillId,
+                        MovementBehavior = pCfg2.MovementBehavior,
+                        OrbitRadius = pCfg2.OrbitRadius
+
                     };
                     state.Projectiles.TryAdd(bullet2.Id, bullet2);
                 }
@@ -351,7 +358,7 @@ public static class CombatSystem
         }
     }
 
-    public static void ProcessCollisions(float dt, GameState state, ConfigManager configs, List<DamageEventDto> tickDamageEvents, List<AoeEventDto> tickAoeEvents)
+    public static void ProcessCollisions(float dt, GameState state, ConfigManager configs, List<DamageEventDto> tickDamageEvents, List<AoeEventDto> tickAoeEvents, List<BeamEventDto> tickBeamEvents)
     {
         var projectilesToRemove = new List<string>();
         var pickupsToRemove = new List<string>();
@@ -362,13 +369,50 @@ public static class CombatSystem
             float prevX = proj.X;
             float prevY = proj.Y;
 
-            proj.X += proj.VelX * dt;
-            proj.Y += proj.VelY * dt;
+            // >>> THE HIGHLY OPTIMIZED ORBITAL MOVEMENT <<<
+            if (proj.MovementBehavior == "Orbital")
+            {
+                BaseActorEntity? owner = null;
+                if (state.Players.TryGetValue(proj.OwnerId, out var p)) owner = p;
+                else if (state.Enemies.TryGetValue(proj.OwnerId, out var e)) owner = e;
+
+                if (owner != null && owner.ActionState != "Dead")
+                {
+                    // 1. Instantly increment the angle using the angular speed stored in VelX
+                    proj.OrbitAngleOffset += proj.VelX * dt;
+
+                    // 2. Set the new position orbiting the owner
+                    proj.X = owner.X + (float)Math.Cos(proj.OrbitAngleOffset) * proj.OrbitRadius;
+                    proj.Y = owner.Y + (float)Math.Sin(proj.OrbitAngleOffset) * proj.OrbitRadius;
+                }
+                else
+                {
+                    proj.Lifespan = 0; // Destroy bullet immediately if owner dies
+                }
+            }
+            else
+            {
+                proj.X += proj.VelX * dt;
+                proj.Y += proj.VelY * dt;
+            }
+
             proj.Lifespan -= dt;
 
-            if (proj.Lifespan <= 0)
+            // >>> NEW: DEATH SKILL TRIGGER <<<
+            bool isDead = proj.Lifespan <= 0 || proj.HitEnemies.Count > proj.PierceCount;
+
+            if (isDead)
             {
-                projectilesToRemove.Add(proj.Id);
+                if (!projectilesToRemove.Contains(proj.Id))
+                {
+                    projectilesToRemove.Add(proj.Id);
+
+                    if (!string.IsNullOrEmpty(proj.OnDeathSkillId) && configs.Skills.TryGetValue(proj.OnDeathSkillId, out var deathSkill))
+                    {
+                        // Fire the explosion precisely where the bullet died!
+                        SkillSystem.ExecuteSkill(deathSkill, proj.OwnerId, proj.X, proj.Y, proj.Team, tickDamageEvents, tickAoeEvents, tickBeamEvents, state, configs);
+                    }
+                }
                 continue;
             }
 
@@ -444,14 +488,24 @@ public static class CombatSystem
                                 SpawnGearDrops(enemy, eCfg, state, configs);
 
                                 // Death skills
-                                SkillSystem.FireOnDeathSkills(enemy.Id, enemy.X, enemy.Y, enemy.Team, eCfg.OnDeathSkills, state, configs, tickDamageEvents, tickAoeEvents);
+                                SkillSystem.FireOnDeathSkills(enemy.Id, enemy.X, enemy.Y, enemy.Team, eCfg.OnDeathSkills, state, configs, tickDamageEvents, tickAoeEvents, tickBeamEvents);
                             }
                         }
 
                         if (proj.HitEnemies.Count > proj.PierceCount)
                         {
-                            projectilesToRemove.Add(proj.Id);
-                            break;
+                            if (!projectilesToRemove.Contains(proj.Id))
+                            {
+                                projectilesToRemove.Add(proj.Id);
+
+                                // >>> FIX: FIRE THE ON-DEATH SKILL ON IMPACT! <<<
+                                if (!string.IsNullOrEmpty(proj.OnDeathSkillId) && configs.Skills.TryGetValue(proj.OnDeathSkillId, out var deathSkill))
+                                {
+                                    SkillSystem.ExecuteSkill(deathSkill, proj.OwnerId, proj.X, proj.Y, proj.Team, tickDamageEvents, tickAoeEvents, tickBeamEvents, state, configs);
+                                }
+                            }
+
+                            break; // Bullet is dead, stop checking collisions for it
                         }
                     }
                 }
@@ -549,7 +603,7 @@ public static class CombatSystem
                             {
                                 summon.ActionState = "Dead";
                                 if (configs.Enemies.TryGetValue(summon.ConfigId, out var eCfg))
-                                    SkillSystem.FireOnDeathSkills(summon.Id, summon.X, summon.Y, summon.Team, eCfg.OnDeathSkills, state, configs, tickDamageEvents, tickAoeEvents);
+                                    SkillSystem.FireOnDeathSkills(summon.Id, summon.X, summon.Y, summon.Team, eCfg.OnDeathSkills, state, configs, tickDamageEvents, tickAoeEvents, tickBeamEvents);
                             }
 
                             if (proj.HitEnemies.Count > proj.PierceCount)

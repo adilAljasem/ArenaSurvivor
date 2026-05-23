@@ -226,6 +226,12 @@ public class ProjectileConfig
     public int[]? AnimHit { get; set; }
     public int AnimHitFrameRate { get; set; } = 15;
 
+    // >>> NEW: Event Chaining & Movement <<<
+    public string OnDeathSkillId { get; set; } = string.Empty;
+    public string MovementBehavior { get; set; } = "Linear"; // "Linear" or "Orbital"
+    public float OrbitRadius { get; set; } = 100f;
+    public float OrbitSpeed { get; set; } = 2f;
+
     // --- Physics & Mechanics ---
     public float Lifespan { get; set; } = 0f;
     public float BaseSpeed { get; set; } = 500f;
@@ -263,6 +269,7 @@ public class EffectConfig
     // --- Timers & Damage ---
     public float Duration { get; set; }
     public float TickRate { get; set; }
+    public string TickSkillId { get; set; } = string.Empty;
     public float TickDamage { get; set; }
 
     // --- Stat Changes ---
@@ -299,6 +306,10 @@ public class SkillConfig
 
     // --- Payload ---
     public string ProjectileId { get; set; } = string.Empty;
+    public int ProjectileCount { get; set; } = 1;
+    public float BeamWidth { get; set; } = 10f;
+    public float Range { get; set; } = 500f;
+    public float SweepAngleSpeed { get; set; } = 0.2f;
     public float Radius { get; set; } = 0f;
     public float BaseDamage { get; set; } = 0f;
     public float Lifespan { get; set; } = 0f;

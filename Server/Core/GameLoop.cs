@@ -87,17 +87,17 @@ public class GameLoop : BackgroundService
             // 3. >>> THE CLEANED UP SIMULATION LOOP <<<
             var tickDamageEvents = new List<Server.DTOs.DamageEventDto>();
             var tickAoeEvents = new List<Server.DTOs.AoeEventDto>();
+            var tickBeamEvents = new List<Server.DTOs.BeamEventDto>();
 
             // Snapshot bullets before physics run
             var prevProjectiles = _gameState.Projectiles.Keys.ToHashSet();
 
             // Run all Systems
             MovementSystem.Process(dt, _gameState, _configManager);
-            EffectSystem.Process(dt, _gameState, _configManager, tickDamageEvents, tickAoeEvents); // Add tickAoeEvents!
+            EffectSystem.Process(dt, _gameState, _configManager, tickDamageEvents, tickAoeEvents, tickBeamEvents);
             CombatSystem.ProcessShooting(dt, _gameState, _configManager);
-            SkillSystem.Process(dt, _gameState, _configManager, tickDamageEvents, tickAoeEvents);
-            CombatSystem.ProcessCollisions(dt, _gameState, _configManager, tickDamageEvents, tickAoeEvents);
-            // Compare bullets after physics to find new & dead ones
+            SkillSystem.Process(dt, _gameState, _configManager, tickDamageEvents, tickAoeEvents, tickBeamEvents);
+            CombatSystem.ProcessCollisions(dt, _gameState, _configManager, tickDamageEvents, tickAoeEvents, tickBeamEvents);
             var currProjectiles = _gameState.Projectiles.Keys.ToHashSet();
             var newProjIds = currProjectiles.Except(prevProjectiles).ToList();
             var destroyedProjIds = prevProjectiles.Except(currProjectiles).ToList();
@@ -107,13 +107,9 @@ public class GameLoop : BackgroundService
 
             // 4. Broadcast to Clients via the cleanly isolated Network System!
             await NetworkSystem.BroadcastStateAsync(
-                _hubContext,
-                _gameState,
-                _configManager,
-                tickDamageEvents,
-                tickAoeEvents,
-                tickNewProjectiles,
-                tickDestroyedProjectiles,
+                _hubContext, _gameState, _configManager,
+                tickDamageEvents, tickAoeEvents, tickBeamEvents,
+                tickNewProjectiles, tickDestroyedProjectiles,
                 stoppingToken
             );
 

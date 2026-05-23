@@ -89,7 +89,7 @@
     "applyEffectsOnHit": [
       "poison_dot"
     ],
-    "grantedSkills": [],
+    "grantedSkills": ["test_laser_beam"],
     "statRollChance": 0.50,
     "maxRandomStats": 2,
     "allowedRandomStats": ["rangedDamage", "attackSpeedPercent", "critChance"],
@@ -162,11 +162,11 @@
     "cooldownSeconds": 1.8,
     "rangedDamage": 60,
     "projectileSpeed": 400,
-    "projectileId": "fireball",
+    "projectileId": "rocket_projectile",
     "range": 700,
-    "textureKey": "weapons_sheet",
-    "scale": 0.15,
-    "iconFrame": 9,
+    "textureKey": "ammo_sheet2",
+    "scale": 0.50,
+    "iconFrame": 20,
     "defaultFacingRight": true,
     "attackAnimType": "recoil",
     "soundFire": "sfx_rocket_fire",
@@ -177,6 +177,9 @@
       "rangedDamage": 1.0,
       "engineering": 0.5
     },
+     "applyEffectsOnHit": [
+      "poison_dot"
+    ],
     "grantedSkills": [],
     "statRollChance": 0.60,
     "maxRandomStats": 2,

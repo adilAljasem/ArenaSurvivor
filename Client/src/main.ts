@@ -47,11 +47,13 @@ interface ServerPickup {
   skills: string[];
 }
 interface DamageEvent { x: number; y: number; amount: number; }
+interface BeamEvent { startX: number; startY: number; targetX: number; targetY: number; width: number; colorTint: string; }
 
 export interface GameStatePayload {
   players: ServerPlayer[]; enemies: ServerEnemy[]; projectiles: ServerProjectile[];
   pickups: ServerPickup[]; damageEvents: DamageEvent[]; aoeEvents: AoeEvent[];
   phase: string; currentWave: number; timeRemaining: number;
+  beamEvents: BeamEvent[];
 }
 
 let masterConfigs: any = {};
@@ -435,7 +437,8 @@ class GameScene extends Phaser.Scene {
         pickups: Array.from(this.pickupCache.values()),
         projectiles: [], // Kept empty because Fire-and-Forget physics controls them!
         damageEvents: rawState.dmg?.map((d: any[]) => ({ x: d[0], y: d[1], amount: d[2] })) || [],
-        aoeEvents: rawState.aoe?.map((a: any[]) => ({ x: a[0], y: a[1], radius: a[2], isFriendly: a[3], configId: a[4] })) || []
+        aoeEvents: rawState.aoe?.map((a: any[]) => ({ x: a[0], y: a[1], radius: a[2], isFriendly: a[3], configId: a[4] })) || [],
+        beamEvents: rawState.bm?.map((b: any[]) => ({ startX: b[0], startY: b[1], targetX: b[2], targetY: b[3], width: b[4], colorTint: b[5] })) || [] // <<< NEW
       };
 
       this.currentPhase = state.phase;
@@ -492,7 +495,7 @@ class GameScene extends Phaser.Scene {
 
       // The 'false' flag at the end identifies them as Enemies
       const activeEnemies = ActorRenderer.render(this, state.enemies, this.enemySprites, masterConfigs, this.targetPositions, false);
-      
+
       // Pass a dummy map to WorldRenderer so it ignores our local bullets
       const dummyMap = new Map();
       const { activePickups } = WorldRenderer.render(this, state, dummyMap, this.pickupSprites, masterConfigs, this.targetPositions) as any;

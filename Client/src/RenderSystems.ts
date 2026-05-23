@@ -3,10 +3,10 @@ import { AudioManager } from './AudioManager';
 
 export class ActorRenderer {
   static render(
-    scene: Phaser.Scene, 
-    actorList: any[], 
-    sprites: Map<string, Phaser.GameObjects.Container>, 
-    configs: any, 
+    scene: Phaser.Scene,
+    actorList: any[],
+    sprites: Map<string, Phaser.GameObjects.Container>,
+    configs: any,
     targets: Map<string, { x: number, y: number }>,
     isPlayer: boolean
   ): Set<string> {
@@ -62,7 +62,7 @@ export class ActorRenderer {
         const hpBg = scene.add.rectangle(0, 0, uiWidth, 6, 0x000000);
         const hpFill = scene.add.rectangle(-uiWidth / 2, 0, uiWidth, 6, hpColor).setOrigin(0, 0.5);
         const hpMarkers = scene.add.graphics();
-        
+
         const weaponsContainer = scene.add.container(0, 0);
 
         const castBarBg = scene.add.rectangle(0, 0, 40, 6, 0x000000).setOrigin(0.5, 0.5).setStrokeStyle(1, 0x555555).setVisible(false);
@@ -179,7 +179,7 @@ export class ActorRenderer {
           const aimX = actor.aimX ?? actor.AimX ?? targetX;
           const aimY = actor.aimY ?? actor.AimY ?? targetY;
           const angle = Math.atan2(aimY - targetY, aimX - targetX);
-          
+
           sprite.rotation = angle;
           sprite.setFlipY(Math.abs(angle) > Math.PI / 2);
 
@@ -212,13 +212,13 @@ export class ActorRenderer {
         if (actionState === 'Dead' && !wasDead) {
           container.setData('wasDead', true);
           const deathSkills = config?.onDeathSkills || config?.OnDeathSkills;
-          
+
           if (deathSkills && deathSkills.length > 0) {
             deathSkills.forEach((skillId: string) => {
               const skill = (configs.skills || configs.Skills)?.[skillId];
               if (!skill) return;
               const aType = skill.actionType || skill.ActionType;
-              
+
               if (aType === 'AoE' || aType === 1) {
                 const r = skill.radius || skill.Radius || 200;
                 let color = 0xff4444;
@@ -229,7 +229,7 @@ export class ActorRenderer {
                 }
                 const ring = scene.add.circle(targetX, targetY, r, color, 0.7)
                   .setStrokeStyle(8, color, 1).setDepth(15).setScale(0.1);
-                  
+
                 scene.tweens.add({
                   targets: ring, scale: 1.0, alpha: 0, duration: 800,
                   ease: 'Cubic.easeOut', onComplete: () => ring.destroy()
@@ -243,14 +243,14 @@ export class ActorRenderer {
       // 6. ANIMATIONS & TINTING
       if (body && body.type === 'Sprite' && config) {
         body.setScale(scale);
-        
+
         const distToTarget = Math.abs(targetX - container.x) + Math.abs(targetY - container.y);
         const isMoving = distToTarget > 1.0;
-        
+
         const castingSkillId = actor.currentCastingSkillId || actor.CurrentCastingSkillId;
         const skillCfg = castingSkillId ? ((configs.skills || configs.Skills)?.[castingSkillId]) : null;
         const stopMoving = skillCfg?.stopMoving === true || skillCfg?.StopMoving === true;
-        
+
         const isObstacle = !isPlayer && (config.baseStats?.speed === 0 || config.BaseStats?.speed === 0);
 
         let targetAnim = `${config.id}_idle`;
@@ -296,20 +296,20 @@ export class ActorRenderer {
         }
 
         if (isPlayer) {
-            if (faceRight) body.setFlipX(!isDefaultRight);
-            else body.setFlipX(isDefaultRight);
+          if (faceRight) body.setFlipX(!isDefaultRight);
+          else body.setFlipX(isDefaultRight);
         }
 
         if (!body.anims?.isPlaying && actionState !== "Dead" && targetAnim !== '') body.anims?.resume();
 
         const prevActionState = container.getData('prevActionState');
         const prevCastSkillId = container.getData('prevCastSkillId') as string | undefined;
-        
+
         if (prevActionState === 'Casting' && actionState !== 'Casting' && prevCastSkillId) {
           const sCfg = (configs.skills || configs.Skills)?.[prevCastSkillId];
           if (sCfg?.soundCast) AudioManager.getInstance().playSfx(sCfg.soundCast);
         }
-        
+
         container.setData('prevActionState', actionState);
         if (actionState === 'Casting' && castingSkillId) container.setData('prevCastSkillId', castingSkillId);
 
@@ -484,6 +484,31 @@ export class WorldRenderer {
         const ring = scene.add.circle(x, y, radius, color, 0.8).setStrokeStyle(10, color, 1).setDepth(15).setScale(0.1);
         scene.tweens.add({ targets: ring, scale: 1.0, alpha: 0, duration: 600, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
       }
+    });
+
+    const beamList = state.beamEvents || state.BeamEvents || [];
+    beamList.forEach((beam: any) => {
+      let color = 0x00ffff;
+      if (beam.colorTint) {
+        const parsed = parseInt(beam.colorTint.replace(/^#|^0x/i, ''), 16);
+        if (!isNaN(parsed)) color = parsed;
+      }
+
+      // Draw outer glowing line
+      const line = scene.add.line(0, 0, beam.startX, beam.startY, beam.targetX, beam.targetY, color, 1)
+        .setOrigin(0, 0).setLineWidth(beam.width).setDepth(15);
+
+      // Draw inner bright core for the "laser" effect
+      const coreLine = scene.add.line(0, 0, beam.startX, beam.startY, beam.targetX, beam.targetY, 0xffffff, 1)
+        .setOrigin(0, 0).setLineWidth(Math.max(1, beam.width * 0.4)).setDepth(16);
+
+      // Flash and fade out instantly
+      scene.tweens.add({
+        targets: [line, coreLine],
+        alpha: 0,
+        duration: 250,
+        onComplete: () => { line.destroy(); coreLine.destroy(); }
+      });
     });
 
     return { activeProjectiles, activePickups };

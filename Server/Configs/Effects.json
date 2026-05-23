@@ -6,8 +6,7 @@
     "duration": 5.0,
     "tickRate": 1.0,
     "tickDamage": 5.0,
-    "statModifiers": {
-    },
+    "statModifiers": {},
     "textureKey": "effects_sheet",
     "colorTint": "0x00ff00"
   },
@@ -23,7 +22,6 @@
       "speed": 500
     },
     "textureKey": "effects_sheet",
-
     "colorTint": "0xffd700"
   },
   "stunned": {
@@ -70,7 +68,17 @@
     "isBuff": true,
     "duration": 5.0,
     "tickRate": 1.0,
-    "tickDamage": -10.0, 
+    "tickDamage": -10.0,
     "colorTint": "#cefad0"
+  },
+  "test_fire_aura_buff": {
+    "id": "test_fire_aura_buff",
+    "name": "Fire Aura Buff",
+    "isBuff": true,
+    "duration": 5.0,
+    "tickRate": 0.5,
+    "tickDamage": 0.0,
+    "tickSkillId": "test_fire_aura_explosion",
+    "colorTint": "0xffaa00"
   }
 }

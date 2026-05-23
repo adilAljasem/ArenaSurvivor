@@ -41,6 +41,7 @@ public static class NetworkSystem
         public List<object[]> Pickups { get; set; } = new();
         public List<object[]> Damage { get; set; } = new();
         public List<object[]> Aoe { get; set; } = new();
+        public List<object[]> Beams { get; set; } = new();
     }
 
     // Flat enemy array indices (must match FlattenGlobalState order)
@@ -68,16 +69,15 @@ public static class NetworkSystem
     // 1. THE MAIN ORCHESTRATOR
     // =========================================================================
     public static async Task BroadcastStateAsync(
-        IHubContext<GameHub> hubContext, GameState gameState, ConfigManager configManager,
-        List<DamageEventDto> tickDamageEvents, List<AoeEventDto> tickAoeEvents,
-        List<ProjectileEntity> tickNewProjectiles, List<string> tickDestroyedProjectiles,
-        CancellationToken stoppingToken)
+            IHubContext<GameHub> hubContext, GameState gameState, ConfigManager configManager,
+            List<DamageEventDto> tickDamageEvents, List<AoeEventDto> tickAoeEvents, List<BeamEventDto> tickBeamEvents,
+            List<ProjectileEntity> tickNewProjectiles, List<string> tickDestroyedProjectiles,
+            CancellationToken stoppingToken)
     {
         if (gameState.Players.IsEmpty) return;
 
         // Step 1: Flatten all global game data ONCE per tick
-        var globalFlatState = FlattenGlobalState(gameState, configManager, tickDamageEvents, tickAoeEvents, tickNewProjectiles);
-
+        var globalFlatState = FlattenGlobalState(gameState, configManager, tickDamageEvents, tickAoeEvents, tickBeamEvents, tickNewProjectiles);
         float mapW = 4000f;
         float mapH = 4000f;
         if (configManager.Maps != null && configManager.Maps.TryGetValue("map_forest", out var currentMap))
@@ -109,6 +109,7 @@ public static class NetworkSystem
                 dpk = pickupDeltas.Destroyed.Count > 0 ? pickupDeltas.Destroyed : null,
                 dmg = visibleState.Damage.Count > 0 ? visibleState.Damage : null,
                 aoe = visibleState.Aoe.Count > 0 ? visibleState.Aoe : null,
+                bm = visibleState.Beams.Count > 0 ? visibleState.Beams : null,
                 ph = (byte)gameState.Phase,
                 w = gameState.CurrentWave,
                 tr = Math.Max(0, (int)gameState.PhaseTimer),
@@ -126,7 +127,7 @@ public static class NetworkSystem
     // =========================================================================
     // 2. HELPER: DATA FLATTENING (Runs ONCE per tick)
     // =========================================================================
-    private static FlatState FlattenGlobalState(GameState gameState, ConfigManager configManager, List<DamageEventDto> dmgEvents, List<AoeEventDto> aoeEvents, List<ProjectileEntity> newProjectiles)
+    private static FlatState FlattenGlobalState(GameState gameState, ConfigManager configManager, List<DamageEventDto> dmgEvents, List<AoeEventDto> aoeEvents, List<BeamEventDto> beamEvents, List<ProjectileEntity> newProjectiles)
     {
         return new FlatState
         {
@@ -134,8 +135,7 @@ public static class NetworkSystem
                 p.ConnectionId, (int)p.X, (int)p.Y, (int)p.AimX, (int)p.AimY,
                 (int)p.CurrentHp, (int)p.GetTotalStat("maxHp", configManager), p.Gold, GetStateId(p.ActionState),
                 p.CurrentCastingSkillId, Math.Round(p.CurrentCastTimer, 1), Math.Round(p.MaxCastTimer, 1),
-                
-// >>> THE FIX: We now send the RolledStats, Skills, AND TotalBaseStats to the client! <<<
+
                 p.Weapons.Select(w => new object[] {
                     w.ConfigId,
                     w.SlotIndex,
@@ -179,7 +179,8 @@ public static class NetworkSystem
                     : (pk.DroppedItem?.ItemSkills?.Select(s => s.ConfigId).ToList() ?? new List<string>()))
             }).ToList(),
             Damage = dmgEvents.Select(d => new object[] { (int)d.X, (int)d.Y, (int)d.Amount }).ToList(),
-            Aoe = aoeEvents.Select(a => new object[] { (int)a.X, (int)a.Y, (int)a.Radius, a.IsFriendly, a.ConfigId }).ToList()
+            Aoe = aoeEvents.Select(a => new object[] { (int)a.X, (int)a.Y, (int)a.Radius, a.IsFriendly, a.ConfigId }).ToList(),
+            Beams = beamEvents.Select(b => new object[] { (int)b.StartX, (int)b.StartY, (int)b.TargetX, (int)b.TargetY, (int)b.Width, b.ColorTint }).ToList() // <<< NEW
         };
     }
 
@@ -211,7 +212,8 @@ public static class NetworkSystem
             Pickups = globalState.Pickups.Where(pk => (int)pk[1] >= minX && (int)pk[1] <= maxX && (int)pk[2] >= minY && (int)pk[2] <= maxY).ToList(),
             Damage = globalState.Damage.Where(d => (int)d[0] >= minX && (int)d[0] <= maxX && (int)d[1] >= minY && (int)d[1] <= maxY).ToList(),
             Aoe = globalState.Aoe.Where(a => (int)a[0] >= minX && (int)a[0] <= maxX && (int)a[1] >= minY && (int)a[1] <= maxY).ToList(),
-            NewBullets = globalState.NewBullets.Where(b => (int)b[2] >= minX && (int)b[2] <= maxX && (int)b[3] >= minY && (int)b[3] <= maxY).ToList()
+            NewBullets = globalState.NewBullets.Where(b => (int)b[2] >= minX && (int)b[2] <= maxX && (int)b[3] >= minY && (int)b[3] <= maxY).ToList(),
+            Beams = globalState.Beams.Where(b => ((int)b[0] >= minX && (int)b[0] <= maxX && (int)b[1] >= minY && (int)b[1] <= maxY) || ((int)b[2] >= minX && (int)b[2] <= maxX && (int)b[3] >= minY && (int)b[3] <= maxY)).ToList()
         };
     }
 

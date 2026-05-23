@@ -5,8 +5,8 @@ namespace Server.Configs;
 public enum SkillTriggerType { Auto, Input }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
-public enum SkillTargetType { Self, ClosestEnemy, ClosestPlayer, AimDirection }
+public enum SkillTargetType { Self, ClosestEnemy, ClosestPlayer, AimDirection,Sweep }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
-public enum SkillActionType { Projectile, AoE, SelfBuff , Summon }
+public enum SkillActionType { Projectile, AoE, SelfBuff , Summon , Beam }
 

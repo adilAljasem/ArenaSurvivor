@@ -68,5 +68,42 @@
         "hitRadius": 80,
         "pierceCount": 999,
         "soundHit": "sfx_melee_impact"
+    },
+    "rocket_projectile": {
+        "id": "rocket_projectile",
+        "name": "Rocket",
+        "textureKey": "ammo_sheet2",
+        "iconFrame": 24,
+        "scale": 0.3,
+        "baseSpeed": 400,
+        "hitRadius": 30,
+        "pierceCount": 0,
+        "soundHit": "sfx_melee_impact",
+        "onDeathSkillId": "test_rocket_explosion"
+    },
+    "test_rocket": {
+        "id": "test_rocket",
+        "name": "Rocket",
+        "textureKey": "ammo_sheet2",
+        "iconFrame": 24,
+        "scale": 0.3,
+        "baseSpeed": 500,
+        "hitRadius": 15,
+        "pierceCount": 0,
+        "lifespan": 2.0,
+        "onDeathSkillId": "test_rocket_explosion"
+    },
+    "test_orbital_fireball": {
+        "id": "test_orbital_fireball",
+        "name": "Orbital Fireball",
+        "textureKey": "ammo_sheet",
+        "iconFrame": 0,
+        "scale": 0.5,
+        "baseSpeed": 3.0,
+        "hitRadius": 25,
+        "pierceCount": 999,
+        "lifespan": 10.0,
+        "movementBehavior": "Orbital",
+        "orbitRadius": 120
     }
 }

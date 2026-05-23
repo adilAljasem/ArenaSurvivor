@@ -13,6 +13,8 @@ public abstract class BaseActorEntity
     public float X { get; set; }
     public float Y { get; set; }
 
+    public float CurrentSweepAngle { get; set; } = 0f;
+
     // --- Health ---
     public float CurrentHp { get; set; }
 

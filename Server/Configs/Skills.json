@@ -131,5 +131,42 @@
             "poison_dot"
         ],
         "soundCast": "sfx_poison_volley_cast"
+    },
+    "test_rocket_explosion": {
+        "id": "test_rocket_explosion",
+        "actionType": "AoE",
+        "targetType": "Self",
+        "radius": 500,
+        "baseDamage": 5000,
+        "colorTint": "0xff4400"
+    },
+    "cast_orbital_fireballs": {
+        "id": "cast_orbital_fireballs",
+        "actionType": "Projectile",
+        "projectileId": "test_orbital_fireball",
+        "projectileCount": 10,
+        "baseDamage": 15
+    },
+    "test_laser_beam": {
+        "id": "test_laser_beam",
+        "actionType": "Beam",
+        "range": 800,
+        "beamWidth": 25,
+        "baseDamage": 30,
+        "colorTint": "0x00ffff"
+    },
+    "cast_fire_aura": {
+        "id": "cast_fire_aura",
+        "actionType": "SelfBuff",
+        "applyEffects": [
+            "test_fire_aura_buff"
+        ]
+    },
+    "test_fire_aura_explosion": {
+        "id": "test_fire_aura_explosion",
+        "actionType": "AoE",
+        "radius": 200,
+        "baseDamage": 15,
+        "colorTint": "0xff8800"
     }
 }

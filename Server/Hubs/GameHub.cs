@@ -23,7 +23,8 @@ public class GameHub : Hub
         {
             ConnectionId = Context.ConnectionId,
             X = 640,
-            Y = 360
+            Y = 360,
+            Team = "Player"
         };
 
         // >>> FIX: Initialize the player's stats from the data-driven config! <<<
