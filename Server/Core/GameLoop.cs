@@ -64,6 +64,8 @@ public class GameLoop : BackgroundService
             float dt = (float)(currentTickTime - lastTickTime).TotalSeconds;
             lastTickTime = currentTickTime;
 
+            var prevProjectiles = _gameState.Projectiles.Keys.ToHashSet();
+
             // 1. Manage State & Timers
             UpdateGamePhases(dt);
 
@@ -89,8 +91,6 @@ public class GameLoop : BackgroundService
             var tickAoeEvents = new List<Server.DTOs.AoeEventDto>();
             var tickBeamEvents = new List<Server.DTOs.BeamEventDto>();
 
-            // Snapshot bullets before physics run
-            var prevProjectiles = _gameState.Projectiles.Keys.ToHashSet();
 
             // Run all Systems
             MovementSystem.Process(dt, _gameState, _configManager);

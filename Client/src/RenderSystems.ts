@@ -494,20 +494,30 @@ export class WorldRenderer {
         if (!isNaN(parsed)) color = parsed;
       }
 
-      // Draw outer glowing line
-      const line = scene.add.line(0, 0, beam.startX, beam.startY, beam.targetX, beam.targetY, color, 1)
-        .setOrigin(0, 0).setLineWidth(beam.width).setDepth(15);
+      const length = Phaser.Math.Distance.Between(beam.startX, beam.startY, beam.targetX, beam.targetY);
+      const angle = Phaser.Math.Angle.Between(beam.startX, beam.startY, beam.targetX, beam.targetY);
 
-      // Draw inner bright core for the "laser" effect
-      const coreLine = scene.add.line(0, 0, beam.startX, beam.startY, beam.targetX, beam.targetY, 0xffffff, 1)
-        .setOrigin(0, 0).setLineWidth(Math.max(1, beam.width * 0.4)).setDepth(16);
+      // 1. The Glow (Thick, colored, semi-transparent, ADD blend mode for light effect)
+      const glow = scene.add.rectangle(beam.startX, beam.startY, length, beam.width, color, 0.6)
+        .setOrigin(0, 0.5)
+        .setRotation(angle)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setDepth(15);
 
-      // Flash and fade out instantly
+      // 2. The Core (Thin, stark white, solid)
+      const core = scene.add.rectangle(beam.startX, beam.startY, length, Math.max(2, beam.width * 0.3), 0xffffff, 1.0)
+        .setOrigin(0, 0.5)
+        .setRotation(angle)
+        .setDepth(16);
+
+      // 3. The Anime "Snap" Tween (fades out while shrinking thickness to 0)
       scene.tweens.add({
-        targets: [line, coreLine],
+        targets: [glow, core],
         alpha: 0,
-        duration: 250,
-        onComplete: () => { line.destroy(); coreLine.destroy(); }
+        scaleY: 0, // This is the secret! It shrinks the thickness of the rectangle!
+        duration: 50,
+        ease: 'Linear',
+        onComplete: () => { glow.destroy(); core.destroy(); }
       });
     });
 

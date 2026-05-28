@@ -164,9 +164,13 @@ public static class NetworkSystem
                 e.Team
             }).ToList(),
 
-            NewBullets = newProjectiles.Select(proj => new object[] {
-                proj.Id, proj.ConfigId, (int)proj.X, (int)proj.Y, (int)proj.VelX, (int)proj.VelY
-            }).ToList(),
+            NewBullets = newProjectiles.Select(proj => proj.MovementBehavior == "Orbital"
+                            // >>> STRICT FIX: No (int) cast on OrbitSpeed or Angle! <<<
+                            ? new object[] { proj.Id, proj.ConfigId, (int)proj.X, (int)proj.Y, proj.OrbitSpeed, 0f, 1, proj.OwnerId, (int)proj.OrbitRadius, proj.OrbitAngleOffset }
+
+                            // Standard linear bullets can keep the (int) to save bandwidth
+                            : new object[] { proj.Id, proj.ConfigId, (int)proj.X, (int)proj.Y, (int)proj.VelX, (int)proj.VelY }
+            ).ToList(),
 
             Pickups = gameState.Pickups.Values.Select(pk => new object[] {
                 pk.Id, (int)pk.X, (int)pk.Y, pk.Value, (int)pk.Type,

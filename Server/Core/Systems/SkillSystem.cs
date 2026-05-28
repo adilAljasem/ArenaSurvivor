@@ -199,20 +199,25 @@ public static class SkillSystem
         // --- ACTION: SELF BUFF ---
         if (config.ActionType == SkillActionType.SelfBuff)
         {
-            if (team == "Player" && state.Players.TryGetValue(casterId, out var player))
+            // Find the person who cast the skill
+            BaseActorEntity caster = state.Players.ContainsKey(casterId) ? state.Players[casterId] :
+                                     (state.Enemies.ContainsKey(casterId) ? state.Enemies[casterId] : null);
+
+            if (caster != null && config.ApplyEffects != null)
             {
-                foreach (var effect in config.ApplyEffects)
+                foreach (var effectId in config.ApplyEffects)
                 {
-                    var duration = configs.Effects.ContainsKey(effect) ? configs.Effects[effect].Duration : 3f;
-                    player.ActiveEffects.Add(new ActiveEffect { ConfigId = effect, TimeRemaining = duration });
-                }
-            }
-            else if (team == "Enemy" && state.Enemies.TryGetValue(casterId, out var enemy))
-            {
-                foreach (var effect in config.ApplyEffects)
-                {
-                    var duration = configs.Effects.ContainsKey(effect) ? configs.Effects[effect].Duration : 3f;
-                    enemy.ActiveEffects.Add(new ActiveEffect { ConfigId = effect, TimeRemaining = duration });
+                    if (configs.Effects.TryGetValue(effectId, out var effectConfig))
+                    {
+                        // Play cast sound if needed
+                        // if (!string.IsNullOrEmpty(config.SoundCast))
+                        //     AudioManager.PlaySound(config.SoundCast, caster.X, caster.Y); // Adjust to your audio logic if needed
+
+                        // Apply or refresh the effect
+                        var existing = caster.ActiveEffects.FirstOrDefault(e => e.ConfigId == effectId);
+                        if (existing != null) existing.TimeRemaining = effectConfig.Duration;
+                        else caster.ActiveEffects.Add(new ActiveEffect { ConfigId = effectId, TimeRemaining = effectConfig.Duration });
+                    }
                 }
             }
             return;
@@ -297,61 +302,94 @@ public static class SkillSystem
 
             if (length > 0)
             {
-                // >>> NEW: Multi-Projectile & Orbital Support <<<
-                int pCount = Math.Max(1, config.ProjectileCount);
-                float angleStep = (float)(Math.PI * 2 / pCount);
-                float baseAngle = (float)Math.Atan2(dirY, dirX);
-
-                for (int i = 0; i < pCount; i++)
+                // Prevent Infinite Stacking of persistent orbitals
+                if (projConfig.MovementBehavior == "Orbital")
                 {
-                    float currentAngle = baseAngle;
-                    if (projConfig.MovementBehavior == "Orbital") currentAngle = angleStep * i;
-                    var bullet = new ProjectileEntity
+                    foreach (var oldProj in state.Projectiles.Values)
                     {
-                        ConfigId = projConfig.Id,
-                        OwnerId = casterId,
-                        X = startX,
-                        Y = startY,
-                        // If linear, store standard velocity. If orbital, store angular speed in VelX!
-                        VelX = projConfig.MovementBehavior == "Orbital" ? projConfig.BaseSpeed : (float)Math.Cos(currentAngle) * projConfig.BaseSpeed,
-                        VelY = projConfig.MovementBehavior == "Orbital" ? 0 : (float)Math.Sin(currentAngle) * projConfig.BaseSpeed,
-                        Damage = config.BaseDamage,
-                        HitRadius = projConfig.HitRadius,
-                        Lifespan = projConfig.Lifespan > 0 ? projConfig.Lifespan : 5f,
-                        ApplyEffectsOnHit = new List<string>(config.ApplyEffects),
-                        Team = team,
-
-                        MovementBehavior = projConfig.MovementBehavior,
-                        OrbitRadius = projConfig.OrbitRadius,
-                        OrbitAngleOffset = currentAngle, // Start position on the circle
-                        OnDeathSkillId = projConfig.OnDeathSkillId
-                    };
-
-                    state.Projectiles.TryAdd(bullet.Id, bullet);
+                        if (oldProj.OwnerId == casterId && oldProj.ConfigId == projConfig.Id && oldProj.MovementBehavior == "Orbital")
+                            oldProj.Lifespan = -10f;
+                    }
                 }
+
+                int pCount = Math.Max(1, config.ProjectileCount);
+
+                // >>> ONE LINE TO GENERATE EVERYTHING! <<<
+                var newBullets = ProjectileFactory.Create(
+                    projConfig, casterId, team, startX, startY, dirX, dirY,
+                    config.BaseDamage, projConfig.BaseSpeed, 0f, config.ApplyEffects, pCount, config.Lifespan
+                );
+
+                foreach (var b in newBullets) state.Projectiles.TryAdd(b.Id, b);
             }
         }
 
         // --- ACTION: BEAM (NEW) ---
+        // --- ACTION: BEAM (Lasers!) ---
         if (config.ActionType == SkillActionType.Beam)
         {
-            // 1. Find Target (same logic as projectiles)
-            float aimX = startX + 1; float aimY = startY;
-            // ... (Implement your TargetType checking here to get aimX/aimY) ...
+            float baseAngle = 0f;
+            bool hasValidTarget = true;
 
-            float dirX = aimX - startX; float dirY = aimY - startY;
-            float length = (float)Math.Sqrt(dirX * dirX + dirY * dirY);
-            if (length == 0) return;
+            // 1. Determine the Angle based on the TargetType
+            if (config.TargetType == SkillTargetType.ClosestEnemy)
+            {
+                var validTargets = team == "Player" ? state.Enemies.Values.Cast<BaseActorEntity>() : state.Players.Values.Cast<BaseActorEntity>();
+                BaseActorEntity closest = null;
+                float closestDistSq = float.MaxValue;
 
-            // Normalize and extend to Beam Range
-            float endX = startX + (dirX / length) * config.Range;
-            float endY = startY + (dirY / length) * config.Range;
+                foreach (var t in validTargets)
+                {
+                    if (t.ActionState == "Dead") continue;
+                    float dSq = (t.X - startX) * (t.X - startX) + (t.Y - startY) * (t.Y - startY);
+                    if (dSq < closestDistSq) { closestDistSq = dSq; closest = t; }
+                }
+
+                if (closest != null) baseAngle = (float)Math.Atan2(closest.Y - startY, closest.X - startX);
+                else hasValidTarget = false; // Don't fire at nothing
+            }
+            else if (config.TargetType == SkillTargetType.AimDirection)
+            {
+                BaseActorEntity caster = state.Players.ContainsKey(casterId) ? state.Players[casterId] :
+                                         (state.Enemies.ContainsKey(casterId) ? state.Enemies[casterId] : null);
+
+                if (caster is PlayerEntity p && (p.AimX != 0 || p.AimY != 0))
+                {
+                    baseAngle = (float)Math.Atan2(p.AimY - startY, p.AimX - startX);
+                }
+                else if (caster != null)
+                {
+                    baseAngle = 0; // Safely default to facing right
+                }
+            }
+            else if (config.TargetType == SkillTargetType.Sweep)
+            {
+                BaseActorEntity caster = state.Players.ContainsKey(casterId) ? state.Players[casterId] :
+                                         (state.Enemies.ContainsKey(casterId) ? state.Enemies[casterId] : null);
+
+                if (caster != null)
+                {
+                    caster.CurrentSweepAngle += config.SweepAngleSpeed;
+                    baseAngle = caster.CurrentSweepAngle;
+                }
+            }
+            else if (config.TargetType == SkillTargetType.Down)
+            {
+                baseAngle = (float)(Math.PI / 2); // 90 degrees (Straight Down on the screen)
+            }
+
+            if (!hasValidTarget) return;
+
+            // 2. Calculate End Coordinates
+            float dirX = (float)Math.Cos(baseAngle);
+            float dirY = (float)Math.Sin(baseAngle);
+            float endX = startX + (dirX * config.Range);
+            float endY = startY + (dirY * config.Range);
 
             beamEvents.Add(new BeamEventDto { StartX = startX, StartY = startY, TargetX = endX, TargetY = endY, Width = config.BeamWidth, ColorTint = config.ColorTint });
 
+            // 3. Line Segment Collision (Zero GC Raycast)
             float hitThresholdSq = (config.BeamWidth / 2) * (config.BeamWidth / 2);
-
-            // 2. Line Segment Collision (Zero Garbage Collection Raycast)
             var targets = team == "Player" ? state.Enemies.Values.Cast<BaseActorEntity>() : state.Players.Values.Cast<BaseActorEntity>();
 
             foreach (var target in targets)
@@ -367,20 +405,34 @@ public static class SkillSystem
 
                 float distX = closestX - target.X; float distY = closestY - target.Y;
                 float distSqToSegment = (distX * distX) + (distY * distY);
-
-                // Adjust threshold to account for target's own hit radius
-                float effectiveRadius = (config.BeamWidth / 2) + 15f; // Assume 15f base radius
+                float effectiveRadius = (config.BeamWidth / 2) + 15f;
 
                 if (distSqToSegment <= (effectiveRadius * effectiveRadius))
                 {
                     target.CurrentHp -= config.BaseDamage;
                     damageEvents.Add(new DamageEventDto { X = target.X, Y = target.Y, Amount = config.BaseDamage });
-                    // Apply effects...
+
+                    if (target.CurrentHp <= 0 && target.ActionState != "Dead")
+                    {
+                        target.ActionState = "Dead";
+
+                        // Only drop gold and fire death skills if the target is an ENEMY!
+                        // This fixes the ConfigId/Id errors and prevents bugs if a player dies.
+                        if (target is EnemyEntity enemyTarget)
+                        {
+                            var gold = new PickupEntity { X = target.X, Y = target.Y, Value = 1 };
+                            state.Pickups.TryAdd(gold.Id, gold);
+
+                            if (configs.Enemies.TryGetValue(enemyTarget.ConfigId, out var eCfg))
+                            {
+                                FireOnDeathSkills(enemyTarget.Id, enemyTarget.X, enemyTarget.Y, enemyTarget.Team, eCfg.OnDeathSkills, state, configs, damageEvents, aoeEvents, beamEvents);
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        // --- ACTION: SUMMON ---
         // --- ACTION: SUMMON ---
         if (config.ActionType == SkillActionType.Summon)
         {

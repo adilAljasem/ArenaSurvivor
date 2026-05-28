@@ -17,7 +17,8 @@
         "radius": 150,
         "baseDamage": 25,
         "soundCast": "sfx_stomp_cast",
-        "soundHit": "sfx_stomp_hit"
+        "soundHit": "sfx_stomp_hit",
+        "colorTint": "0xff0000"
     },
     "magic_missile": {
         "id": "magic_missile",
@@ -144,7 +145,9 @@
         "id": "cast_orbital_fireballs",
         "actionType": "Projectile",
         "projectileId": "test_orbital_fireball",
-        "projectileCount": 10,
+        "castTimeSeconds": 1.5,
+        "cooldownSeconds": 12.0,
+        "projectileCount": 30,
         "baseDamage": 15
     },
     "test_laser_beam": {
@@ -168,5 +171,54 @@
         "radius": 200,
         "baseDamage": 15,
         "colorTint": "0xff8800"
+    },
+    "laser_closest": {
+        "id": "laser_closest",
+        "actionType": "Beam",
+        "targetType": "ClosestEnemy",
+        "range": 1000,
+        "beamWidth": 20,
+        "baseDamage": 15,
+        "colorTint": "0xff00ff"
+    },
+    "laser_sweep": {
+        "id": "laser_sweep",
+        "actionType": "Beam",
+        "targetType": "Sweep",
+        "sweepAngleSpeed": 0.05,
+        "range": 500,
+        "beamWidth": 10,
+        "baseDamage": 10,
+        "cooldownSeconds": 0.0,
+        "castTimeSeconds": 0.0,
+        "colorTint": "0xff4400"
+    },
+    "cast_invisible_drone": {
+        "id": "cast_invisible_drone",
+        "actionType": "Projectile",
+        "targetType": "AimDirection",
+        "projectileId": "invisible_drone",
+        "projectileCount": 1,
+        "cooldownSeconds": 4.0,
+        "castTimeSeconds": 1.0
+    },
+    "drone_fire_down": {
+        "id": "drone_fire_down",
+        "actionType": "Beam",
+        "targetType": "Down",
+        "range": 1500,
+        "beamWidth": 80,
+        "baseDamage": 50,
+        "colorTint": "0xff0000"
+    },
+    "boss_cast_sweeper": {
+        "id": "boss_cast_sweeper",
+        "actionType": "SelfBuff",
+        "targetType": "Self",
+        "cooldownSeconds": 8.0,
+        "castTimeSeconds": 2.0,
+        "applyEffects": [
+            "boss_sweeping_aura"
+        ]
     }
 }

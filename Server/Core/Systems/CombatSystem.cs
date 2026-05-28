@@ -94,25 +94,14 @@ public static class CombatSystem
                             if (projConfig.Lifespan > 0) computedLifespan = projConfig.Lifespan;
                             if (config.Lifespan > 0) computedLifespan = config.Lifespan;
 
-                            var bullet = new ProjectileEntity
-                            {
-                                ConfigId = projConfig.Id,
-                                OwnerId = player.ConnectionId,
-                                X = spawnX,
-                                Y = spawnY,
-                                VelX = (dirX / length) * finalSpeed,
-                                VelY = (dirY / length) * finalSpeed,
-                                Damage = finalDamage,
-                                LifeStealChance = totalLifeStealForThisAttack,
-                                HitRadius = projConfig.HitRadius,
-                                PierceCount = projConfig.PierceCount,
-                                Lifespan = computedLifespan,
-                                ApplyEffectsOnHit = combinedEffects,
-                                OnDeathSkillId = projConfig.OnDeathSkillId,
-                                MovementBehavior = projConfig.MovementBehavior,
-                                OrbitRadius = projConfig.OrbitRadius
-                            };
-                            state.Projectiles.TryAdd(bullet.Id, bullet);
+
+                            var newBullets = ProjectileFactory.Create(
+                                                            projConfig, player.ConnectionId, "Player",
+                                                            spawnX, spawnY, dirX, dirY,
+                                                            finalDamage, finalSpeed, totalLifeStealForThisAttack, config.ApplyEffectsOnHit, 1, computedLifespan
+                                                        );
+
+                            foreach (var b in newBullets) state.Projectiles.TryAdd(b.Id, b);
                         }
                     }
                 }
@@ -207,26 +196,14 @@ public static class CombatSystem
 
                     enemy.FiredWeaponsThisTick.Add(weapon.SlotIndex);
 
-                    var bullet2 = new ProjectileEntity
-                    {
-                        ConfigId = pCfg2.Id,
-                        OwnerId = enemy.Id,
-                        X = spawnX,
-                        Y = spawnY,
-                        VelX = (summonDirX / summonDirLen) * finalSpeed2,
-                        VelY = (summonDirY / summonDirLen) * finalSpeed2,
-                        Damage = finalDmg2,
-                        HitRadius = pCfg2.HitRadius,
-                        PierceCount = pCfg2.PierceCount,
-                        Lifespan = lifespan2,
-                        ApplyEffectsOnHit = combined2,
-                        Team = enemy.Team,
-                        OnDeathSkillId = pCfg2.OnDeathSkillId,
-                        MovementBehavior = pCfg2.MovementBehavior,
-                        OrbitRadius = pCfg2.OrbitRadius
+                    // >>> CLEAN FACTORY CALL <<<
+                    var newBullets = ProjectileFactory.Create(
+                        pCfg2, enemy.Id, enemy.Team,
+                        spawnX, spawnY, summonDirX, summonDirY,
+                        finalDmg2, finalSpeed2, 0f, wCfgS.ApplyEffectsOnHit, 1, lifespan2
+                    );
 
-                    };
-                    state.Projectiles.TryAdd(bullet2.Id, bullet2);
+                    foreach (var b in newBullets) state.Projectiles.TryAdd(b.Id, b);
                 }
                 continue;
             }
@@ -338,22 +315,24 @@ public static class CombatSystem
 
                 enemy.FiredWeaponsThisTick.Add(weapon.SlotIndex);
 
-                var bullet = new ProjectileEntity
-                {
-                    ConfigId = projConfig.Id,
-                    OwnerId = enemy.Id,
-                    X = spawnX,
-                    Y = spawnY,
-                    VelX = (dirToTargetX / dirLength) * finalSpeed,
-                    VelY = (dirToTargetY / dirLength) * finalSpeed,
-                    Damage = finalDamage,
-                    LifeStealChance = 0f,
-                    HitRadius = projConfig.HitRadius,
-                    PierceCount = projConfig.PierceCount,
-                    Lifespan = computedLifespan,
-                    ApplyEffectsOnHit = combinedEffects
-                };
-                state.Projectiles.TryAdd(bullet.Id, bullet);
+                
+                var newBullets = ProjectileFactory.Create(
+                                    projConfig,
+                                    enemy.Id,
+                                    enemy.Team,
+                                    spawnX,
+                                    spawnY,
+                                    dirToTargetX,
+                                    dirToTargetY,
+                                    finalDamage,
+                                    finalSpeed,
+                                    0f, // No lifesteal for enemies
+                                    weaponConfig.ApplyEffectsOnHit,
+                                    1,
+                                    computedLifespan
+                                );
+
+                foreach (var b in newBullets) state.Projectiles.TryAdd(b.Id, b);
             }
         }
     }
@@ -372,22 +351,22 @@ public static class CombatSystem
             // >>> THE HIGHLY OPTIMIZED ORBITAL MOVEMENT <<<
             if (proj.MovementBehavior == "Orbital")
             {
-                BaseActorEntity? owner = null;
+                BaseActorEntity owner = null;
                 if (state.Players.TryGetValue(proj.OwnerId, out var p)) owner = p;
                 else if (state.Enemies.TryGetValue(proj.OwnerId, out var e)) owner = e;
 
                 if (owner != null && owner.ActionState != "Dead")
                 {
-                    // 1. Instantly increment the angle using the angular speed stored in VelX
-                    proj.OrbitAngleOffset += proj.VelX * dt;
+                    // >>> FIX: Convert Degrees per Second to Radians so the math is predictable! <<<
+                    float radiansPerSec = proj.OrbitSpeed * (float)(Math.PI / 180.0);
+                    proj.OrbitAngleOffset += radiansPerSec * dt;
 
-                    // 2. Set the new position orbiting the owner
                     proj.X = owner.X + (float)Math.Cos(proj.OrbitAngleOffset) * proj.OrbitRadius;
                     proj.Y = owner.Y + (float)Math.Sin(proj.OrbitAngleOffset) * proj.OrbitRadius;
                 }
                 else
                 {
-                    proj.Lifespan = 0; // Destroy bullet immediately if owner dies
+                    proj.Lifespan = 0;
                 }
             }
             else
@@ -397,6 +376,20 @@ public static class CombatSystem
             }
 
             proj.Lifespan -= dt;
+
+            if (proj.TickRate > 0 && !string.IsNullOrEmpty(proj.TickSkillId))
+            {
+                proj.TimeSinceLastTick += dt;
+                if (proj.TimeSinceLastTick >= proj.TickRate)
+                {
+                    proj.TimeSinceLastTick -= proj.TickRate;
+                    if (configs.Skills.TryGetValue(proj.TickSkillId, out var tickSkill))
+                    {
+                        // The projectile casts the skill from its own X/Y coordinates!
+                        SkillSystem.ExecuteSkill(tickSkill, proj.OwnerId, proj.X, proj.Y, proj.Team, tickDamageEvents, tickAoeEvents, tickBeamEvents, state, configs);
+                    }
+                }
+            }
 
             // >>> NEW: DEATH SKILL TRIGGER <<<
             bool isDead = proj.Lifespan <= 0 || proj.HitEnemies.Count > proj.PierceCount;
@@ -425,27 +418,37 @@ public static class CombatSystem
                 foreach (var enemy in state.Enemies.Values)
                 {
                     if (enemy.ActionState == "Dead" || proj.HitEnemies.Contains(enemy.Id)) continue;
-                    if (enemy.Team != "Enemy") continue; // Never hit friendly summons
+                    if (enemy.Team != "Enemy") continue;
 
                     float combinedRadius = proj.HitRadius + enemy.HitRadius;
                     float hitThresholdSq = combinedRadius * combinedRadius;
 
-                    float dx = proj.X - prevX;
-                    float dy = proj.Y - prevY;
-                    float fx = enemy.X - prevX;
-                    float fy = enemy.Y - prevY;
+                    bool isHit = false;
 
-                    float lengthSq = (dx * dx) + (dy * dy);
-                    float t = lengthSq == 0 ? 0 : Math.Max(0, Math.Min(1, (fx * dx + fy * dy) / lengthSq));
+                    // >>> THE FIX: Separate collision logic for Orbitals vs Linear <<<
+                    if (proj.MovementBehavior == "Orbital")
+                    {
+                        // Point-to-point check (no slicing chords)
+                        float distX = proj.X - enemy.X;
+                        float distY = proj.Y - enemy.Y;
+                        isHit = (distX * distX) + (distY * distY) <= hitThresholdSq;
+                    }
+                    else
+                    {
+                        // Sweeping Line Segment for fast linear bullets
+                        float dx = proj.X - prevX; float dy = proj.Y - prevY;
+                        float fx = enemy.X - prevX; float fy = enemy.Y - prevY;
 
-                    float closestX = prevX + t * dx;
-                    float closestY = prevY + t * dy;
+                        float lengthSq = (dx * dx) + (dy * dy);
+                        float t = lengthSq == 0 ? 0 : Math.Max(0, Math.Min(1, (fx * dx + fy * dy) / lengthSq));
 
-                    float distX = closestX - enemy.X;
-                    float distY = closestY - enemy.Y;
-                    float distSqToSegment = (distX * distX) + (distY * distY);
+                        float closestX = prevX + t * dx; float closestY = prevY + t * dy;
+                        float distX = closestX - enemy.X; float distY = closestY - enemy.Y;
 
-                    if (distSqToSegment <= hitThresholdSq)
+                        isHit = (distX * distX) + (distY * distY) <= hitThresholdSq;
+                    }
+
+                    if (isHit)
                     {
                         enemy.CurrentHp -= proj.Damage;
                         proj.HitEnemies.Add(enemy.Id);

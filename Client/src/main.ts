@@ -347,6 +347,13 @@ class GameScene extends Phaser.Scene {
           sprite.setData('vy', vy);
           sprite.setData('configId', configId);
 
+          if (b[6] === 1) {
+            sprite.setData('isOrbital', true);
+            sprite.setData('ownerId', b[7]);
+            sprite.setData('orbitRadius', b[8]);
+            sprite.setData('orbitAngleOffset', b[9]);
+          }
+
           this.projectileSprites.set(id, sprite);
         });
       }
@@ -551,12 +558,36 @@ class GameScene extends Phaser.Scene {
     }
 
     const dtSeconds = delta / 1000;
+    // >>> FIX: Hybrid Physics (Linear vs Orbital) <<<
     this.projectileSprites.forEach((sprite) => {
-      const vx = sprite.getData('vx');
-      const vy = sprite.getData('vy');
-      sprite.x += vx * dtSeconds;
-      sprite.y += vy * dtSeconds;
+      if (sprite.getData('isOrbital')) {
+        const ownerId = sprite.getData('ownerId');
+        const ownerSprite = this.playerSprites.get(ownerId) || this.enemySprites.get(ownerId);
+
+        if (ownerSprite) {
+          let angle = sprite.getData('orbitAngleOffset');
+          const radius = sprite.getData('orbitRadius');
+
+          // >>> FIX: vx holds OrbitSpeed in Degrees. Convert to Radians! <<<
+          const degreesPerSec = sprite.getData('vx');
+          const radiansPerSec = degreesPerSec * (Math.PI / 180);
+
+          angle += radiansPerSec * dtSeconds;
+          sprite.setData('orbitAngleOffset', angle);
+
+          // Lock tightly to the smoothly interpolated visual position
+          sprite.x = ownerSprite.x + Math.cos(angle) * radius;
+          sprite.y = ownerSprite.y + Math.sin(angle) * radius;
+        }
+      } else {
+        // Standard Fire-and-Forget Linear Physics
+        const vx = sprite.getData('vx');
+        const vy = sprite.getData('vy');
+        sprite.x += vx * dtSeconds;
+        sprite.y += vy * dtSeconds;
+      }
     });
+
 
     if (this.isDebugMode) {
       if (time - this.lastBandwidthTime > 1000) {

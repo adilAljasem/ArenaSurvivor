@@ -89,7 +89,7 @@
     "applyEffectsOnHit": [
       "poison_dot"
     ],
-    "grantedSkills": ["test_laser_beam"],
+    "grantedSkills": ["laser_closest"],
     "statRollChance": 0.50,
     "maxRandomStats": 2,
     "allowedRandomStats": ["rangedDamage", "attackSpeedPercent", "critChance"],
@@ -118,7 +118,7 @@
     "damageScaling": {
       "rangedDamage": 0.4
     },
-    "grantedSkills": [],
+    "grantedSkills": ["laser_sweep"],
     "statRollChance": 0.50,
     "maxRandomStats": 2,
     "allowedRandomStats": ["rangedDamage", "maxHp", "critChance"],
@@ -147,7 +147,7 @@
     "damageScaling": {
       "rangedDamage": 1.2
     },
-    "grantedSkills": [],
+    "grantedSkills": ["cast_invisible_drone"],
     "statRollChance": 0.60,
     "maxRandomStats": 3,
     "allowedRandomStats": ["rangedDamage", "critChance", "damagePercent"],
@@ -209,7 +209,7 @@
     "damageScaling": {
       "meleeDamage": 0.5
     },
-    "grantedSkills": [],
+    "grantedSkills": ["drone_fire_down"],
     "statRollChance": 0.40,
     "maxRandomStats": 1,
     "allowedRandomStats": ["meleeDamage", "maxHp", "speed"],
@@ -238,7 +238,7 @@
     "damageScaling": {
       "meleeDamage": 0.8
     },
-    "grantedSkills": [],
+    "grantedSkills": ["cast_orbital_fireballs"],
     "statRollChance": 0.50,
     "maxRandomStats": 2,
     "allowedRandomStats": ["meleeDamage", "critChance", "lifeSteal"],
@@ -268,7 +268,7 @@
     "damageScaling": {
       "meleeDamage": 1.5
     },
-    "grantedSkills": [],
+    "grantedSkills": ["boss_cast_sweeper"],
     "statRollChance": 0.60,
     "maxRandomStats": 2,
     "allowedRandomStats": ["meleeDamage", "armor", "maxHp"],

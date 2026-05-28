@@ -80,5 +80,13 @@
     "tickDamage": 0.0,
     "tickSkillId": "test_fire_aura_explosion",
     "colorTint": "0xffaa00"
+  },
+  "boss_sweeping_aura": {
+    "id": "boss_sweeping_aura",
+    "isBuff": true,
+    "duration": 5.0,
+    "tickRate": 0.05,
+    "tickDamage": 0,
+    "tickSkillId": "laser_sweep"
   }
 }

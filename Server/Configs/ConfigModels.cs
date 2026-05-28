@@ -232,6 +232,9 @@ public class ProjectileConfig
     public float OrbitRadius { get; set; } = 100f;
     public float OrbitSpeed { get; set; } = 2f;
 
+    public float TickRate { get; set; } = 0f;
+    public string TickSkillId { get; set; } = string.Empty;
+
     // --- Physics & Mechanics ---
     public float Lifespan { get; set; } = 0f;
     public float BaseSpeed { get; set; } = 500f;

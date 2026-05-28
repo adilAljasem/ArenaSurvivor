@@ -97,13 +97,25 @@
         "id": "test_orbital_fireball",
         "name": "Orbital Fireball",
         "textureKey": "ammo_sheet",
-        "iconFrame": 0,
-        "scale": 0.5,
+        "iconFrame": 26,
+        "scale": 1.5,
         "baseSpeed": 3.0,
         "hitRadius": 25,
         "pierceCount": 999,
         "lifespan": 10.0,
         "movementBehavior": "Orbital",
-        "orbitRadius": 120
+        "orbitRadius": 220,
+        "orbitSpeed": 60
+    },
+    "invisible_drone": {
+        "id": "invisible_drone",
+        "textureKey": "",
+        "baseSpeed": 150,
+        "hitRadius": 0,
+        "pierceCount": 999,
+        "lifespan": 15.0,
+        "movementBehavior": "Linear",
+        "tickRate": 0.01,
+        "tickSkillId": "laser_sweep"
     }
 }
