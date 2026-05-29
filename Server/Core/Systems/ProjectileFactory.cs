@@ -48,11 +48,11 @@ public static class ProjectileFactory
                 Team = team,
                 X = startX,
                 Y = startY,
-                
+
                 VelX = projConfig.MovementBehavior == "Orbital" ? 0 : (float)Math.Cos(currentAngle) * finalSpeed,
                 VelY = projConfig.MovementBehavior == "Orbital" ? 0 : (float)Math.Sin(currentAngle) * finalSpeed,
                 OrbitSpeed = projConfig.MovementBehavior == "Orbital" ? projConfig.OrbitSpeed : 0f,
-                
+
                 Damage = finalDamage,
                 LifeStealChance = lifeStealChance,
                 HitRadius = projConfig.HitRadius,
@@ -63,11 +63,12 @@ public static class ProjectileFactory
                 MovementBehavior = projConfig.MovementBehavior,
                 OrbitRadius = projConfig.OrbitRadius,
                 OrbitAngleOffset = currentAngle,
-                
+
                 OnDeathSkillId = projConfig.OnDeathSkillId,
                 TickRate = projConfig.TickRate,
-                TickSkillId = projConfig.TickSkillId
+                TickSkillId = projConfig.TickSkillId,
             };
+
 
             results.Add(bullet);
         }

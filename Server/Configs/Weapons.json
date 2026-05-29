@@ -29,12 +29,18 @@
     "grantedSkills": [],
     "statRollChance": 0.50,
     "maxRandomStats": 2,
-    "allowedRandomStats": ["rangedDamage", "critChance", "speed"],
+    "allowedRandomStats": [
+      "rangedDamage",
+      "critChance",
+      "speed"
+    ],
     "skillRollChance": 0.10,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": ["adrenaline_surge"]
+    "allowedRandomSkills": [
+      "adrenaline_surge"
+    ]
   },
-    "pistol_t2": {
+  "pistol_t2": {
     "id": "pistol_t2",
     "weaponFamily": "pistol_family",
     "name": "Pistol",
@@ -59,13 +65,21 @@
     "applyEffectsOnHit": [
       "poison_dot"
     ],
-    "grantedSkills": ["adrenaline_surge"],
+    "grantedSkills": [
+      "adrenaline_surge"
+    ],
     "statRollChance": 0.90,
     "maxRandomStats": 3,
-    "allowedRandomStats": ["rangedDamage", "critChance", "speed"],
+    "allowedRandomStats": [
+      "rangedDamage",
+      "critChance",
+      "speed"
+    ],
     "skillRollChance": 0.90,
     "maxRandomSkills": 3,
-    "allowedRandomSkills": ["adrenaline_surge"]
+    "allowedRandomSkills": [
+      "adrenaline_surge"
+    ]
   },
   "smg": {
     "id": "smg",
@@ -89,13 +103,21 @@
     "applyEffectsOnHit": [
       "poison_dot"
     ],
-    "grantedSkills": ["laser_closest"],
+    "grantedSkills": [
+      "laser_closest"
+    ],
     "statRollChance": 0.50,
     "maxRandomStats": 2,
-    "allowedRandomStats": ["rangedDamage", "attackSpeedPercent", "critChance"],
+    "allowedRandomStats": [
+      "rangedDamage",
+      "attackSpeedPercent",
+      "critChance"
+    ],
     "skillRollChance": 0.15,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": ["poison_volley"]
+    "allowedRandomSkills": [
+      "poison_volley"
+    ]
   },
   "shotgun": {
     "id": "shotgun",
@@ -118,13 +140,25 @@
     "damageScaling": {
       "rangedDamage": 0.4
     },
-    "grantedSkills": ["laser_sweep"],
+    "grantedSkills": [
+      "laser_sweep"
+    ],
     "statRollChance": 0.50,
     "maxRandomStats": 2,
-    "allowedRandomStats": ["rangedDamage", "maxHp", "critChance"],
+    "allowedRandomStats": [
+      "rangedDamage",
+      "maxHp",
+      "critChance"
+    ],
     "skillRollChance": 0.15,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": ["boss_stomp"]
+    "allowedRandomSkills": [
+      "boss_stomp"
+    ],
+    "traits": [
+      "neo_reflexes",
+      "rooted_power"
+    ]
   },
   "sniper": {
     "id": "sniper",
@@ -147,13 +181,21 @@
     "damageScaling": {
       "rangedDamage": 1.2
     },
-    "grantedSkills": ["cast_invisible_drone"],
+    "grantedSkills": [
+      "cast_invisible_drone"
+    ],
     "statRollChance": 0.60,
     "maxRandomStats": 3,
-    "allowedRandomStats": ["rangedDamage", "critChance", "damagePercent"],
+    "allowedRandomStats": [
+      "rangedDamage",
+      "critChance",
+      "damagePercent"
+    ],
     "skillRollChance": 0.20,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": ["adrenaline_surge"]
+    "allowedRandomSkills": [
+      "adrenaline_surge"
+    ]
   },
   "rocket": {
     "id": "rocket",
@@ -177,16 +219,22 @@
       "rangedDamage": 1.0,
       "engineering": 0.5
     },
-     "applyEffectsOnHit": [
+    "applyEffectsOnHit": [
       "poison_dot"
     ],
     "grantedSkills": [],
     "statRollChance": 0.60,
     "maxRandomStats": 2,
-    "allowedRandomStats": ["rangedDamage", "elementalDamage", "damagePercent"],
+    "allowedRandomStats": [
+      "rangedDamage",
+      "elementalDamage",
+      "damagePercent"
+    ],
     "skillRollChance": 0.20,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": ["frost_nova"]
+    "allowedRandomSkills": [
+      "frost_nova"
+    ]
   },
   "stick": {
     "id": "stick",
@@ -209,13 +257,21 @@
     "damageScaling": {
       "meleeDamage": 0.5
     },
-    "grantedSkills": ["drone_fire_down"],
+    "grantedSkills": [
+      "drone_fire_down"
+    ],
     "statRollChance": 0.40,
     "maxRandomStats": 1,
-    "allowedRandomStats": ["meleeDamage", "maxHp", "speed"],
+    "allowedRandomStats": [
+      "meleeDamage",
+      "maxHp",
+      "speed"
+    ],
     "skillRollChance": 0.10,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": ["nature_pulse"]
+    "allowedRandomSkills": [
+      "nature_pulse"
+    ]
   },
   "sword": {
     "id": "sword",
@@ -230,7 +286,7 @@
     "scale": 0.15,
     "iconFrame": 0,
     "defaultFacingRight": true,
-    "attackAnimType": "stab",
+    "attackAnimType": "swing",
     "soundFire": "sword-shoot",
     "statBonuses": {
       "speed": 2
@@ -238,13 +294,21 @@
     "damageScaling": {
       "meleeDamage": 0.8
     },
-    "grantedSkills": ["cast_orbital_fireballs"],
+    "grantedSkills": [
+      "cast_orbital_fireballs"
+    ],
     "statRollChance": 0.50,
     "maxRandomStats": 2,
-    "allowedRandomStats": ["meleeDamage", "critChance", "lifeSteal"],
+    "allowedRandomStats": [
+      "meleeDamage",
+      "critChance",
+      "lifeSteal"
+    ],
     "skillRollChance": 0.15,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": ["adrenaline_surge"]
+    "allowedRandomSkills": [
+      "adrenaline_surge"
+    ]
   },
   "hammer": {
     "id": "hammer",
@@ -268,13 +332,21 @@
     "damageScaling": {
       "meleeDamage": 1.5
     },
-    "grantedSkills": ["boss_cast_sweeper"],
+    "grantedSkills": [
+      "boss_cast_sweeper"
+    ],
     "statRollChance": 0.60,
     "maxRandomStats": 2,
-    "allowedRandomStats": ["meleeDamage", "armor", "maxHp"],
+    "allowedRandomStats": [
+      "meleeDamage",
+      "armor",
+      "maxHp"
+    ],
     "skillRollChance": 0.20,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": ["boss_stomp"]
+    "allowedRandomSkills": [
+      "boss_stomp"
+    ]
   },
   "wand": {
     "id": "wand",
@@ -297,13 +369,22 @@
     "damageScaling": {
       "elementalDamage": 1.0
     },
-    "grantedSkills": ["magic_missile"],
+    "grantedSkills": [
+      "magic_missile"
+    ],
     "statRollChance": 0.50,
     "maxRandomStats": 2,
-    "allowedRandomStats": ["critChance", "elementalDamage", "maxHp"],
+    "allowedRandomStats": [
+      "critChance",
+      "elementalDamage",
+      "maxHp"
+    ],
     "skillRollChance": 0.15,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": [ "frost_nova", "nature_pulse"]
+    "allowedRandomSkills": [
+      "frost_nova",
+      "nature_pulse"
+    ]
   },
   "potato_thrower": {
     "id": "potato_thrower",
@@ -330,9 +411,16 @@
     "grantedSkills": [],
     "statRollChance": 0.60,
     "maxRandomStats": 2,
-    "allowedRandomStats": ["rangedDamage", "hpRegen", "maxHp"],
+    "allowedRandomStats": [
+      "rangedDamage",
+      "hpRegen",
+      "maxHp"
+    ],
     "skillRollChance": 0.15,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": ["poison_volley", "summon_trees"]
+    "allowedRandomSkills": [
+      "poison_volley",
+      "summon_trees"
+    ]
   }
 }

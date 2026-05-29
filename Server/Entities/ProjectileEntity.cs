@@ -20,9 +20,6 @@ public class ProjectileEntity
     public float OrbitRadius { get; set; }
     public float OrbitAngleOffset { get; set; }
     public float OrbitSpeed { get; set; }
-    public float InitialLifespan { get; set; }
-    public float StartAngle { get; set; }
-    public float SweepAngle { get; set; }
     public string OnDeathSkillId { get; set; } = string.Empty;
 
     public float TickRate { get; set; }

@@ -36,10 +36,6 @@ public static class CombatSystem
                     else if (weapon.SlotIndex == 2) spawnY -= offset;
                     else if (weapon.SlotIndex == 3) spawnY += offset;
 
-                    // >>> THE FIX: Parallel Aiming (Goal 2) <<<
-                    // We calculate direction FROM character center, even though 
-                    // bullet spawns from barrel. This makes bullet travel straight 
-                    // based on character's general look direction.
                     float dirX = player.AimX - player.X;
                     float dirY = player.AimY - player.Y;
                     float length = (float)Math.Sqrt(dirX * dirX + dirY * dirY);
@@ -94,12 +90,11 @@ public static class CombatSystem
                             if (projConfig.Lifespan > 0) computedLifespan = projConfig.Lifespan;
                             if (config.Lifespan > 0) computedLifespan = config.Lifespan;
 
-
                             var newBullets = ProjectileFactory.Create(
-                                                            projConfig, player.ConnectionId, "Player",
-                                                            spawnX, spawnY, dirX, dirY,
-                                                            finalDamage, finalSpeed, totalLifeStealForThisAttack, config.ApplyEffectsOnHit, 1, computedLifespan
-                                                        );
+                                projConfig, player.ConnectionId, "Player",
+                                spawnX, spawnY, dirX, dirY,
+                                finalDamage, finalSpeed, totalLifeStealForThisAttack, config.ApplyEffectsOnHit, 1, computedLifespan
+                            );
 
                             foreach (var b in newBullets) state.Projectiles.TryAdd(b.Id, b);
                         }
@@ -195,6 +190,8 @@ public static class CombatSystem
                     if (pCfg2.ApplyEffectsOnHit != null) combined2.AddRange(pCfg2.ApplyEffectsOnHit);
 
                     enemy.FiredWeaponsThisTick.Add(weapon.SlotIndex);
+
+
 
                     // >>> CLEAN FACTORY CALL <<<
                     var newBullets = ProjectileFactory.Create(
@@ -315,7 +312,13 @@ public static class CombatSystem
 
                 enemy.FiredWeaponsThisTick.Add(weapon.SlotIndex);
 
-                
+                if (projConfig.MovementBehavior == "Cleave" || projConfig.MovementBehavior == "Whirlwind")
+                {
+                    spawnX = enemy.X;
+                    spawnY = enemy.Y;
+                }
+
+
                 var newBullets = ProjectileFactory.Create(
                                     projConfig,
                                     enemy.Id,
@@ -348,7 +351,6 @@ public static class CombatSystem
             float prevX = proj.X;
             float prevY = proj.Y;
 
-            // >>> THE HIGHLY OPTIMIZED ORBITAL MOVEMENT <<<
             if (proj.MovementBehavior == "Orbital")
             {
                 BaseActorEntity owner = null;
@@ -357,7 +359,6 @@ public static class CombatSystem
 
                 if (owner != null && owner.ActionState != "Dead")
                 {
-                    // >>> FIX: Convert Degrees per Second to Radians so the math is predictable! <<<
                     float radiansPerSec = proj.OrbitSpeed * (float)(Math.PI / 180.0);
                     proj.OrbitAngleOffset += radiansPerSec * dt;
 
@@ -425,17 +426,15 @@ public static class CombatSystem
 
                     bool isHit = false;
 
-                    // >>> THE FIX: Separate collision logic for Orbitals vs Linear <<<
+                    // Keeps 360-degree weapons from "slicing" the whole screen
                     if (proj.MovementBehavior == "Orbital")
                     {
-                        // Point-to-point check (no slicing chords)
                         float distX = proj.X - enemy.X;
                         float distY = proj.Y - enemy.Y;
                         isHit = (distX * distX) + (distY * distY) <= hitThresholdSq;
                     }
                     else
                     {
-                        // Sweeping Line Segment for fast linear bullets
                         float dx = proj.X - prevX; float dy = proj.Y - prevY;
                         float fx = enemy.X - prevX; float fy = enemy.Y - prevY;
 
@@ -470,12 +469,14 @@ public static class CombatSystem
 
                         if (Random.Shared.NextDouble() < proj.LifeStealChance)
                         {
-                            if (state.Players.TryGetValue(proj.OwnerId, out var p))
+                            // Renamed 'p' to 'playerToHeal' to avoid the naming collision
+                            if (state.Players.TryGetValue(proj.OwnerId, out var playerToHeal))
                             {
-                                float maxHp = p.GetTotalStat("maxHp", configs);
-                                p.CurrentHp = Math.Min(maxHp, p.CurrentHp + 1f);
+                                float maxHp = playerToHeal.GetTotalStat("maxHp", configs);
+                                playerToHeal.CurrentHp = Math.Min(maxHp, playerToHeal.CurrentHp + 1f);
                             }
                         }
+
 
                         if (enemy.CurrentHp <= 0 && enemy.ActionState != "Dead")
                         {
@@ -536,6 +537,17 @@ public static class CombatSystem
 
                     if (distSqToSegment <= hitThresholdSq)
                     {
+
+                        float blockChance = player.GetEngineMechanic("projectileBlockChance", configs);
+                        if (blockChance > 0 && Random.Shared.NextDouble() <= blockChance)
+                        {
+                            // Block successful! Pop a "0" damage number to give the player visual feedback, then destroy the bullet.
+                            tickDamageEvents.Add(new DamageEventDto { X = player.X, Y = player.Y, Amount = 0 });
+
+                            if (!projectilesToRemove.Contains(proj.Id)) projectilesToRemove.Add(proj.Id);
+                            break;
+                        }
+
                         player.CurrentHp -= proj.Damage;
                         proj.HitEnemies.Add(player.ConnectionId);
 

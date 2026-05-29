@@ -183,9 +183,28 @@ export const UIHelpers = {
             if (onPurchase?.length) onPurchase.forEach((e: string) => posLines.push(`🔹 Grants: ${UIHelpers.formatEffectName(e)}`));
 
             if (traits) {
+                const traitMap = atlasConfigs?.traits ?? atlasConfigs?.Traits;
+
                 traits.forEach((t: string) => {
-                    if (t === "CannotHeal") negLines.push(`⚠️ Cannot Heal`);
-                    else posLines.push(`🔹 ${UIHelpers.formatEffectName(t)}`);
+                    const traitCfg = traitMap?.[t];
+
+                    if (traitCfg) {
+                        const name = traitCfg.name ?? traitCfg.Name ?? t;
+                        const desc = traitCfg.description ?? traitCfg.Description ?? "";
+                        const isNeg = traitCfg.isNegative ?? traitCfg.IsNegative ?? false;
+
+                        const line = desc ? `🔹 ${name}: ${desc}` : `🔹 ${name}`;
+
+                        if (isNeg) {
+                            negLines.push(line);
+                        } else {
+                            posLines.push(line);
+                        }
+                    } else {
+                        // Fallback just in case a trait ID is missing from the JSON
+                        if (t === "CannotHeal") negLines.push(`⚠️ Cannot Heal`);
+                        else posLines.push(`🔹 ${UIHelpers.formatEffectName(t)}`);
+                    }
                 });
             }
 

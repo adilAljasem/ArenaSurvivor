@@ -1,0 +1,75 @@
+{
+  "cannot_heal": {
+    "id": "cannot_heal",
+    "name": "Cursed Flesh",
+    "isNegative": true,
+    "description": "Reduces all healing to zero.",
+    "statMultipliers": {
+      "hpRegen": 0.0,
+      "lifeSteal": 0.0
+    },
+    "engineMechanics": {
+      "healBlock": 1.0
+    }
+  },
+  "rooted_power": {
+    "id": "rooted_power",
+    "name": "Rooted Power",
+    "isNegative": false,
+    "description": "Grants +5 Armor while standing still.",
+    "dynamicModifiers": [
+      {
+        "conditionType": "IsStandingStill",
+        "targetStat": "armor",
+        "amount": 5.0
+      }
+    ]
+  },
+  "hoarder": {
+    "id": "hoarder",
+    "name": "Hoarder",
+    "isNegative": false,
+    "description": "Gain +2% Damage for every item you own.",
+    "dynamicModifiers": [
+      {
+        "conditionType": "PerItemOwned",
+        "targetStat": "damagePercent",
+        "amount": 0.02
+      }
+    ]
+  },
+  "adrenaline_junkie": {
+    "id": "adrenaline_junkie",
+    "name": "Adrenaline Junkie",
+    "isNegative": false,
+    "description": "Gain +1.5 Speed for every enemy currently alive.",
+    "dynamicModifiers": [
+      {
+        "conditionType": "PerEnemyAlive",
+        "targetStat": "speed",
+        "amount": 1.5
+      }
+    ]
+  },
+  "rushed": {
+    "id": "rushed",
+    "name": "Rushed",
+    "isNegative": true,
+    "description": "Gain +50 Speed, but waves end 5 seconds faster.",
+    "statBonuses": {
+      "speed": 50.0
+    },
+    "engineMechanics": {
+      "bonusWaveSeconds": -5.0
+    }
+  },
+  "neo_reflexes": {
+    "id": "neo_reflexes",
+    "name": "Neo Reflexes",
+    "isNegative": false,
+    "description": "15% chance to completely block an enemy projectile per stack.",
+    "engineMechanics": {
+      "projectileBlockChance": 0.15
+    }
+  }
+}

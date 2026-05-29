@@ -27,10 +27,16 @@
     },
     "statRollChance": 0.40,
     "maxRandomStats": 1,
-    "allowedRandomStats": ["meleeDamage", "critChance", "maxHp"],
+    "allowedRandomStats": [
+      "meleeDamage",
+      "critChance",
+      "maxHp"
+    ],
     "skillRollChance": 0.10,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": ["adrenaline_surge"]
+    "allowedRandomSkills": [
+      "adrenaline_surge"
+    ]
   },
   "dragon_fang": {
     "id": "dragon_fang",
@@ -41,7 +47,9 @@
     "textureKey": "items_sheet",
     "scale": 1.2,
     "iconFrame": 0,
-    "traits": ["HeavyHitter"],
+    "traits": [
+      "HeavyHitter"
+    ],
     "effectsAtWaveEnd": [],
     "effectsOnPurchase": [],
     "dynamicModifiers": [
@@ -65,12 +73,19 @@
     },
     "statRollChance": 0.75,
     "maxRandomStats": 2,
-    "allowedRandomStats": ["meleeDamage", "critChance", "armor", "maxHp"],
+    "allowedRandomStats": [
+      "meleeDamage",
+      "critChance",
+      "armor",
+      "maxHp"
+    ],
     "skillRollChance": 0.25,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": ["boss_stomp", "enrage"]
+    "allowedRandomSkills": [
+      "boss_stomp",
+      "enrage"
+    ]
   },
-
   "magical_leaf": {
     "id": "magical_leaf",
     "name": "Grind's Leaf",
@@ -94,10 +109,16 @@
     },
     "statRollChance": 0.35,
     "maxRandomStats": 1,
-    "allowedRandomStats": ["maxHp", "hpRegen", "dodge"],
+    "allowedRandomStats": [
+      "maxHp",
+      "hpRegen",
+      "dodge"
+    ],
     "skillRollChance": 0.05,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": ["nature_pulse"]
+    "allowedRandomSkills": [
+      "nature_pulse"
+    ]
   },
   "world_tree_branch": {
     "id": "world_tree_branch",
@@ -108,7 +129,9 @@
     "textureKey": "items_sheet",
     "scale": 1.3,
     "iconFrame": 1,
-    "traits": ["Rooted"],
+    "traits": [
+      "rooted_power"
+    ],
     "effectsAtWaveEnd": [
       {
         "statName": "maxHp",
@@ -135,12 +158,19 @@
     },
     "statRollChance": 0.80,
     "maxRandomStats": 3,
-    "allowedRandomStats": ["maxHp", "hpRegen", "dodge", "armor"],
+    "allowedRandomStats": [
+      "maxHp",
+      "hpRegen",
+      "dodge",
+      "armor"
+    ],
     "skillRollChance": 0.40,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": ["summon_trees", "nature_pulse"]
+    "allowedRandomSkills": [
+      "summon_trees",
+      "nature_pulse"
+    ]
   },
-
   "cursed_skull": {
     "id": "cursed_skull",
     "name": "Cursed Skull",
@@ -150,7 +180,9 @@
     "textureKey": "items_sheet",
     "scale": 1.0,
     "iconFrame": 7,
-    "traits": ["MoreEnemies"],
+    "traits": [
+      "MoreEnemies"
+    ],
     "effectsAtWaveEnd": [
       {
         "statName": "maxHp",
@@ -169,10 +201,16 @@
     },
     "statRollChance": 0.50,
     "maxRandomStats": 2,
-    "allowedRandomStats": ["meleeDamage", "rangedDamage", "critChance"],
+    "allowedRandomStats": [
+      "meleeDamage",
+      "rangedDamage",
+      "critChance"
+    ],
     "skillRollChance": 0.15,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": ["poison_volley"]
+    "allowedRandomSkills": [
+      "poison_volley"
+    ]
   },
   "demonic_pact": {
     "id": "demonic_pact",
@@ -183,7 +221,10 @@
     "textureKey": "items_sheet",
     "scale": 1.2,
     "iconFrame": 7,
-    "traits": ["CannotHeal", "MoreEnemies"],
+    "traits": [
+      "CannotHeal",
+      "MoreEnemies"
+    ],
     "effectsAtWaveEnd": [
       {
         "statName": "maxHp",
@@ -213,12 +254,18 @@
     },
     "statRollChance": 0.90,
     "maxRandomStats": 3,
-    "allowedRandomStats": ["damagePercent", "critChance", "lifeSteal", "speed"],
+    "allowedRandomStats": [
+      "damagePercent",
+      "critChance",
+      "lifeSteal",
+      "speed"
+    ],
     "skillRollChance": 0.50,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": ["enrage"]
+    "allowedRandomSkills": [
+      "enrage"
+    ]
   },
-
   "battery": {
     "id": "battery",
     "name": "Battery",
@@ -238,10 +285,16 @@
     },
     "statRollChance": 0.35,
     "maxRandomStats": 1,
-    "allowedRandomStats": ["elementalDamage", "engineering", "attackSpeedPercent"],
+    "allowedRandomStats": [
+      "elementalDamage",
+      "engineering",
+      "attackSpeedPercent"
+    ],
     "skillRollChance": 0.10,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": ["magic_missile"]
+    "allowedRandomSkills": [
+      "magic_missile"
+    ]
   },
   "plasma_core": {
     "id": "plasma_core",
@@ -275,12 +328,19 @@
     },
     "statRollChance": 0.70,
     "maxRandomStats": 2,
-    "allowedRandomStats": ["elementalDamage", "engineering", "attackSpeedPercent", "projectileSpeedPercent"],
+    "allowedRandomStats": [
+      "elementalDamage",
+      "engineering",
+      "attackSpeedPercent",
+      "projectileSpeedPercent"
+    ],
     "skillRollChance": 0.30,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": ["frost_nova", "magic_missile"]
+    "allowedRandomSkills": [
+      "frost_nova",
+      "magic_missile"
+    ]
   },
-
   "coffee": {
     "id": "coffee",
     "name": "Coffee",
@@ -300,10 +360,17 @@
     },
     "statRollChance": 0.35,
     "maxRandomStats": 1,
-    "allowedRandomStats": ["speed", "haste", "attackSpeedPercent", "dodge"],
+    "allowedRandomStats": [
+      "speed",
+      "haste",
+      "attackSpeedPercent",
+      "dodge"
+    ],
     "skillRollChance": 0.05,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": ["adrenaline_surge"]
+    "allowedRandomSkills": [
+      "adrenaline_surge"
+    ]
   },
   "espresso_shot": {
     "id": "espresso_shot",
@@ -314,7 +381,9 @@
     "textureKey": "items_sheet",
     "scale": 1.0,
     "iconFrame": 9,
-    "traits": ["Jittery"],
+    "traits": [
+      "Jittery"
+    ],
     "effectsAtWaveEnd": [],
     "effectsOnPurchase": [],
     "dynamicModifiers": [
@@ -333,12 +402,18 @@
     },
     "statRollChance": 0.60,
     "maxRandomStats": 2,
-    "allowedRandomStats": ["speed", "haste", "attackSpeedPercent", "dodge"],
+    "allowedRandomStats": [
+      "speed",
+      "haste",
+      "attackSpeedPercent",
+      "dodge"
+    ],
     "skillRollChance": 0.25,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": ["adrenaline_surge"]
+    "allowedRandomSkills": [
+      "adrenaline_surge"
+    ]
   },
-
   "mirror": {
     "id": "mirror",
     "name": "Mirror",
@@ -359,7 +434,11 @@
     },
     "statRollChance": 0.50,
     "maxRandomStats": 2,
-    "allowedRandomStats": ["luck", "harvesting", "xpGainPercent"],
+    "allowedRandomStats": [
+      "luck",
+      "harvesting",
+      "xpGainPercent"
+    ],
     "skillRollChance": 0.0,
     "maxRandomSkills": 0,
     "allowedRandomSkills": []
@@ -388,7 +467,11 @@
     },
     "statRollChance": 0.45,
     "maxRandomStats": 1,
-    "allowedRandomStats": ["lifeSteal", "meleeDamage", "hpRegen"],
+    "allowedRandomStats": [
+      "lifeSteal",
+      "meleeDamage",
+      "hpRegen"
+    ],
     "skillRollChance": 0.0,
     "maxRandomSkills": 0,
     "allowedRandomSkills": []

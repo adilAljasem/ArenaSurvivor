@@ -231,7 +231,7 @@ public class ProjectileConfig
     public string MovementBehavior { get; set; } = "Linear"; // "Linear" or "Orbital"
     public float OrbitRadius { get; set; } = 100f;
     public float OrbitSpeed { get; set; } = 2f;
-
+    public float SweepAngle { get; set; } = 90f;
     public float TickRate { get; set; } = 0f;
     public string TickSkillId { get; set; } = string.Empty;
 
@@ -331,6 +331,24 @@ public class DynamicSkillTrigger
     public string SkillId { get; set; } = string.Empty;
     public float Cooldown { get; set; } = 10f; // IMPORTANT: Prevents the skill from firing 20 times a second!
     public float? OverrideCastTime { get; set; }
+}
+
+public class TraitConfig
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public bool IsNegative { get; set; } = false;
+
+    // Core Stat Changes
+    public Dictionary<string, float> StatBonuses { get; set; } = new();
+    public Dictionary<string, float> StatMultipliers { get; set; } = new();
+
+    // Engine-Level Hooks (Supports negative floats naturally!)
+    public Dictionary<string, float> EngineMechanics { get; set; } = new();
+
+    // Advanced Conditions
+    public List<DynamicModifier> DynamicModifiers { get; set; } = new();
+    public List<string> GrantedSkills { get; set; } = new();
 }
 
 public class MapConfig

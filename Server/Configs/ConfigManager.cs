@@ -20,6 +20,7 @@ public class ConfigManager
     public Dictionary<string, EffectConfig> Effects { get; private set; } = new();
     public Dictionary<string, SkillConfig> Skills { get; private set; } = new(); // <<< ADD THIS
     public Dictionary<string, MapConfig> Maps { get; private set; } = new(); // <<< ADD THIS
+    public Dictionary<string, TraitConfig> Traits { get; private set; } = new(); // <<< ADD THIS
 
     public ConfigManager()
     {
@@ -85,7 +86,6 @@ public class ConfigManager
             var newMaps = File.Exists("Configs/Maps.json") ? JsonSerializer.Deserialize<Dictionary<string, MapConfig>>(
                 File.ReadAllText("Configs/Maps.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
 
-            // >>> THE ONES I FORGOT! <<<
             var newProjectiles = File.Exists("Configs/Projectiles.json") ? JsonSerializer.Deserialize<Dictionary<string, ProjectileConfig>>(
                 File.ReadAllText("Configs/Projectiles.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
 
@@ -94,6 +94,9 @@ public class ConfigManager
 
             var newStats = File.Exists("Configs/Stats.json") ? JsonSerializer.Deserialize<List<string>>(
                 File.ReadAllText("Configs/Stats.json")) ?? new() : new();
+
+            var newTraits = File.Exists("Configs/Traits.json") ? JsonSerializer.Deserialize<Dictionary<string, TraitConfig>>(
+                File.ReadAllText("Configs/Traits.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
 
             // 2. ATOMIC SWAP: Reassign everything at the exact same time!
             Enemies = newEnemies;
@@ -106,6 +109,7 @@ public class ConfigManager
             Projectiles = newProjectiles;
             LevelUpCards = newLevelUpCards;
             AllStats = newStats;
+            Traits = newTraits;
 
             Console.WriteLine($"[CONFIG] Loaded successfully: {Enemies.Count} Enemies, {Weapons.Count} Weapons, {Projectiles.Count} Projectiles.");
         }
