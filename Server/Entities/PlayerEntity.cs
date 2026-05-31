@@ -15,7 +15,7 @@ public class PlayerEntity : BaseActorEntity
     public float CurrentXp { get; set; }
     public int PendingLevelUps { get; set; }
     public List<Configs.LevelUpCardConfig> CurrentLevelUpChoices { get; set; } = new();
-    
+
     // The formula for how much XP you need to reach the next level
     public float GetXpRequirement() => 5 + (Level * 3);
 
@@ -34,6 +34,9 @@ public class PlayerEntity : BaseActorEntity
     // Mechanics
     public List<string> Traits { get; set; } = new();
     public bool DuplicateNextPurchase { get; set; }
+
+    public List<string> SynergizedTraits { get; private set; } = new();
+    public List<ActiveSkill> SynergizedSkills { get; private set; } = new();
 
     // Initializes the player with the Master Stat List so it never crashes
     public void Initialize(CharacterConfig config, ConfigManager configManager)
@@ -97,33 +100,84 @@ public class PlayerEntity : BaseActorEntity
                 }
             }
         }
+        RecalculateSynergies(configManager);
     }
 
     /// <summary>
-    /// Gathers all traits from the base character, owned items, and equipped weapons.
+    /// Run this ONCE whenever the player buys, merges, drops gear, or levels up.
+    /// It pools all gear, counts duplicates, and upgrades skills/traits!
+    /// </summary>
+    public void RecalculateSynergies(ConfigManager configs)
+    {
+        // --- 1. POOL EVERYTHING ---
+        var rawTraits = new List<string>(this.Traits);
+        var rawSkills = new List<string>(this.Skills.Select(s => s.ConfigId));
+
+        foreach (var item in OwnedItems)
+        {
+            if (configs.Items.TryGetValue(item.ConfigId, out var iCfg) && iCfg.Traits != null) rawTraits.AddRange(iCfg.Traits);
+            rawSkills.AddRange(item.ItemSkills.Select(s => s.ConfigId));
+        }
+
+        foreach (var weapon in Weapons)
+        {
+            if (configs.Weapons.TryGetValue(weapon.ConfigId, out var wCfg) && wCfg.Traits != null) rawTraits.AddRange(wCfg.Traits);
+            rawSkills.AddRange(weapon.WeaponSkills.Select(s => s.ConfigId));
+        }
+
+        // --- 2. RESOLVE TRAIT SYNERGIES ---
+        SynergizedTraits.Clear();
+        var traitGroups = rawTraits.GroupBy(t => t);
+
+        foreach (var group in traitGroups)
+        {
+            string currentId = group.Key;
+            int count = group.Count();
+
+            // Upgrade the trait for every duplicate found
+            for (int i = 1; i < count; i++)
+            {
+                if (configs.Traits.TryGetValue(currentId, out var tCfg) && !string.IsNullOrEmpty(tCfg.NextLevelId))
+                    currentId = tCfg.NextLevelId;
+                else
+                    break; // Max level reached
+            }
+            SynergizedTraits.Add(currentId);
+        }
+
+        // --- 3. RESOLVE SKILL SYNERGIES ---
+        var previousSkills = new Dictionary<string, ActiveSkill>();
+        foreach (var s in SynergizedSkills) previousSkills[s.ConfigId] = s; // Save cooldowns!
+
+        SynergizedSkills.Clear();
+        var skillGroups = rawSkills.GroupBy(s => s);
+
+        foreach (var group in skillGroups)
+        {
+            string currentId = group.Key;
+            int count = group.Count();
+
+            // Upgrade the skill for every duplicate found
+            for (int i = 1; i < count; i++)
+            {
+                if (configs.Skills.TryGetValue(currentId, out var sCfg) && !string.IsNullOrEmpty(sCfg.NextLevelId))
+                    currentId = sCfg.NextLevelId;
+                else
+                    break; // Max level reached
+            }
+
+            // Restore the cooldown if they already had this specific skill level actively ticking
+            float cooldown = previousSkills.ContainsKey(currentId) ? previousSkills[currentId].CurrentCooldown : 0f;
+            SynergizedSkills.Add(new ActiveSkill { ConfigId = currentId, CurrentCooldown = cooldown });
+        }
+    }
+
+    /// <summary>
+    /// Update GetActiveTraits to simply return the cached, highly-optimized list.
     /// </summary>
     public List<string> GetActiveTraits(ConfigManager configs)
     {
-        var traits = new List<string>();
-
-        // 1. Character Base / Permanently Granted Traits
-        traits.AddRange(this.Traits);
-
-        // 2. Item Traits
-        foreach (var item in this.OwnedItems)
-        {
-            if (configs.Items.TryGetValue(item.ConfigId, out var itemCfg) && itemCfg.Traits != null)
-                traits.AddRange(itemCfg.Traits);
-        }
-
-        // 3. Weapon Traits
-        foreach (var weapon in this.Weapons)
-        {
-            if (configs.Weapons.TryGetValue(weapon.ConfigId, out var wepCfg) && wepCfg.Traits != null)
-                traits.AddRange(wepCfg.Traits);
-        }
-
-        return traits;
+        return SynergizedTraits;
     }
 
     /// <summary>
@@ -177,7 +231,7 @@ public class PlayerEntity : BaseActorEntity
                     break;
 
                 case "IsStandingStill":
-                    if (this.InputX == 0 && this.InputY == 0) 
+                    if (this.InputX == 0 && this.InputY == 0)
                         flatBonus += (mod.Amount * itemLevel);
                     break;
 
@@ -286,16 +340,20 @@ public class PlayerEntity : BaseActorEntity
     {
         configs.Weapons.TryGetValue(incomingWeapon.ConfigId, out var incomingCfg);
 
+        // >>> NEW: Get the max level cap from the JSON <<<
+        int maxLevel = incomingCfg?.MaxLevel ?? 5;
+
         // 1. Find a match based on TIER and (FAMILY or EXACT ID)
         var match = Weapons.FirstOrDefault(w =>
         {
             if (!configs.Weapons.TryGetValue(w.ConfigId, out var existingCfg) || incomingCfg == null) return false;
 
             return existingCfg.Tier == incomingCfg.Tier &&
-                   (
-                       (!string.IsNullOrEmpty(incomingCfg.WeaponFamily) && existingCfg.WeaponFamily == incomingCfg.WeaponFamily)
-                       || w.ConfigId == incomingWeapon.ConfigId
-                   );
+                               (
+                                   (!string.IsNullOrEmpty(incomingCfg.WeaponFamily) && existingCfg.WeaponFamily == incomingCfg.WeaponFamily)
+                                   || w.ConfigId == incomingWeapon.ConfigId
+                               )
+                               && w.Level < maxLevel; // <<< NEW: DO NOT MERGE IF IT HAS REACHED MAX LEVEL!
         });
 
         // 2. If we found a match, Merge them!
@@ -305,6 +363,7 @@ public class PlayerEntity : BaseActorEntity
             var mergedWeapon = Server.Core.Systems.WeaponGenerator.MergeWeapons(match, incomingWeapon, configs);
             mergedWeapon.SlotIndex = match.SlotIndex;
             Weapons.Add(mergedWeapon);
+            RecalculateSynergies(configs);
             return true;
         }
 
@@ -315,6 +374,7 @@ public class PlayerEntity : BaseActorEntity
             {
                 incomingWeapon.SlotIndex = i;
                 Weapons.Add(incomingWeapon);
+                RecalculateSynergies(configs);
                 return true;
             }
         }
@@ -325,16 +385,20 @@ public class PlayerEntity : BaseActorEntity
     {
         configs.Items.TryGetValue(incomingItem.ConfigId, out var incomingCfg);
 
+        int maxLevel = incomingCfg?.MaxLevel ?? 5;
+
         // 1. Find a match based on TIER and (FAMILY or EXACT ID)
         var match = OwnedItems.FirstOrDefault(i =>
         {
             if (!configs.Items.TryGetValue(i.ConfigId, out var existingCfg) || incomingCfg == null) return false;
 
             return existingCfg.Tier == incomingCfg.Tier &&
-                   (
-                       (!string.IsNullOrEmpty(incomingCfg.ItemFamily) && existingCfg.ItemFamily == incomingCfg.ItemFamily)
-                       || i.ConfigId == incomingItem.ConfigId
-                   );
+                               (
+                                   (!string.IsNullOrEmpty(incomingCfg.ItemFamily) && existingCfg.ItemFamily == incomingCfg.ItemFamily)
+                                   || i.ConfigId == incomingItem.ConfigId
+                               )
+                               && i.Level < maxLevel; // <<< NEW: DO NOT MERGE IF IT HAS REACHED MAX LEVEL!
+
         });
 
         // 2. If we found a match, Merge them!
@@ -344,12 +408,14 @@ public class PlayerEntity : BaseActorEntity
             var mergedItem = Server.Core.Systems.ItemGenerator.MergeItems(match, incomingItem, configs);
             mergedItem.SlotIndex = match.SlotIndex;
             OwnedItems.Add(mergedItem);
+            RecalculateSynergies(configs);
             return true;
         }
 
         // 3. Otherwise, add to endless item inventory
         incomingItem.SlotIndex = OwnedItems.Count;
         OwnedItems.Add(incomingItem);
+        RecalculateSynergies(configs);
         return true;
     }
 }

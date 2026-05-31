@@ -2,7 +2,7 @@
     "boss_stomp": {
         "id": "boss_stomp",
         "name": "Ground Stomp",
-        "textureKey": "boss_skills_sheet",
+        "textureKey": "skill_icons",
         "iconFrame": 0,
         "animSkill": [
             10,
@@ -23,6 +23,7 @@
     "magic_missile": {
         "id": "magic_missile",
         "name": "Magic Missile",
+        "nextLevelId": "magic_missile_2",
         "cooldownSeconds": 2.0,
         "castTimeSeconds": 0.2,
         "triggerType": "Auto",
@@ -30,6 +31,18 @@
         "actionType": "Projectile",
         "projectileId": "fireball",
         "baseDamage": 15,
+        "soundCast": "sfx_magic_missile_cast"
+    },
+    "magic_missile_2": {
+        "id": "magic_missile_2",
+        "name": "Magic Missile Lv.2",
+        "cooldownSeconds": 1.5,
+        "castTimeSeconds": 0.2,
+        "triggerType": "Auto",
+        "targetType": "ClosestEnemy",
+        "actionType": "Projectile",
+        "projectileId": "fireball",
+        "baseDamage": 25,
         "soundCast": "sfx_magic_missile_cast"
     },
     "goblin_ambush": {
@@ -48,6 +61,7 @@
     "summon_trees": {
         "id": "summon_trees",
         "name": "Grow Forest",
+        "nextLevelId": "summon_trees_2",
         "cooldownSeconds": 20.0,
         "castTimeSeconds": 5.0,
         "triggerType": "Auto",
@@ -58,11 +72,25 @@
         "summonRadius": 200.0,
         "soundCast": "sfx_summon_trees_cast"
     },
+    "summon_trees_2": {
+        "id": "summon_trees_2",
+        "name": "Grow Forest Lv.2",
+        "cooldownSeconds": 18.0,
+        "castTimeSeconds": 4.0,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "Summon",
+        "summonConfigId": "tree_obstacle",
+        "summonCount": 9,
+        "summonRadius": 250.0,
+        "soundCast": "sfx_summon_trees_cast"
+    },
     "nature_pulse": {
         "id": "nature_pulse",
         "name": "Nature Pulse",
-        "cooldownSeconds": 1.0,
-        "castTimeSeconds": 3.0,
+        "nextLevelId": "nature_pulse_2",
+        "cooldownSeconds": 4.0,
+        "castTimeSeconds": 1.0,
         "triggerType": "Auto",
         "targetType": "Self",
         "actionType": "AoE",
@@ -72,9 +100,26 @@
         "soundCast": "sfx_nature_pulse_cast",
         "soundHit": "sfx_nature_pulse_hit"
     },
+    "nature_pulse_2": {
+        "id": "nature_pulse_2",
+        "name": "Nature Pulse Lv.2",
+        "cooldownSeconds": 0.0,
+        "castTimeSeconds": 1.0,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "AoE",
+        "radius": 500,
+        "baseDamage": -30,
+        "StopMoving": false,
+        "soundCast": "sfx_nature_pulse_cast",
+        "soundHit": "sfx_nature_pulse_hit"
+    },
     "adrenaline_surge": {
         "id": "adrenaline_surge",
         "name": "Adrenaline Surge",
+        "textureKey": "skill_icons",
+        "iconFrame": 2,
+        "nextLevelId": "adrenaline_surge_2",
         "animFrameRate": 15,
         "cooldownSeconds": 10.0,
         "castTimeSeconds": 3.5,
@@ -87,9 +132,25 @@
         "colorTint": "0xff0000",
         "soundCast": "sfx_adrenaline_cast"
     },
+    "adrenaline_surge_2": {
+        "id": "adrenaline_surge_2",
+        "name": "Adrenaline Surge Lv.2",
+        "animFrameRate": 15,
+        "cooldownSeconds": 7.0,
+        "castTimeSeconds": 2.5,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "SelfBuff",
+        "applyEffects": [
+            "adrenaline"
+        ],
+        "colorTint": "0xff0000",
+        "soundCast": "sfx_adrenaline_cast"
+    },
     "frost_nova": {
         "id": "frost_nova",
         "name": "Frost Nova",
+        "nextLevelId": "frost_nova_2",
         "cooldownSeconds": 8.0,
         "castTimeSeconds": 2.0,
         "triggerType": "Auto",
@@ -97,6 +158,23 @@
         "actionType": "AoE",
         "radius": 300,
         "baseDamage": 10,
+        "applyEffects": [
+            "stunned"
+        ],
+        "colorTint": "#00cfff",
+        "soundCast": "sfx_frost_nova_cast",
+        "soundHit": "sfx_frost_nova_hit"
+    },
+    "frost_nova_2": {
+        "id": "frost_nova_2",
+        "name": "Frost Nova Lv.2",
+        "cooldownSeconds": 6.5,
+        "castTimeSeconds": 1.5,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "AoE",
+        "radius": 400,
+        "baseDamage": 25,
         "applyEffects": [
             "stunned"
         ],
@@ -121,6 +199,7 @@
     "poison_volley": {
         "id": "poison_volley",
         "name": "Poison Volley",
+        "nextLevelId": "poison_volley_2",
         "cooldownSeconds": 4.0,
         "castTimeSeconds": 1.0,
         "triggerType": "Auto",
@@ -128,6 +207,21 @@
         "actionType": "Projectile",
         "projectileId": "toxic_sludge",
         "baseDamage": 5,
+        "applyEffects": [
+            "poison_dot"
+        ],
+        "soundCast": "sfx_poison_volley_cast"
+    },
+    "poison_volley_2": {
+        "id": "poison_volley_2",
+        "name": "Poison Volley Lv.2",
+        "cooldownSeconds": 3.0,
+        "castTimeSeconds": 0.8,
+        "triggerType": "Auto",
+        "targetType": "ClosestEnemy",
+        "actionType": "Projectile",
+        "projectileId": "toxic_sludge",
+        "baseDamage": 12,
         "applyEffects": [
             "poison_dot"
         ],
@@ -143,12 +237,22 @@
     },
     "cast_orbital_fireballs": {
         "id": "cast_orbital_fireballs",
+        "nextLevelId": "cast_orbital_fireballs_2",
         "actionType": "Projectile",
         "projectileId": "test_orbital_fireball",
         "castTimeSeconds": 1.5,
         "cooldownSeconds": 12.0,
         "projectileCount": 30,
         "baseDamage": 15
+    },
+    "cast_orbital_fireballs_2": {
+        "id": "cast_orbital_fireballs_2",
+        "actionType": "Projectile",
+        "projectileId": "test_orbital_fireball",
+        "castTimeSeconds": 1.0,
+        "cooldownSeconds": 10.0,
+        "projectileCount": 45,
+        "baseDamage": 25
     },
     "test_laser_beam": {
         "id": "test_laser_beam",
@@ -174,6 +278,7 @@
     },
     "laser_closest": {
         "id": "laser_closest",
+        "nextLevelId": "laser_closest_2",
         "actionType": "Beam",
         "targetType": "ClosestEnemy",
         "range": 1000,
@@ -181,8 +286,18 @@
         "baseDamage": 15,
         "colorTint": "0xff00ff"
     },
+    "laser_closest_2": {
+        "id": "laser_closest_2",
+        "actionType": "Beam",
+        "targetType": "ClosestEnemy",
+        "range": 1200,
+        "beamWidth": 35,
+        "baseDamage": 35,
+        "colorTint": "0xff00ff"
+    },
     "laser_sweep": {
         "id": "laser_sweep",
+        "nextLevelId": "laser_sweep_2",
         "actionType": "Beam",
         "targetType": "Sweep",
         "sweepAngleSpeed": 0.05,
@@ -193,8 +308,21 @@
         "castTimeSeconds": 0.0,
         "colorTint": "0xff4400"
     },
+    "laser_sweep_2": {
+        "id": "laser_sweep_2",
+        "actionType": "Beam",
+        "targetType": "Sweep",
+        "sweepAngleSpeed": 0.08,
+        "range": 700,
+        "beamWidth": 20,
+        "baseDamage": 25,
+        "cooldownSeconds": 0.0,
+        "castTimeSeconds": 0.0,
+        "colorTint": "0xff4400"
+    },
     "cast_invisible_drone": {
         "id": "cast_invisible_drone",
+        "nextLevelId": "cast_invisible_drone_2",
         "actionType": "Projectile",
         "targetType": "AimDirection",
         "projectileId": "invisible_drone",
@@ -202,13 +330,32 @@
         "cooldownSeconds": 4.0,
         "castTimeSeconds": 1.0
     },
+    "cast_invisible_drone_2": {
+        "id": "cast_invisible_drone_2",
+        "actionType": "Projectile",
+        "targetType": "AimDirection",
+        "projectileId": "invisible_drone",
+        "projectileCount": 2,
+        "cooldownSeconds": 3.0,
+        "castTimeSeconds": 0.5
+    },
     "drone_fire_down": {
         "id": "drone_fire_down",
+        "nextLevelId": "drone_fire_down_2",
         "actionType": "Beam",
         "targetType": "Down",
         "range": 1500,
         "beamWidth": 80,
         "baseDamage": 50,
+        "colorTint": "0xff0000"
+    },
+    "drone_fire_down_2": {
+        "id": "drone_fire_down_2",
+        "actionType": "Beam",
+        "targetType": "Down",
+        "range": 1500,
+        "beamWidth": 120,
+        "baseDamage": 90,
         "colorTint": "0xff0000"
     },
     "boss_cast_sweeper": {

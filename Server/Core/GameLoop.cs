@@ -48,6 +48,7 @@ public class GameLoop : BackgroundService
                 effects = _configManager.Effects,
                 skills = _configManager.Skills,
                 maps = _configManager.Maps,
+                traits = _configManager.Traits,
                 currentMapId = "map_forest"
             };
             await _hubContext.Clients.All.SendAsync("ReceiveHandshake", payload);
@@ -129,7 +130,8 @@ public class GameLoop : BackgroundService
         if (_gameState.Phase == GamePhase.WaitingForPlayers && !_gameState.Players.IsEmpty)
         {
             _gameState.Phase = GamePhase.WaveActive;
-            _gameState.PhaseTimer = 60f;
+            float waveBonus = _gameState.Players.Values.Sum(p => p.GetEngineMechanic("bonusWaveSeconds", _configManager));
+            _gameState.PhaseTimer = Math.Max(10f, 60f + waveBonus); // Math.Max prevents the wave from being 0 seconds!
             _gameState.CurrentWave = 50;
         }
 
@@ -232,7 +234,11 @@ public class GameLoop : BackgroundService
     private void StartNextWave()
     {
         _gameState.Phase = GamePhase.WaveActive;
-        _gameState.PhaseTimer = 60f;
+
+        // >>> NEW: RUSHED TRAIT HOOK <<<
+        float waveBonus = _gameState.Players.Values.Sum(p => p.GetEngineMechanic("bonusWaveSeconds", _configManager));
+        _gameState.PhaseTimer = Math.Max(10f, 60f + waveBonus);
+
         _gameState.CurrentWave++;
 
         // Clear any weapon/item loot that was not picked up during the shop phase
@@ -250,50 +256,70 @@ public class GameLoop : BackgroundService
 
     private void HandleEnemySpawning(DateTime currentTickTime)
     {
-        int maxAllowedTier = (_gameState.CurrentWave / 5) + 1;
-        float spawnRate = Math.Max(0.5f, 2.0f - (_gameState.CurrentWave * 0.1f));
+        float baseSpawnRate = Math.Max(0.5f, 2.0f - (_gameState.CurrentWave * 0.1f));
 
-        if ((currentTickTime - _lastSpawnTime).TotalSeconds > spawnRate && !_gameState.Players.IsEmpty)
+        // >>> NEW: THE MORE ENEMIES ENGINE HOOK <<<
+        // Sum up the spawn multiplier across ALL players in the game
+        float totalSpawnBonus = _gameState.Players.Values.Sum(p => p.GetEngineMechanic("enemySpawnRateMult", _configManager));
+
+        // Math: 
+        // If bonus is 0.10 (10% More), denominator = 1.10. Division makes the timer smaller (Faster spawns).
+        // If bonus is -0.10 (10% Less), denominator = 0.90. Division makes the timer larger (Slower spawns).
+        float denominator = Math.Max(0.1f, 1f + totalSpawnBonus);
+        float finalSpawnRate = Math.Max(0.1f, baseSpawnRate / denominator);
+
+        // Use finalSpawnRate for the timer check!
+        if ((currentTickTime - _lastSpawnTime).TotalSeconds > finalSpawnRate && !_gameState.Players.IsEmpty)
         {
             _lastSpawnTime = currentTickTime;
             bool skipRegularSpawn = false;
 
-            // Boss Spawn Logic
-            if (_gameState.CurrentWave % 10 == 0)
-            {
-                bool bossAlreadySpawend = _gameState.Enemies.Values.Any(e => _configManager.Enemies[e.ConfigId].IsBoss);
+            // Boss Spawn Logic (Explicit Waves)
+            bool bossAlreadySpawend = _gameState.Enemies.Values.Any(e => _configManager.Enemies[e.ConfigId].IsBoss);
 
-                if (!bossAlreadySpawend && _gameState.PhaseTimer > 50f)
+            if (!bossAlreadySpawend && _gameState.PhaseTimer > 50f)
+            {
+                // Find any boss whose "SpawnOnWaves" array contains the current wave!
+                var validBosses = _configManager.Enemies.Values
+                    .Where(e => e.IsBoss && !e.IsSummonOnly && e.SpawnOnWaves != null && e.SpawnOnWaves.Contains(_gameState.CurrentWave))
+                    .ToList();
+
+                if (validBosses.Any())
                 {
-                    var bossConfigs = _configManager.Enemies.Values.Where(e => e.IsBoss && !e.IsSummonOnly && e.Tier <= maxAllowedTier).ToList();
-                    if (bossConfigs.Any())
-                    {
-                        var bossConfig = bossConfigs[Random.Shared.Next(bossConfigs.Count)];
-                        SpawnEnemy(bossConfig);
-                        Console.WriteLine($"BOSS SPAWNED: {bossConfig.Name}!");
-                        skipRegularSpawn = true;
-                    }
+                    var bossConfig = validBosses[Random.Shared.Next(validBosses.Count)];
+                    SpawnEnemy(bossConfig);
+                    Console.WriteLine($"BOSS SPAWNED: {bossConfig.Name} on Wave {_gameState.CurrentWave}!");
+                    skipRegularSpawn = true;
                 }
             }
 
-            // Regular Spawn Logic
+            // Regular Spawn Logic (Min/Max Waves + Weighted Randomness)
             if (!skipRegularSpawn)
             {
-                var availableEnemies = _configManager.Enemies.Values.Where(e => !e.IsBoss && !e.IsSummonOnly).ToList();
+                var validEnemies = _configManager.Enemies.Values
+                    .Where(e => !e.IsBoss && !e.IsSummonOnly && e.MinWave <= _gameState.CurrentWave && e.MaxWave >= _gameState.CurrentWave)
+                    .ToList();
 
-                int targetTier = maxAllowedTier;
-                if (maxAllowedTier > 1 && Random.Shared.Next(0, 100) < 50)
+                if (validEnemies.Any())
                 {
-                    targetTier = Random.Shared.Next(1, maxAllowedTier);
-                }
+                    // Weighted random selection
+                    int totalWeight = validEnemies.Sum(e => e.SpawnWeight);
+                    int randomWeight = Random.Shared.Next(0, totalWeight);
+                    int cumulativeWeight = 0;
 
-                var tierSpecificEnemies = availableEnemies.Where(e => e.Tier == targetTier).ToList();
-                if (!tierSpecificEnemies.Any()) tierSpecificEnemies = availableEnemies.Where(e => e.Tier == 1).ToList();
+                    Configs.EnemyConfig selectedEnemy = validEnemies.First();
 
-                if (tierSpecificEnemies.Any())
-                {
-                    var enemyToSpawn = tierSpecificEnemies[Random.Shared.Next(tierSpecificEnemies.Count)];
-                    SpawnEnemy(enemyToSpawn);
+                    foreach (var enemy in validEnemies)
+                    {
+                        cumulativeWeight += enemy.SpawnWeight;
+                        if (randomWeight < cumulativeWeight)
+                        {
+                            selectedEnemy = enemy;
+                            break;
+                        }
+                    }
+
+                    SpawnEnemy(selectedEnemy);
                 }
             }
         }
@@ -353,7 +379,7 @@ public class GameLoop : BackgroundService
                 {
                     ConfigId = w.Id,
                     Name = w.Name,
-                    Price = w.Tier * 15,
+                    Price = w.Price,
                     TotalBaseStats = previewWeapon.TotalBaseStats, // <<< ADD THIS LINE
                     RolledStats = previewWeapon.RolledStats,
                     WeaponSkills = previewWeapon.WeaponSkills.Select(s => s.ConfigId).ToList()

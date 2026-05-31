@@ -22,6 +22,20 @@ export interface TextBlock {
 export const UIHelpers = {
     FONT: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
 
+    getSkillColorStr: (level: number): string => {
+        if (level <= 1) return '#8d6e63'; // Brown
+        if (level === 2) return '#29b6f6'; // Blue
+        if (level === 3) return '#ab47bc'; // Purple
+        return '#ffca28'; // Gold
+    },
+
+    getSkillColorHex: (level: number): number => {
+        if (level <= 1) return 0x8d6e63;
+        if (level === 2) return 0x29b6f6;
+        if (level === 3) return 0xab47bc;
+        return 0xffca28;
+    },
+
     getTierColorStr: (tier: number): string => {
         if (tier <= 2) return '#c0c0c0';
         if (tier <= 4) return '#00aaff';
@@ -77,26 +91,56 @@ export const UIHelpers = {
         return str.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
     },
 
+    // >>> NEW: Synergy Resolver! 
+    // Takes an array of raw IDs, counts duplicates, and follows the JSON nextLevelId chain!
+    resolveSynergies: (rawIds: string[], dict: any): string[] => {
+        if (!rawIds || rawIds.length === 0) return [];
+        const counts: Record<string, number> = {};
+        rawIds.forEach(id => {
+            if (id) counts[id] = (counts[id] || 0) + 1;
+        });
+
+        const finalIds: string[] = [];
+        for (const baseId in counts) {
+            let currentId = baseId;
+            const count = counts[baseId];
+
+            for (let i = 1; i < count; i++) {
+                // Find config (case-insensitive fallback just in case)
+                let cfg = dict?.[currentId];
+                if (!cfg && dict) {
+                    const foundKey = Object.keys(dict).find(k => k.toLowerCase() === currentId.toLowerCase());
+                    if (foundKey) cfg = dict[foundKey];
+                }
+
+                const nextId = cfg?.nextLevelId || cfg?.NextLevelId;
+                if (nextId) {
+                    currentId = nextId;
+                }
+            }
+            finalIds.push(currentId);
+        }
+        return finalIds;
+    },
+
     buildStatBlocks: (
         config: any,
-        totalBaseStats: any = null, // <<< NEW: Pass the server's exact math here!
+        totalBaseStats: any = null,
         rolledStats: any = null,
-        rolledSkills: any = null, // Changed to 'any' to accept string[] or ActiveSkill[]
+        rolledSkills: any = null,
         atlasConfigs: any = null,
-        stackCount: number = 1    // Kept for passive item stacking!
+        stackCount: number = 1
     ): TextBlock[] => {
         const blocks: TextBlock[] = [];
         let posLines: string[] = [];
         let negLines: string[] = [];
         let randomLines: string[] = [];
         let skillsLines: string[] = [];
+        let traitBlocks: TextBlock[] = [];
 
         if (!config) return blocks;
 
         try {
-            // ====================================================================
-            // >>> FIX 1: EXACT SERVER MATH OVERRIDES JSON + STACKCOUNT <<<
-            // ====================================================================
             const cfgMelee = config.meleeDamage ?? config.MeleeDamage;
             const meleeDmg = totalBaseStats?.meleeDamage ?? totalBaseStats?.MeleeDamage ?? (cfgMelee ? cfgMelee * stackCount : undefined);
 
@@ -110,15 +154,11 @@ export const UIHelpers = {
             const range = config.range ?? config.Range;
             const scaling = config.damageScaling ?? config.DamageScaling;
             const onHitEffects = config.applyEffectsOnHit ?? config.ApplyEffectsOnHit;
-            const grantedSkills = config.grantedSkills ?? config.GrantedSkills;
             const dynamicMods = config.dynamicModifiers ?? config.DynamicModifiers;
             const waveEndEffects = config.effectsAtWaveEnd ?? config.EffectsAtWaveEnd;
             const onPurchase = config.effectsOnPurchase ?? config.EffectsOnPurchase;
-            const traits = config.traits ?? config.Traits;
             const mechanics = config.mechanics ?? config.Mechanics;
 
-            // Notice we do NOT multiply by stackCount here anymore! 
-            // The math was already done securely in the variables above.
             if (meleeDmg) posLines.push(`🗡️ Melee Dmg: ${meleeDmg}`);
             if (rangedDmg) posLines.push(`🏹 Ranged Dmg: ${rangedDmg}`);
             if (elemDmg) posLines.push(`🔥 Elem Dmg: ${elemDmg}`);
@@ -139,19 +179,13 @@ export const UIHelpers = {
                 });
             }
 
-            // ====================================================================
-            // >>> FIX 2: READ STAT BONUSES FROM SERVER OR JSON <<<
-            // ====================================================================
             const statSource = (totalBaseStats && Object.keys(totalBaseStats).length > 0)
                 ? totalBaseStats
                 : (config.statBonuses ?? config.StatBonuses);
 
             if (statSource) {
                 Object.entries(statSource).forEach(([k, v]) => {
-                    // Skip the damage stats because we already printed them clearly at the top!
                     if (["meleeDamage", "MeleeDamage", "rangedDamage", "RangedDamage", "elementalDamage", "ElementalDamage"].includes(k)) return;
-
-                    // If reading from server, math is done. If reading from config, apply stackCount.
                     const num = totalBaseStats ? (v as number) : (v as number) * stackCount;
                     const info = UIHelpers.getStatInfo(k);
 
@@ -182,70 +216,78 @@ export const UIHelpers = {
 
             if (onPurchase?.length) onPurchase.forEach((e: string) => posLines.push(`🔹 Grants: ${UIHelpers.formatEffectName(e)}`));
 
-            if (traits) {
-                const traitMap = atlasConfigs?.traits ?? atlasConfigs?.Traits;
+            // ====================================================================
+            // >>> SYNERGIZE TRAITS <<<
+            // Duplicate the base traits by stackCount to simulate combining them!
+            // ====================================================================
+            const traitMap = atlasConfigs?.traits ?? atlasConfigs?.Traits;
+            const traits = config.traits ?? config.Traits ?? [];
+            const rawTraits: string[] = [];
+            for (let i = 0; i < stackCount; i++) rawTraits.push(...traits);
+            const finalTraits = UIHelpers.resolveSynergies(rawTraits, traitMap);
 
-                traits.forEach((t: string) => {
-                    const traitCfg = traitMap?.[t];
+            if (finalTraits.length > 0) {
+                traitBlocks.push({ text: "[ Traits ]", color: "#ffb74d", isHeader: true });
+
+                finalTraits.forEach((t: string) => {
+                    let traitCfg = traitMap?.[t];
+                    if (!traitCfg && traitMap) {
+                        const foundKey = Object.keys(traitMap).find(k => k.toLowerCase() === t.toLowerCase());
+                        if (foundKey) traitCfg = traitMap[foundKey];
+                    }
 
                     if (traitCfg) {
                         const name = traitCfg.name ?? traitCfg.Name ?? t;
                         const desc = traitCfg.description ?? traitCfg.Description ?? "";
                         const isNeg = traitCfg.isNegative ?? traitCfg.IsNegative ?? false;
 
-                        const line = desc ? `🔹 ${name}: ${desc}` : `🔹 ${name}`;
-
-                        if (isNeg) {
-                            negLines.push(line);
-                        } else {
-                            posLines.push(line);
-                        }
+                        const line = desc ? `💠 ${name}\n   └ ${desc}` : `💠 ${name}`;
+                        traitBlocks.push({ text: line, color: isNeg ? "#ef5350" : "#81c784" });
                     } else {
-                        // Fallback just in case a trait ID is missing from the JSON
-                        if (t === "CannotHeal") negLines.push(`⚠️ Cannot Heal`);
-                        else posLines.push(`🔹 ${UIHelpers.formatEffectName(t)}`);
+                        traitBlocks.push({ text: `💠 ${UIHelpers.formatEffectName(t)}`, color: "#81c784" });
                     }
                 });
             }
+            // ====================================================================
+            // >>> SYNERGIZE SKILLS <<<
+            // ====================================================================
+            const skillMap = atlasConfigs?.skills ?? atlasConfigs?.Skills;
 
-            if (grantedSkills?.length) {
-                const skillMap = atlasConfigs?.skills ?? atlasConfigs?.Skills;
-                grantedSkills.forEach((skillItem: any) => {
-                    const id = typeof skillItem === 'string'
-                        ? skillItem
-                        : (skillItem.configId ?? skillItem.ConfigId);
+            // 1. Base Granted Skills (Multiply by item level to resolve synergy)
+            const grantedSkills = config.grantedSkills ?? config.GrantedSkills ?? [];
+            const rawGranted: string[] = [];
+            for (let i = 0; i < stackCount; i++) {
+                rawGranted.push(...grantedSkills.map((s: any) => typeof s === 'string' ? s : (s.configId ?? s.ConfigId)));
+            }
+            const finalGranted = UIHelpers.resolveSynergies(rawGranted, skillMap);
 
-                    if (id) {
-                        const s = skillMap?.[id];
-                        skillsLines.push(`⭐ ${s ? (s.name ?? s.Name) : id}`);
-                    }
+            // 2. Random Rolled Skills (The array is natively passed from the server)
+            // >>> THE FIX: Filter out the base granted skills so they don't print twice! <<<
+            const baseGrantedSet = new Set(grantedSkills.map((s: any) => typeof s === 'string' ? s : (s.configId ?? s.ConfigId)));
+
+            const rawRolled = (rolledSkills || [])
+                .map((s: any) => typeof s === 'string' ? s : (s.configId ?? s.ConfigId))
+                .filter((id: string) => !baseGrantedSet.has(id)); // Removes the duplicates!
+
+            const finalRolled = UIHelpers.resolveSynergies(rawRolled, skillMap);
+
+            if (finalGranted.length > 0) {
+                finalGranted.forEach(id => {
+                    const s = skillMap?.[id];
+                    skillsLines.push(`⭐ ${s ? (s.name ?? s.Name) : id}`);
                 });
             }
 
-            if (rolledStats && Object.keys(rolledStats).length) {
-                Object.entries(rolledStats).forEach(([k, v]) => {
-                    const num = v as number;
-                    const info = UIHelpers.getStatInfo(k);
-                    if (num > 0) randomLines.push(`${info.e} ${info.n}: +${UIHelpers.formatVal(k, num)}`);
-                    else if (num < 0) negLines.push(`${info.e} ${info.n}: ${UIHelpers.formatVal(k, num)}`);
+            if (finalRolled.length > 0) {
+                finalRolled.forEach(id => {
+                    const s = skillMap?.[id];
+                    skillsLines.push(`✨ ${s ? (s.name ?? s.Name) : id}`);
                 });
             }
 
-            if (rolledSkills?.length) {
-                const skillMap = atlasConfigs?.skills ?? atlasConfigs?.Skills;
-                rolledSkills.forEach((skillItem: any) => {
-                    const id = typeof skillItem === 'string'
-                        ? skillItem
-                        : (skillItem.configId ?? skillItem.ConfigId);
-
-                    if (id) {
-                        const s = skillMap?.[id];
-                        skillsLines.push(`✨ ${s ? (s.name ?? s.Name) : id}`);
-                    }
-                });
-            }
-
-            // Assemble the final colorful blocks
+            // ====================================================================
+            // >>> ASSEMBLE THE FINAL BLOCKS <<<
+            // ====================================================================
             if (posLines.length > 0) {
                 blocks.push({ text: "[ Base Stats ]", color: "#4fc3f7", isHeader: true });
                 blocks.push({ text: posLines.join('\n'), color: "#ffffff" });
@@ -260,6 +302,9 @@ export const UIHelpers = {
             if (skillsLines.length > 0) {
                 blocks.push({ text: "[ Skills ]", color: "#ba68c8", isHeader: true });
                 blocks.push({ text: skillsLines.join('\n'), color: "#ffffff" });
+            }
+            if (traitBlocks.length > 0) {
+                blocks.push(...traitBlocks);
             }
 
         } catch (e) {
@@ -301,7 +346,6 @@ export class Tooltip extends Phaser.GameObjects.Container {
     ) {
         if (!config) return;
 
-        // >>> FIX 1: ANTI-FLICKER TIMER CANCEL <<<
         if (this.hideTimer) {
             this.hideTimer.remove();
             this.hideTimer = undefined;
@@ -311,12 +355,13 @@ export class Tooltip extends Phaser.GameObjects.Container {
             this.dynamicTexts.forEach(t => t.destroy());
             this.dynamicTexts = [];
 
-            // Grab the base Tier from JSON
             const tier = config.tier ?? config.Tier ?? 1;
+            const maxLevel = config.maxLevel ?? config.MaxLevel ?? 5;
 
-            // >>> THE FIX: Show BOTH the Tier and the Level dynamically! <<<
-            this.titleText.setText(`${config.name ?? config.Name ?? ''} (Tier ${tier} - Lv.${incomingLevel})`).setColor(UIHelpers.getTierColorStr(tier));            // Note: combinePreview removed!
-            const blocks = UIHelpers.buildStatBlocks(config, totalBaseStats, rolledStats, rolledSkills, atlasConfigs);
+            this.titleText.setText(`${config.name ?? config.Name ?? ''} (Tier ${tier} - Lv.${incomingLevel}/${maxLevel})`).setColor(UIHelpers.getTierColorStr(tier));
+
+            // >>> THE FIX: We pass incomingLevel to buildStatBlocks so it can resolve synergies! <<<
+            const blocks = UIHelpers.buildStatBlocks(config, totalBaseStats, rolledStats, rolledSkills, atlasConfigs, incomingLevel);
 
             let currentY = 38;
             blocks.forEach(b => {
@@ -344,24 +389,22 @@ export class Tooltip extends Phaser.GameObjects.Container {
 
             this.updatePosition(x, y);
 
-            // >>> FIX 2: Z-DEPTH <<<
-            // Force this container to render above literally everything else
             this.setDepth(9999);
-
             this.setVisible(true);
         } catch (err) {
             console.error("Safely caught a Tooltip formatting error:", err);
         }
     }
 
-    // Prevents Tooltip from falling off-screen
     public updatePosition(x: number, y: number) {
         let targetX = x + 15;
         let targetY = y + 15;
 
+        // X Boundary (Flip left if too far right)
         if (targetX + 264 > this.scene.scale.width) {
             targetX = x - 280;
         }
+        // Y Boundary (Flip UP if it hits the bottom of the screen)
         if (targetY + this.currentHeight > this.scene.scale.height) {
             targetY = y - this.currentHeight - 5;
             if (targetY < 5) targetY = 5;
@@ -371,11 +414,60 @@ export class Tooltip extends Phaser.GameObjects.Container {
     }
 
     public hide() {
-        // Wait 15 milliseconds before disappearing. 
-        // If the mouse hits another button during this time, show() will cancel this timer!
         this.hideTimer = this.scene.time.delayedCall(15, () => {
             this.setVisible(false);
         });
+    }
+
+    public showSkill(config: any, level: number, x: number, y: number) {
+        if (!config) return;
+        if (this.hideTimer) { this.hideTimer.remove(); this.hideTimer = undefined; }
+
+        try {
+            this.dynamicTexts.forEach(t => t.destroy());
+            this.dynamicTexts = [];
+
+            const colorStr = UIHelpers.getSkillColorStr(level);
+            this.titleText.setText(config.name ?? config.Name ?? "Unknown Skill").setColor(colorStr);
+
+            let currentY = 38;
+            const addLine = (text: string, color: string = '#ffffff') => {
+                const t = this.scene.add.text(12, currentY, text, { fontFamily: UIHelpers.FONT, fontSize: '13px', color: color, wordWrap: { width: 240 }, resolution: 3 });
+                this.add(t);
+                this.dynamicTexts.push(t);
+                currentY += t.displayHeight + 4;
+            };
+
+            const cd = config.cooldownSeconds ?? config.CooldownSeconds;
+            const cast = config.castTimeSeconds ?? config.CastTimeSeconds;
+            const rad = config.radius ?? config.Radius;
+            const dmg = config.baseDamage ?? config.BaseDamage;
+            const effects = config.applyEffects ?? config.ApplyEffects;
+            const root = config.stopMoving ?? config.StopMoving;
+
+            if (cd) addLine(`⏱️ Cooldown: ${cd}s`, '#4fc3f7');
+            if (cast) addLine(`⏳ Cast Time: ${cast}s`, '#4fc3f7');
+            if (dmg) addLine(`💥 Base Damage: ${dmg}`, '#ff8a65');
+            if (rad) addLine(`📏 Radius/Range: ${rad}`, '#aed581');
+            if (root) addLine(`🛑 Roots player while casting!`, '#ef5350');
+
+            if (effects && effects.length > 0) {
+                addLine(`[ Applied Effects ]`, '#ffd54f');
+                effects.forEach((e: string) => addLine(`🧪 ${UIHelpers.formatEffectName(e)}`));
+            }
+
+            this.currentHeight = Math.max(80, currentY + 10);
+
+            const colorHex = UIHelpers.getSkillColorHex(level);
+            this.bg.clear().fillStyle(0x111317, 0.95).fillRoundedRect(0, 0, 264, this.currentHeight, 8)
+                .lineStyle(2, colorHex, 1).strokeRoundedRect(0, 0, 264, this.currentHeight, 8);
+
+            // EXACT INVENTORY MATCH: Use standard coordinates
+            this.updatePosition(x, y);
+            this.setDepth(9999).setVisible(true);
+        } catch (e) {
+            console.error("Skill tooltip error:", e);
+        }
     }
 }
 
@@ -475,10 +567,9 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
 
     public updateInventory(weapons: any[], items: any[], atlasConfigs: any) {
         this.atlasConfigs = atlasConfigs;
-        // Destroy ALL children (including Text level-labels that accumulate across renders)
         this.itemGrid.removeAll(true);
         this.weaponGrid.removeAll(true);
-        // Re-add the permanent title text objects
+
         const titleStyle = {
             fontFamily: UIHelpers.FONT, fontSize: '16px', color: '#a0abbc', fontStyle: 'bold', resolution: 3
         } as const;
@@ -499,12 +590,10 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                 const itemData = items[i];
                 const config = atlasConfigs?.items?.[itemData.configId || itemData.ConfigId] ?? null;
 
-                // >>> FIX: Items now have Levels! <<<
                 const iLevel = itemData.level || itemData.Level || 1;
                 const iTier = config?.tier ?? config?.Tier ?? 1;
 
                 if (config) {
-                    // >>> USE TIER FOR COLOR <<<
                     slotBg.lineStyle(2, UIHelpers.getTierColorHex(iTier), 1);
                     slotBg.strokeRoundedRect(slotX, 0, 65, 65, 8);
                 }
@@ -540,7 +629,6 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                     hitbox.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip.updatePosition(p.x, p.y));
 
                     hitbox.on('pointerout', () => {
-                        // >>> USE TIER FOR COLOR <<<
                         slotBg.lineStyle(2, UIHelpers.getTierColorHex(iTier), 1);
                         slotBg.strokeRoundedRect(slotX, 0, 65, 65, 8);
                         this.tooltip.hide();
@@ -548,8 +636,8 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                 }
                 this.itemGrid.add(hitbox);
 
-                // >>> FIX: Render the Item Level instead of Stack Count! <<<
-                const lvlTxt = this.scene.add.text(slotX + 60, 60, `Lv.${iLevel}`, {
+                const iMax = config?.maxLevel ?? config?.MaxLevel ?? 5;
+                const lvlTxt = this.scene.add.text(slotX + 60, 60, `Lv.${iLevel}/${iMax}`, {
                     fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#ffffff',
                     stroke: '#000', strokeThickness: 3, resolution: 3
                 }).setOrigin(1, 1);
@@ -578,7 +666,6 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                 const wTier = config?.tier ?? config?.Tier ?? 1;
 
                 if (config) {
-                    // >>> USE TIER FOR COLOR <<<
                     slotBg.lineStyle(2, UIHelpers.getTierColorHex(wTier), 1);
                     slotBg.strokeRoundedRect(slotX, slotY, 65, 65, 8);
                 }
@@ -614,7 +701,6 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                     hitbox.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip.updatePosition(p.x, p.y));
 
                     hitbox.on('pointerout', () => {
-                        // >>> USE TIER FOR COLOR <<<
                         slotBg.lineStyle(2, UIHelpers.getTierColorHex(wTier), 1);
                         slotBg.strokeRoundedRect(slotX, slotY, 65, 65, 8);
                         this.tooltip.hide();
@@ -622,7 +708,8 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                 }
                 this.weaponGrid.add(hitbox);
 
-                const lvlTxt = this.scene.add.text(slotX + 60, slotY + 60, `Lv.${wLevel}`, {
+                const wMax = config?.maxLevel ?? config?.MaxLevel ?? 5;
+                const lvlTxt = this.scene.add.text(slotX + 60, slotY + 60, `Lv.${wLevel}/${wMax}`, {
                     fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#ffffff',
                     stroke: '#000', strokeThickness: 3, resolution: 3
                 }).setOrigin(1, 1);
@@ -727,13 +814,10 @@ export class ShopUI {
         this._visible = value;
         if (!value && this.tooltip) this.tooltip.hide();
 
-        // >>> THE FIX: Smart visibility routing! <<<
         this._elements.forEach(el => {
             if (el === this.levelUpContainer) {
-                // Only show Level Up if it actually has cards!
                 el.setVisible(value && this.levelUpContainer.list.length > 0);
             } else if (el === this.shopCardsContainer || el === this.rerollButtonContainer) {
-                // Only show Shop Cards if there are no Level Up cards!
                 el.setVisible(value && this.levelUpContainer.list.length === 0);
             } else {
                 el.setVisible(value);
@@ -812,7 +896,7 @@ export class ShopUI {
             if (uiData.pendingLevelUps > 0) {
                 this.shopCardsContainer.setVisible(false);
                 this.rerollButtonContainer.setVisible(false);
-                this.levelUpContainer.setVisible(this._visible); // <<< CHANGE TO this._visible
+                this.levelUpContainer.setVisible(this._visible);
 
                 this.headerText.setText(`LEVEL UP! (x${uiData.pendingLevelUps})`);
                 this.headerText.setColor('#ffb300');
@@ -863,11 +947,11 @@ export class ShopUI {
             }
 
             // =========================================================
-            // SHOP CARDS RENDERER (Stencil-less Scrolling + Colorful Blocks)
+            // SHOP CARDS RENDERER
             // =========================================================
             this.levelUpContainer.setVisible(false);
-            this.shopCardsContainer.setVisible(this._visible);    // <<< CHANGE TO this._visible
-            this.rerollButtonContainer.setVisible(this._visible); // <<< CHANGE TO this._visible
+            this.shopCardsContainer.setVisible(this._visible);
+            this.rerollButtonContainer.setVisible(this._visible);
 
             this.headerText.setText(`Shop (Wave ${uiData.currentWave})`);
             this.headerText.setColor('#ffffff');
@@ -905,12 +989,11 @@ export class ShopUI {
                 this.shopCardsContainer.add(cardBg);
 
                 // -------------------------------------------------------------
-                // 2. SCROLLABLE TEXT CONTAINER (Using compact colored blocks)
+                // 2. SCROLLABLE TEXT CONTAINER 
                 // -------------------------------------------------------------
                 const statsContainer = this.scene.add.container(0, 0);
                 this.shopCardsContainer.add(statsContainer);
 
-                // >>> FIX: Check for weaponSkills OR itemSkills just to be safe! <<<
                 const totalBaseStats = item.totalBaseStats ?? item.TotalBaseStats;
                 const rolledStats = item.rolledStats ?? item.RolledStats;
                 const rolledSkills = item.weaponSkills ?? item.WeaponSkills ?? item.itemSkills ?? item.ItemSkills;
@@ -939,8 +1022,7 @@ export class ShopUI {
                     currentY += t.displayHeight + (b.isHeader ? 2 : 4);
                 });
 
-                // SCROLLBAR CALCS
-                const viewHeight = 260; // Card viewable text area (Y: 115 -> 375)
+                const viewHeight = 260;
                 const textHeight = currentY - 115;
                 const maxScroll = Math.max(0, textHeight - viewHeight + 10);
                 let updateScrollBar = () => { };
@@ -967,23 +1049,20 @@ export class ShopUI {
 
                 // -------------------------------------------------------------
                 // 3. SOLID BLOCKERS (The "Stencil-less Mask")
-                // Placed precisely to hide the text scrolling up or down
                 // -------------------------------------------------------------
                 const blockers = this.scene.add.graphics();
                 blockers.fillStyle(0x161920, 1);
 
-                // Top Blocker (Hides text scrolling up behind the title/icon)
                 blockers.fillRoundedRect(cardX, 0, 240, 115, 12);
                 blockers.fillRect(cardX, 50, 240, 65);
 
-                // Bottom Blocker (Hides text scrolling down behind the buy buttons)
                 blockers.fillRoundedRect(cardX, 375, 240, 105, 12);
                 blockers.fillRect(cardX, 375, 240, 60);
 
                 this.shopCardsContainer.add(blockers);
 
                 // -------------------------------------------------------------
-                // 4. BORDER (Drawn on top of blockers)
+                // 4. BORDER 
                 // -------------------------------------------------------------
                 const cardBorder = this.scene.add.graphics();
                 cardBorder.lineStyle(2, tierColor, 1);
@@ -991,7 +1070,7 @@ export class ShopUI {
                 this.shopCardsContainer.add(cardBorder);
 
                 // -------------------------------------------------------------
-                // 5. HEADER CONTENT (Drawn over the top blocker)
+                // 5. HEADER CONTENT 
                 // -------------------------------------------------------------
                 const tierTextStr = `Tier ${tier} ${isWeapon ? 'Weapon' : 'Item'}`;
                 const tierTextObj = this.scene.add.text(cardX + 120, 20, tierTextStr, {
@@ -1017,7 +1096,7 @@ export class ShopUI {
                 if (icon) this.shopCardsContainer.add(icon);
 
                 // -------------------------------------------------------------
-                // 6. FOOTER CONTENT & BUTTONS (Drawn over bottom blocker)
+                // 6. FOOTER CONTENT & BUTTONS 
                 // -------------------------------------------------------------
                 const buyBtnBg = this.scene.add.graphics();
                 buyBtnBg.fillStyle(0x2e7d32, 1);
@@ -1028,7 +1107,7 @@ export class ShopUI {
 
                 const buyHitbox = this.scene.add.rectangle(cardX + 120, 410, 180, 40, 0x000000, 0)
                     .setScrollFactor(0).setInteractive({ useHandCursor: true });
-                // --- BUY BUTTON ---
+
                 buyHitbox.on('pointerdown', () =>
                     this.connection.invoke("BuyItem", configId).catch((err: any) => console.error(err)));
                 buyHitbox.on('pointerover', (p: Phaser.Input.Pointer) => {
@@ -1036,15 +1115,14 @@ export class ShopUI {
                     buyBtnBg.fillStyle(0x4caf50, 1);
                     buyBtnBg.fillRoundedRect(cardX + 30, 390, 180, 40, 20);
 
-                    // >>> FIX: Pass item.totalBaseStats here too! <<<
-                    this.tooltip.show(config, p.x, p.y, config.tier ?? 1, atlasConfigs, item.totalBaseStats ?? item.TotalBaseStats, rolledStats, rolledSkills);
+                    this.tooltip.show(config, p.x, p.y, 1, atlasConfigs, item.totalBaseStats ?? item.TotalBaseStats, rolledStats, rolledSkills);
                 });
                 buyHitbox.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip.updatePosition(p.x, p.y));
                 buyHitbox.on('pointerout', () => {
                     buyBtnBg.clear();
                     buyBtnBg.fillStyle(0x2e7d32, 1);
                     buyBtnBg.fillRoundedRect(cardX + 30, 390, 180, 40, 20);
-                    this.tooltip.hide(); // NEW: Hide tooltip
+                    this.tooltip.hide();
                 });
 
                 const lockBtnBg = this.scene.add.graphics();
@@ -1091,8 +1169,7 @@ export class ShopUI {
                     cardBorder.lineStyle(3, 0xffffff, 1);
                     cardBorder.strokeRoundedRect(cardX, 0, 240, 480, 12);
 
-                    // >>> FIX: Pass item.totalBaseStats! <<<
-                    this.tooltip.show(config, p.x, p.y, config.tier ?? 1, atlasConfigs, item.totalBaseStats ?? item.TotalBaseStats, rolledStats, rolledSkills);
+                    this.tooltip.show(config, p.x, p.y, 1, atlasConfigs, item.totalBaseStats ?? item.TotalBaseStats, rolledStats, rolledSkills);
                 });
 
                 cardHitbox.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip.updatePosition(p.x, p.y));
@@ -1102,12 +1179,156 @@ export class ShopUI {
                     this.tooltip.hide();
                 });
 
-                // Hitboxes must be added last to capture input events properly
                 this.shopCardsContainer.add([cardHitbox, buyHitbox, lockHitbox]);
             });
 
         } catch (err) {
             console.error("Safely caught UI Update error to prevent game freeze:", err);
         }
+    }
+}
+
+
+// =========================================================================
+// SKILL ACTION BAR & TOOLTIP EXTENSION
+// =========================================================================
+
+export class SkillActionBar extends Phaser.GameObjects.Container {
+    private slots: Map<string, { bg: Phaser.GameObjects.Graphics, icon: Phaser.GameObjects.Sprite | Phaser.GameObjects.Rectangle, cdOverlay: Phaser.GameObjects.Rectangle, border: Phaser.GameObjects.Graphics, text: Phaser.GameObjects.Text, hitbox: Phaser.GameObjects.Rectangle }> = new Map();
+    private atlasConfigs: any = null;
+    private tooltip: Tooltip;
+
+    private activeSkillsData: { configId: string, currentCooldown: number }[] = [];
+
+    constructor(scene: Phaser.Scene) {
+        super(scene, 0, 0);
+
+        // Private tooltip to prevent camera overlap bugs
+        this.tooltip = new Tooltip(scene);
+
+        this.setDepth(2000);
+        this.setScrollFactor(0);
+        scene.add.existing(this);
+    }
+
+    public updateLayout(width: number, height: number) {
+        let scale = Math.min(width / 1280, height / 720);
+        scale = Phaser.Math.Clamp(scale, 0.5, 3.0);
+
+        this.setScale(scale);
+        this.setPosition(width / 2, height - (35 * scale));
+    }
+
+    public updateSkills(skills: { configId: string, currentCooldown: number }[], atlasConfigs: any) {
+        this.atlasConfigs = atlasConfigs;
+        this.activeSkillsData = skills;
+
+        const skillMap = atlasConfigs?.skills ?? atlasConfigs?.Skills;
+        if (!skillMap) return;
+
+        const currentIds = new Set(skills.map(s => s.configId));
+        for (const [id, slot] of this.slots.entries()) {
+            if (!currentIds.has(id)) {
+                slot.bg.destroy(); slot.icon.destroy(); slot.cdOverlay.destroy();
+                slot.border.destroy(); slot.text.destroy(); slot.hitbox.destroy();
+                this.slots.delete(id);
+            }
+        }
+
+        const slotSize = 48;
+        const spacing = 10;
+        const totalWidth = (skills.length * slotSize) + ((skills.length - 1) * spacing);
+        const startX = -totalWidth / 2;
+
+        skills.forEach((skillData, index) => {
+            const configId = skillData.configId;
+            const config = skillMap[configId];
+            if (!config) return;
+
+            const nameStr = config.name ?? config.Name ?? "";
+            const lvlMatch = nameStr.match(/Lv\.(\d+)/i);
+            const level = lvlMatch ? parseInt(lvlMatch[1]) : 1;
+            const borderColorHex = UIHelpers.getSkillColorHex(level);
+
+            const xPos = startX + (index * (slotSize + spacing)) + (slotSize / 2);
+            let slot = this.slots.get(configId);
+
+            if (!slot) {
+                const bg = this.scene.add.graphics();
+                bg.fillStyle(0x111317, 1.0).fillRoundedRect(xPos - slotSize / 2, -slotSize / 2, slotSize, slotSize, 6);
+
+                let icon: any;
+                const tex = config.textureKey || config.TextureKey;
+                if (tex && this.scene.textures.exists(tex)) {
+                    icon = this.scene.add.sprite(xPos, 0, tex);
+                    const frame = config.iconFrame ?? config.IconFrame;
+                    if (frame !== undefined) icon.setFrame(frame);
+                    icon.setDisplaySize(slotSize, slotSize);
+                } else {
+                    icon = this.scene.add.rectangle(xPos, 0, slotSize, slotSize, 0x444444);
+                }
+
+                const cdOverlay = this.scene.add.rectangle(xPos, slotSize / 2, slotSize, slotSize, 0x000000, 0.75).setOrigin(0.5, 1);
+
+                const border = this.scene.add.graphics();
+                border.lineStyle(2, borderColorHex, 1).strokeRoundedRect(xPos - slotSize / 2, -slotSize / 2, slotSize, slotSize, 6);
+
+                const lvlText = lvlMatch ? `L${level}` : "";
+                const text = this.scene.add.text(xPos + slotSize / 2 - 2, slotSize / 2 - 2, lvlText, {
+                    fontFamily: UIHelpers.FONT, fontSize: '13px', fontStyle: 'bold', color: '#ffffff', stroke: '#000000', strokeThickness: 4
+                }).setOrigin(1, 1);
+
+                // >>> EXACT INVENTORY MATCH: Added useHandCursor and setScrollFactor(0) to fix the pointer coordinate bug <<<
+                const hitbox = this.scene.add.rectangle(xPos, 0, slotSize, slotSize, 0x000000, 0)
+                    .setInteractive({ useHandCursor: true })
+                    .setScrollFactor(0);
+
+                hitbox.on('pointerover', (p: Phaser.Input.Pointer) => {
+                    border.clear().lineStyle(3, 0xffffff, 1).strokeRoundedRect(xPos - slotSize / 2, -slotSize / 2, slotSize, slotSize, 6);
+                    this.tooltip.showSkill(config, level, p.x, p.y);
+                });
+
+                hitbox.on('pointermove', (p: Phaser.Input.Pointer) => {
+                    this.tooltip.updatePosition(p.x, p.y);
+                });
+
+                hitbox.on('pointerout', () => {
+                    border.clear().lineStyle(2, borderColorHex, 1).strokeRoundedRect(xPos - slotSize / 2, -slotSize / 2, slotSize, slotSize, 6);
+                    this.tooltip.hide();
+                });
+
+                this.add([bg, icon, cdOverlay, border, text, hitbox]);
+                this.slots.set(configId, { bg, icon, cdOverlay, border, text, hitbox });
+            } else {
+                slot.bg.clear().fillStyle(0x111317, 1.0).fillRoundedRect(xPos - slotSize / 2, -slotSize / 2, slotSize, slotSize, 6);
+                slot.icon.setX(xPos);
+                slot.cdOverlay.setX(xPos);
+                slot.border.clear().lineStyle(2, borderColorHex, 1).strokeRoundedRect(xPos - slotSize / 2, -slotSize / 2, slotSize, slotSize, 6);
+                slot.text.setPosition(xPos + slotSize / 2 - 2, slotSize / 2 - 2);
+                slot.hitbox.setX(xPos);
+            }
+        });
+    }
+
+    public smoothTickCooldowns(deltaSeconds: number) {
+        const skillMap = this.atlasConfigs?.skills ?? this.atlasConfigs?.Skills;
+        if (!skillMap) return;
+
+        this.activeSkillsData.forEach(skillData => {
+            const slot = this.slots.get(skillData.configId);
+            if (slot) {
+                skillData.currentCooldown = Math.max(0, skillData.currentCooldown - deltaSeconds);
+                const config = skillMap[skillData.configId];
+                const maxCd = config?.cooldownSeconds ?? config?.CooldownSeconds ?? 1;
+
+                if (skillData.currentCooldown > 0) {
+                    const pct = skillData.currentCooldown / maxCd;
+                    slot.cdOverlay.scaleY = Phaser.Math.Clamp(pct, 0, 1);
+                    slot.cdOverlay.setVisible(true);
+                } else {
+                    slot.cdOverlay.setVisible(false);
+                }
+            }
+        });
     }
 }

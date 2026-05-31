@@ -60,6 +60,7 @@ public class GameHub : Hub
             projectiles = _configManager.Projectiles,
             skills = _configManager.Skills,
             maps = _configManager.Maps,
+            traits = _configManager.Traits,
             currentMapId = "map_forest"
         };
         await Clients.Caller.SendAsync("ReceiveHandshake", handshakePayload);
@@ -293,6 +294,24 @@ public class GameHub : Hub
     {
         // This is intentionally left empty. 
         // The client just needs the server to acknowledge the message to calculate latency!
+    }
+
+    /// <summary>
+    /// Called by the client whenever they open their Shop/Inventory UI 
+    /// to guarantee their displayed stats and items are perfectly synced.
+    /// </summary>
+    public async Task RequestUIUpdate()
+    {
+        if (_gameState.Players.TryGetValue(Context.ConnectionId, out var player))
+        {
+            // Lock the player to safely read their stats/inventory without race conditions
+            lock (player)
+            {
+                // Note: Assuming you have a method named SendPlayerUI or UpdatePlayerUI 
+                // based on your previous code. Call whatever method you use to send UI data here!
+                _ = SendPlayerUI(player);
+            }
+        }
     }
 
     /// <summary>

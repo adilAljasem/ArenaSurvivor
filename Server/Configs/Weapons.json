@@ -4,6 +4,7 @@
     "weaponFamily": "pistol_family",
     "name": "Pistol",
     "tier": 1,
+    "price": 20,
     "cooldownSeconds": 0.5,
     "rangedDamage": 50,
     "projectileSpeed": 600,
@@ -29,22 +30,33 @@
     "grantedSkills": [],
     "statRollChance": 0.50,
     "maxRandomStats": 2,
-    "allowedRandomStats": [
-      "rangedDamage",
-      "critChance",
-      "speed"
-    ],
+    "allowedRandomStats": {
+      "rangedDamage": {
+        "min": 5.0,
+        "max": 15.0
+      },
+      "critChance": {
+        "min": 0.01,
+        "max": 0.05
+      },
+      "speed": {
+        "min": 1.0,
+        "max": 5.0
+      }
+    },
     "skillRollChance": 0.10,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
       "adrenaline_surge"
-    ]
+    ],
+    "maxLevel": 3
   },
   "pistol_t2": {
     "id": "pistol_t2",
     "weaponFamily": "pistol_family",
     "name": "Pistol",
     "tier": 2,
+    "price": 55,
     "cooldownSeconds": 0.5,
     "rangedDamage": 300,
     "projectileSpeed": 600,
@@ -70,11 +82,20 @@
     ],
     "statRollChance": 0.90,
     "maxRandomStats": 3,
-    "allowedRandomStats": [
-      "rangedDamage",
-      "critChance",
-      "speed"
-    ],
+    "allowedRandomStats": {
+      "rangedDamage": {
+        "min": 20.0,
+        "max": 50.0
+      },
+      "critChance": {
+        "min": 0.05,
+        "max": 0.10
+      },
+      "speed": {
+        "min": 2.0,
+        "max": 8.0
+      }
+    },
     "skillRollChance": 0.90,
     "maxRandomSkills": 3,
     "allowedRandomSkills": [
@@ -85,6 +106,7 @@
     "id": "smg",
     "name": "SMG",
     "tier": 2,
+    "price": 60,
     "cooldownSeconds": 0.15,
     "rangedDamage": 5,
     "projectileSpeed": 700,
@@ -108,11 +130,20 @@
     ],
     "statRollChance": 0.50,
     "maxRandomStats": 2,
-    "allowedRandomStats": [
-      "rangedDamage",
-      "attackSpeedPercent",
-      "critChance"
-    ],
+    "allowedRandomStats": {
+      "rangedDamage": {
+        "min": 1.0,
+        "max": 3.0
+      },
+      "attackSpeedPercent": {
+        "min": 0.05,
+        "max": 0.15
+      },
+      "critChance": {
+        "min": 0.01,
+        "max": 0.05
+      }
+    },
     "skillRollChance": 0.15,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
@@ -123,6 +154,7 @@
     "id": "shotgun",
     "name": "Double Barrel",
     "tier": 2,
+    "price": 65,
     "cooldownSeconds": 1.2,
     "rangedDamage": 8,
     "projectileSpeed": 500,
@@ -145,11 +177,20 @@
     ],
     "statRollChance": 0.50,
     "maxRandomStats": 2,
-    "allowedRandomStats": [
-      "rangedDamage",
-      "maxHp",
-      "critChance"
-    ],
+    "allowedRandomStats": {
+      "rangedDamage": {
+        "min": 2.0,
+        "max": 6.0
+      },
+      "maxHp": {
+        "min": 5.0,
+        "max": 15.0
+      },
+      "critChance": {
+        "min": 0.02,
+        "max": 0.08
+      }
+    },
     "skillRollChance": 0.15,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
@@ -164,6 +205,7 @@
     "id": "sniper",
     "name": "Sniper Rifle",
     "tier": 4,
+    "price": 150,
     "cooldownSeconds": 2.0,
     "rangedDamage": 45,
     "projectileSpeed": 1200,
@@ -186,11 +228,20 @@
     ],
     "statRollChance": 0.60,
     "maxRandomStats": 3,
-    "allowedRandomStats": [
-      "rangedDamage",
-      "critChance",
-      "damagePercent"
-    ],
+    "allowedRandomStats": {
+      "rangedDamage": {
+        "min": 10.0,
+        "max": 30.0
+      },
+      "critChance": {
+        "min": 0.05,
+        "max": 0.15
+      },
+      "damagePercent": {
+        "min": 0.10,
+        "max": 0.30
+      }
+    },
     "skillRollChance": 0.20,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
@@ -201,6 +252,7 @@
     "id": "rocket",
     "name": "Rocket Launcher",
     "tier": 4,
+    "price": 175,
     "cooldownSeconds": 1.8,
     "rangedDamage": 60,
     "projectileSpeed": 400,
@@ -225,11 +277,20 @@
     "grantedSkills": [],
     "statRollChance": 0.60,
     "maxRandomStats": 2,
-    "allowedRandomStats": [
-      "rangedDamage",
-      "elementalDamage",
-      "damagePercent"
-    ],
+    "allowedRandomStats": {
+      "rangedDamage": {
+        "min": 15.0,
+        "max": 40.0
+      },
+      "elementalDamage": {
+        "min": 10.0,
+        "max": 25.0
+      },
+      "damagePercent": {
+        "min": 0.10,
+        "max": 0.25
+      }
+    },
     "skillRollChance": 0.20,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
@@ -240,6 +301,7 @@
     "id": "stick",
     "name": "Wooden Stick",
     "tier": 1,
+    "price": 15,
     "cooldownSeconds": 0.6,
     "meleeDamage": 8,
     "projectileSpeed": 0,
@@ -262,11 +324,20 @@
     ],
     "statRollChance": 0.40,
     "maxRandomStats": 1,
-    "allowedRandomStats": [
-      "meleeDamage",
-      "maxHp",
-      "speed"
-    ],
+    "allowedRandomStats": {
+      "meleeDamage": {
+        "min": 2.0,
+        "max": 6.0
+      },
+      "maxHp": {
+        "min": 2.0,
+        "max": 10.0
+      },
+      "speed": {
+        "min": 1.0,
+        "max": 5.0
+      }
+    },
     "skillRollChance": 0.10,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
@@ -277,6 +348,7 @@
     "id": "sword",
     "name": "Iron Sword",
     "tier": 2,
+    "price": 50,
     "cooldownSeconds": 0.8,
     "meleeDamage": 18,
     "projectileSpeed": 0,
@@ -299,11 +371,20 @@
     ],
     "statRollChance": 0.50,
     "maxRandomStats": 2,
-    "allowedRandomStats": [
-      "meleeDamage",
-      "critChance",
-      "lifeSteal"
-    ],
+    "allowedRandomStats": {
+      "meleeDamage": {
+        "min": 5.0,
+        "max": 15.0
+      },
+      "critChance": {
+        "min": 0.02,
+        "max": 0.08
+      },
+      "lifeSteal": {
+        "min": 0.01,
+        "max": 0.03
+      }
+    },
     "skillRollChance": 0.15,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
@@ -314,6 +395,7 @@
     "id": "hammer",
     "name": "War Hammer",
     "tier": 3,
+    "price": 110,
     "cooldownSeconds": 1.5,
     "meleeDamage": 35,
     "projectileSpeed": 0,
@@ -337,11 +419,20 @@
     ],
     "statRollChance": 0.60,
     "maxRandomStats": 2,
-    "allowedRandomStats": [
-      "meleeDamage",
-      "armor",
-      "maxHp"
-    ],
+    "allowedRandomStats": {
+      "meleeDamage": {
+        "min": 10.0,
+        "max": 25.0
+      },
+      "armor": {
+        "min": 1.0,
+        "max": 4.0
+      },
+      "maxHp": {
+        "min": 10.0,
+        "max": 30.0
+      }
+    },
     "skillRollChance": 0.20,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
@@ -352,6 +443,7 @@
     "id": "wand",
     "name": "Magic Wand",
     "tier": 2,
+    "price": 60,
     "cooldownSeconds": 0.7,
     "elementalDamage": 12,
     "projectileSpeed": 350,
@@ -374,11 +466,20 @@
     ],
     "statRollChance": 0.50,
     "maxRandomStats": 2,
-    "allowedRandomStats": [
-      "critChance",
-      "elementalDamage",
-      "maxHp"
-    ],
+    "allowedRandomStats": {
+      "critChance": {
+        "min": 0.02,
+        "max": 0.10
+      },
+      "elementalDamage": {
+        "min": 5.0,
+        "max": 15.0
+      },
+      "maxHp": {
+        "min": 5.0,
+        "max": 20.0
+      }
+    },
     "skillRollChance": 0.15,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
@@ -390,6 +491,7 @@
     "id": "potato_thrower",
     "name": "Potato Thrower",
     "tier": 3,
+    "price": 95,
     "cooldownSeconds": 0.3,
     "rangedDamage": 14,
     "projectileSpeed": 450,
@@ -411,11 +513,20 @@
     "grantedSkills": [],
     "statRollChance": 0.60,
     "maxRandomStats": 2,
-    "allowedRandomStats": [
-      "rangedDamage",
-      "hpRegen",
-      "maxHp"
-    ],
+    "allowedRandomStats": {
+      "rangedDamage": {
+        "min": 3.0,
+        "max": 8.0
+      },
+      "hpRegen": {
+        "min": 0.5,
+        "max": 2.0
+      },
+      "maxHp": {
+        "min": 10.0,
+        "max": 25.0
+      }
+    },
     "skillRollChance": 0.15,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [

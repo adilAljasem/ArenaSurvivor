@@ -12,6 +12,7 @@ public static class ItemGenerator
         => GenerateItem(configId, player.GetTotalStat("luck", configs), configs, startingLevel);
 
     /// <summary>Generates an item using an explicit luck value — used when no PlayerEntity is available (e.g. enemy equipping).</summary>
+    /// <summary>Generates an item using an explicit luck value — used when no PlayerEntity is available (e.g. enemy equipping).</summary>
     public static EquippedItem GenerateItem(string configId, float luck, ConfigManager configs, int startingLevel = 1)
     {
         var itemConfig = configs.Items[configId];
@@ -21,20 +22,33 @@ public static class ItemGenerator
 
         float luckMult = 1f + Math.Max(0, luck / 100f);
 
-        // Roll Random Stats
+        // ====================================================================
+        // >>> THE FIX: Data-Driven Random Stat Rolls <<<
+        // ====================================================================
         if (itemConfig.AllowedRandomStats != null && itemConfig.AllowedRandomStats.Count > 0
             && Random.Shared.NextDouble() < (itemConfig.StatRollChance * luckMult))
         {
             int statsToRoll = Random.Shared.Next(1, itemConfig.MaxRandomStats + 1);
+
+            // Get the keys from the dictionary
+            var availableStats = itemConfig.AllowedRandomStats.Keys.ToList();
+
             for (int i = 0; i < statsToRoll; i++)
             {
-                string statToRoll = itemConfig.AllowedRandomStats[Random.Shared.Next(itemConfig.AllowedRandomStats.Count)];
-                float rollAmount = (float)Math.Round(Random.Shared.NextDouble() * 10f + 5f, 1);
+                string statToRoll = availableStats[Random.Shared.Next(availableStats.Count)];
+                var rollConfig = itemConfig.AllowedRandomStats[statToRoll];
+
+                // Roll a value exactly between the JSON Min and Max
+                float rollAmount = rollConfig.Min + (float)(Random.Shared.NextDouble() * (rollConfig.Max - rollConfig.Min));
+
+                // Round to 2 decimal places for clean UI math
+                rollAmount = (float)Math.Round(rollAmount, 2);
 
                 if (newItem.RolledStats.ContainsKey(statToRoll)) newItem.RolledStats[statToRoll] += rollAmount;
                 else newItem.RolledStats[statToRoll] = rollAmount;
             }
         }
+        // ====================================================================
 
         // Roll Random Skills
         var finalSkills = new List<string>();
@@ -86,8 +100,8 @@ public static class ItemGenerator
             else newI.RolledStats[kv.Key] = kv.Value;
         }
 
-        var allSkills = i1.ItemSkills.Select(s => s.ConfigId).Union(i2.ItemSkills.Select(s => s.ConfigId)).ToList();
-        foreach (var skillId in allSkills)
+        var allSkills = i1.ItemSkills.Select(s => s.ConfigId).Concat(i2.ItemSkills.Select(s => s.ConfigId)).ToList();
+         foreach (var skillId in allSkills)
         {
             if (configs.Skills.TryGetValue(skillId, out var skillCfg))
                 newI.ItemSkills.Add(new ActiveSkill { ConfigId = skillId, CurrentCooldown = skillCfg.CooldownSeconds });

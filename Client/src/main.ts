@@ -1,6 +1,6 @@
 import * as Phaser from 'phaser';
 import { HubConnectionBuilder, HubConnectionState } from '@microsoft/signalr';
-import { ShopUI, Tooltip } from './ui/UI';
+import { ShopUI, SkillActionBar, Tooltip } from './ui/UI';
 import { EscMenu } from './ui/EscMenu';
 import { ActorRenderer, WorldRenderer, precalculateSpriteTops } from './RenderSystems';
 import { AudioManager } from './AudioManager';
@@ -27,6 +27,7 @@ interface ServerPlayer {
   currentShop: ShopItem[]; stats: any; ownedItems: any;
   aimX: number; aimY: number; firedWeapons: number[]; activeEffects: string[];
   currentCastingSkillId: string; currentCastTimer: number; maxCastTimer: number;
+  synergizedSkills: { configId: string, currentCooldown: number }[];
 }
 interface ServerEnemy {
   id: string; configId: string; x: number; y: number; velX?: number;
@@ -73,7 +74,7 @@ class GameScene extends Phaser.Scene {
   private projectileSprites: Map<string, Phaser.GameObjects.Rectangle | Phaser.GameObjects.Sprite> = new Map();
   private pickupSprites: Map<string, Phaser.GameObjects.Sprite | Phaser.GameObjects.Rectangle> = new Map();
   private targetPositions: Map<string, { x: number, y: number }> = new Map();
-
+  private skillActionBar!: SkillActionBar;
   private enemyCache: Map<string, ServerEnemy> = new Map();
   private pickupCache: Map<string, ServerPickup> = new Map();
 
@@ -138,6 +139,9 @@ class GameScene extends Phaser.Scene {
     this.load.spritesheet('characters_sheet1', 'assets/Characters/char1.png', { frameWidth: 32, frameHeight: 32 });
     this.load.spritesheet('ammo_sheet2', '/assets/Weapons/ammo2.png', { frameWidth: 240, frameHeight: 218 });
 
+    this.load.spritesheet('skill_icons', '/assets/Skills/skillsicon.png', { frameWidth: 312, frameHeight: 307 });
+
+
 
 
     this.load.audio('sfx_shoot', 'assets/Audio/weapon-fire-1.wav');
@@ -150,6 +154,10 @@ class GameScene extends Phaser.Scene {
 
   create() {
     this.cameras.main.setBackgroundColor('#2d2d2d');
+    this.groundTooltip = new Tooltip(this);
+    this.skillActionBar = new SkillActionBar(this, this.groundTooltip);
+
+    this.skillActionBar.updateLayout(this.scale.width, this.scale.height);
 
     // Initialise the global AudioManager with this scene's sound system
     AudioManager.getInstance().init(this);
@@ -244,11 +252,27 @@ class GameScene extends Phaser.Scene {
       this.perfText.setPosition(10, gameSize.height - 10);
       this.waveUIText.setPosition(gameSize.width / 2, 20);
       this.escMenu.reposition(gameSize.width, gameSize.height);
+
+      // >>> Call the resizer on window change <<<
+      this.skillActionBar.updateLayout(gameSize.width, gameSize.height);
     });
 
+    this.skillActionBar.setPosition(this.scale.width / 2, this.scale.height - 40);
+
     this.input.keyboard?.on('keydown-B', () => {
-      this.shopUIModule.setVisible(!this.shopUIModule.visible);
-      this.manuallyClosedShop = !this.shopUIModule.visible;
+      // 1. Toggle the visibility state
+      const isNowVisible = !this.shopUIModule.visible;
+      this.shopUIModule.setVisible(isNowVisible);
+      this.manuallyClosedShop = !isNowVisible;
+
+      // 2. If the menu was just OPENED, ask the server for fresh data!
+      if (isNowVisible) {
+        // Note: Ensure your SignalR connection object is correctly referenced here 
+        // (it might be 'this.connection' or just 'connection' depending on your scope)
+        connection.invoke("RequestUIUpdate").catch((err: any) => {
+          console.error("Failed to request UI update:", err);
+        });
+      }
     });
     this.input.keyboard?.on('keydown-ESC', () => {
       if (this.shopUIModule.visible) {
@@ -435,6 +459,10 @@ class GameScene extends Phaser.Scene {
 
           firedWeapons: p[13] || [],
           activeEffects: p[14] || [],
+          synergizedSkills: p[15]?.map((s: any[]) => ({
+            configId: s[0],
+            currentCooldown: s[1]
+          })) || [],
           currentShop: [],
           stats: {},
           ownedItems: {}
@@ -452,6 +480,7 @@ class GameScene extends Phaser.Scene {
       const myPlayer = state.players.find(p => p.connectionId === connection.connectionId);
       if (myPlayer) {
         this.goldUIText.setText(`💰 ${myPlayer.gold}`);
+        this.skillActionBar.updateSkills(myPlayer.synergizedSkills, masterConfigs);
       }
 
       // Detect the nearest gear loot within pickup radius and manage the ground tooltip
@@ -480,7 +509,7 @@ class GameScene extends Phaser.Scene {
             const cam = this.cameras.main;
             const screenX = (pickup.x - cam.scrollX) * cam.zoom;
             const screenY = (pickup.y - cam.scrollY) * cam.zoom - 80;
-            this.groundTooltip.show(gearConfig, screenX, screenY, gearConfig.tier ?? 1, masterConfigs, pickup.totalBaseStats, pickup.rolledStats, pickup.skills);
+            this.groundTooltip.show(gearConfig, screenX, screenY, 1, masterConfigs, pickup.totalBaseStats, pickup.rolledStats, pickup.skills);
           }
         } else {
           this.groundTooltip.hide();
@@ -534,6 +563,12 @@ class GameScene extends Phaser.Scene {
     this.handleInput(time);
     this.smoothInterpolateSprites(this.playerSprites, 0.2);
     this.smoothInterpolateSprites(this.enemySprites, 0.2);
+    const dtSeconds = delta / 1000;
+
+
+    if (this.skillActionBar) {
+      this.skillActionBar.smoothTickCooldowns(dtSeconds);
+    }
 
     // Keep ground tooltip positioned above the nearby loot pickup as the camera moves
     if (this.nearbyLootId && this.groundTooltip?.visible) {
@@ -557,7 +592,6 @@ class GameScene extends Phaser.Scene {
       console.log("Sprites scanned successfully!");
     }
 
-    const dtSeconds = delta / 1000;
     // >>> FIX: Hybrid Physics (Linear vs Orbital) <<<
     this.projectileSprites.forEach((sprite) => {
       if (sprite.getData('isOrbital')) {

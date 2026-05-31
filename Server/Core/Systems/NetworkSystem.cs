@@ -145,8 +145,14 @@ public static class NetworkSystem
                     w.TotalBaseStats ?? new Dictionary<string, float>() // <<< FIX 2: Send it to the UI!
                 }).ToList(),
 
-                p.FiredWeaponsThisTick.ToList(), p.ActiveEffects.Select(e => e.ConfigId).ToList()
-            }).ToList(),
+                p.FiredWeaponsThisTick.ToList(),
+                 p.ActiveEffects.Select(e => e.ConfigId).ToList(),
+                 p.SynergizedSkills.Select(s => new object[] {
+                    s.ConfigId,
+                    Math.Round(Math.Max(0, s.CurrentCooldown), 1)
+                }).ToList()
+                
+                 }).ToList(),
 
             Enemies = gameState.Enemies.Values.Select(e => new object[] {
                 e.Id, e.ConfigId, (int)e.X, (int)e.Y, (int)e.CurrentHp, (int)e.GetTotalStat("maxHp", configManager),

@@ -26,7 +26,8 @@ public static class MovementSystem
                     canMovePlayer = false;
             }
 
-            if (canMovePlayer && player.InputX != 0 || player.InputY != 0)
+            // >>> THE FIX: Added parentheses around the Input checks! <<<
+            if (canMovePlayer && (player.InputX != 0 || player.InputY != 0))
             {
                 float finalSpeed = Math.Max(0f, player.GetTotalStat("speed", configs));
                 player.X += player.InputX * finalSpeed * dt;

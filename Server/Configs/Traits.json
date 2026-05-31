@@ -1,75 +1,159 @@
 {
-  "cannot_heal": {
-    "id": "cannot_heal",
-    "name": "Cursed Flesh",
-    "isNegative": true,
-    "description": "Reduces all healing to zero.",
-    "statMultipliers": {
-      "hpRegen": 0.0,
-      "lifeSteal": 0.0
+    "cannot_heal": {
+        "id": "cannot_heal",
+        "name": "Cursed Flesh",
+        "isNegative": true,
+        "description": "Reduces all healing to zero.",
+        "statMultipliers": {
+            "hpRegen": 0.0,
+            "lifeSteal": 0.0
+        },
+        "engineMechanics": {
+            "healBlock": 1.0
+        }
     },
-    "engineMechanics": {
-      "healBlock": 1.0
-    }
-  },
-  "rooted_power": {
-    "id": "rooted_power",
-    "name": "Rooted Power",
-    "isNegative": false,
-    "description": "Grants +5 Armor while standing still.",
-    "dynamicModifiers": [
-      {
-        "conditionType": "IsStandingStill",
-        "targetStat": "armor",
-        "amount": 5.0
-      }
-    ]
-  },
-  "hoarder": {
-    "id": "hoarder",
-    "name": "Hoarder",
-    "isNegative": false,
-    "description": "Gain +2% Damage for every item you own.",
-    "dynamicModifiers": [
-      {
-        "conditionType": "PerItemOwned",
-        "targetStat": "damagePercent",
-        "amount": 0.02
-      }
-    ]
-  },
-  "adrenaline_junkie": {
-    "id": "adrenaline_junkie",
-    "name": "Adrenaline Junkie",
-    "isNegative": false,
-    "description": "Gain +1.5 Speed for every enemy currently alive.",
-    "dynamicModifiers": [
-      {
-        "conditionType": "PerEnemyAlive",
-        "targetStat": "speed",
-        "amount": 1.5
-      }
-    ]
-  },
-  "rushed": {
-    "id": "rushed",
-    "name": "Rushed",
-    "isNegative": true,
-    "description": "Gain +50 Speed, but waves end 5 seconds faster.",
-    "statBonuses": {
-      "speed": 50.0
+    "rooted_power": {
+        "id": "rooted_power",
+        "name": "Rooted Power",
+        "nextLevelId": "rooted_power_2",
+        "isNegative": false,
+        "description": "Grants +5 Armor while standing still.",
+        "dynamicModifiers": [
+            {
+                "conditionType": "IsStandingStill",
+                "targetStat": "armor",
+                "amount": 5.0
+            }
+        ]
     },
-    "engineMechanics": {
-      "bonusWaveSeconds": -5.0
+    "rooted_power_2": {
+        "id": "rooted_power_2",
+        "name": "Rooted Power Lv.2",
+        "isNegative": false,
+        "description": "Grants +12 Armor while standing still.",
+        "dynamicModifiers": [
+            {
+                "conditionType": "IsStandingStill",
+                "targetStat": "armor",
+                "amount": 12.0
+            }
+        ]
+    },
+    "hoarder": {
+        "id": "hoarder",
+        "name": "Hoarder",
+        "nextLevelId": "hoarder_2",
+        "isNegative": false,
+        "description": "Gain +2% Damage for every item you own.",
+        "dynamicModifiers": [
+            {
+                "conditionType": "PerItemOwned",
+                "targetStat": "damagePercent",
+                "amount": 0.02
+            }
+        ]
+    },
+    "hoarder_2": {
+        "id": "hoarder_2",
+        "name": "Hoarder Lv.2",
+        "isNegative": false,
+        "description": "Gain +4% Damage for every item you own.",
+        "dynamicModifiers": [
+            {
+                "conditionType": "PerItemOwned",
+                "targetStat": "damagePercent",
+                "amount": 0.04
+            }
+        ]
+    },
+    "adrenaline_junkie": {
+        "id": "adrenaline_junkie",
+        "name": "Adrenaline Junkie",
+        "nextLevelId": "adrenaline_junkie_2",
+        "isNegative": false,
+        "description": "Gain +1.5 Speed for every enemy currently alive.",
+        "dynamicModifiers": [
+            {
+                "conditionType": "PerEnemyAlive",
+                "targetStat": "speed",
+                "amount": 1.5
+            }
+        ]
+    },
+    "adrenaline_junkie_2": {
+        "id": "adrenaline_junkie_2",
+        "name": "Adrenaline Junkie Lv.2",
+        "isNegative": false,
+        "description": "Gain +3.0 Speed for every enemy currently alive.",
+        "dynamicModifiers": [
+            {
+                "conditionType": "PerEnemyAlive",
+                "targetStat": "speed",
+                "amount": 3.0
+            }
+        ]
+    },
+    "rushed": {
+        "id": "rushed",
+        "name": "Rushed",
+        "nextLevelId": "rushed_2",
+        "isNegative": true,
+        "description": "Gain +50 Speed, but waves end 5 seconds faster.",
+        "statBonuses": {
+            "speed": 50.0
+        },
+        "engineMechanics": {
+            "bonusWaveSeconds": -5.0
+        }
+    },
+    "rushed_2": {
+        "id": "rushed_2",
+        "name": "Rushed Lv.2",
+        "isNegative": true,
+        "description": "Gain +100 Speed, but waves end 10 seconds faster.",
+        "statBonuses": {
+            "speed": 100.0
+        },
+        "engineMechanics": {
+            "bonusWaveSeconds": -10.0
+        }
+    },
+    "neo_reflexes": {
+        "id": "neo_reflexes",
+        "name": "Neo Reflexes",
+        "nextLevelId": "neo_reflexes_2",
+        "isNegative": false,
+        "description": "15% chance to completely block an enemy projectile per stack.",
+        "engineMechanics": {
+            "projectileBlockChance": 0.15
+        }
+    },
+    "neo_reflexes_2": {
+        "id": "neo_reflexes_2",
+        "name": "Neo Reflexes Lv.2",
+        "isNegative": false,
+        "description": "35% chance to completely block an enemy projectile per stack.",
+        "engineMechanics": {
+            "projectileBlockChance": 0.35
+        }
+    },
+    "more_enemies": {
+        "id": "more_enemies",
+        "name": "The Swarm",
+        "nextLevelId": "more_enemies_2",
+        "description": "Increases enemy spawn rate by 10%.",
+        "isNegative": true,
+        "engineMechanics": {
+            "enemySpawnRateMult": 0.10
+        }
+    },
+    "more_enemies_2": {
+        "id": "more_enemies_2",
+        "name": "The Swarm Lv.2",
+        "description": "Increases enemy spawn rate by 25%.",
+        "isNegative": true,
+        "engineMechanics": {
+            "enemySpawnRateMult": 0.25
+        }
     }
-  },
-  "neo_reflexes": {
-    "id": "neo_reflexes",
-    "name": "Neo Reflexes",
-    "isNegative": false,
-    "description": "15% chance to completely block an enemy projectile per stack.",
-    "engineMechanics": {
-      "projectileBlockChance": 0.15
-    }
-  }
 }

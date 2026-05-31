@@ -30,12 +30,18 @@ public static class WeaponGenerator
             && Random.Shared.NextDouble() < (weaponConfig.StatRollChance * luckMult))
         {
             int statsToRoll = Random.Shared.Next(1, weaponConfig.MaxRandomStats + 1);
+            var availableStats = weaponConfig.AllowedRandomStats.Keys.ToList();
+
             for (int i = 0; i < statsToRoll; i++)
             {
-                string statToRoll = weaponConfig.AllowedRandomStats[Random.Shared.Next(weaponConfig.AllowedRandomStats.Count)];
+                string statToRoll = availableStats[Random.Shared.Next(availableStats.Count)];
+                var rollConfig = weaponConfig.AllowedRandomStats[statToRoll];
 
-                // Roll a random value between 5 and 15 (Adjust this formula as needed!)
-                float rollAmount = (float)Math.Round(Random.Shared.NextDouble() * 10f + 5f, 1);
+                // >>> FIX 2: Generate a value exactly between the JSON Min and Max <<<
+                float rollAmount = rollConfig.Min + (float)(Random.Shared.NextDouble() * (rollConfig.Max - rollConfig.Min));
+
+                // Round to 2 decimal places for clean UI
+                rollAmount = (float)Math.Round(rollAmount, 2);
 
                 if (newWeapon.RolledStats.ContainsKey(statToRoll)) newWeapon.RolledStats[statToRoll] += rollAmount;
                 else newWeapon.RolledStats[statToRoll] = rollAmount;
@@ -107,7 +113,7 @@ public static class WeaponGenerator
         }
 
         // Combine Skills
-        var allSkills = w1.WeaponSkills.Select(s => s.ConfigId).Union(w2.WeaponSkills.Select(s => s.ConfigId)).ToList();
+        var allSkills = w1.WeaponSkills.Select(s => s.ConfigId).Concat(w2.WeaponSkills.Select(s => s.ConfigId)).ToList();
         foreach (var skillId in allSkills)
         {
             if (configs.Skills.TryGetValue(skillId, out var skillCfg))

@@ -27,11 +27,11 @@
     },
     "statRollChance": 0.40,
     "maxRandomStats": 1,
-    "allowedRandomStats": [
-      "meleeDamage",
-      "critChance",
-      "maxHp"
-    ],
+    "allowedRandomStats": {
+      "meleeDamage": { "min": 1.0, "max": 3.0 },
+      "critChance": { "min": 0.01, "max": 0.03 },
+      "maxHp": { "min": 2.0, "max": 8.0 }
+    },
     "skillRollChance": 0.10,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
@@ -47,9 +47,7 @@
     "textureKey": "items_sheet",
     "scale": 1.2,
     "iconFrame": 0,
-    "traits": [
-      "HeavyHitter"
-    ],
+    "traits": [],
     "effectsAtWaveEnd": [],
     "effectsOnPurchase": [],
     "dynamicModifiers": [
@@ -73,12 +71,12 @@
     },
     "statRollChance": 0.75,
     "maxRandomStats": 2,
-    "allowedRandomStats": [
-      "meleeDamage",
-      "critChance",
-      "armor",
-      "maxHp"
-    ],
+    "allowedRandomStats": {
+      "meleeDamage": { "min": 4.0, "max": 10.0 },
+      "critChance": { "min": 0.03, "max": 0.07 },
+      "armor": { "min": 1.0, "max": 3.0 },
+      "maxHp": { "min": 10.0, "max": 20.0 }
+    },
     "skillRollChance": 0.25,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
@@ -109,11 +107,11 @@
     },
     "statRollChance": 0.35,
     "maxRandomStats": 1,
-    "allowedRandomStats": [
-      "maxHp",
-      "hpRegen",
-      "dodge"
-    ],
+    "allowedRandomStats": {
+      "maxHp": { "min": 3.0, "max": 10.0 },
+      "hpRegen": { "min": 0.5, "max": 1.5 },
+      "dodge": { "min": 0.01, "max": 0.03 }
+    },
     "skillRollChance": 0.05,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
@@ -158,12 +156,12 @@
     },
     "statRollChance": 0.80,
     "maxRandomStats": 3,
-    "allowedRandomStats": [
-      "maxHp",
-      "hpRegen",
-      "dodge",
-      "armor"
-    ],
+    "allowedRandomStats": {
+      "maxHp": { "min": 15.0, "max": 40.0 },
+      "hpRegen": { "min": 2.0, "max": 6.0 },
+      "dodge": { "min": 0.03, "max": 0.08 },
+      "armor": { "min": 2.0, "max": 5.0 }
+    },
     "skillRollChance": 0.40,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
@@ -181,7 +179,7 @@
     "scale": 1.0,
     "iconFrame": 7,
     "traits": [
-      "MoreEnemies"
+      "more_enemies"
     ],
     "effectsAtWaveEnd": [
       {
@@ -201,11 +199,11 @@
     },
     "statRollChance": 0.50,
     "maxRandomStats": 2,
-    "allowedRandomStats": [
-      "meleeDamage",
-      "rangedDamage",
-      "critChance"
-    ],
+    "allowedRandomStats": {
+      "meleeDamage": { "min": 1.0, "max": 4.0 },
+      "rangedDamage": { "min": 1.0, "max": 4.0 },
+      "critChance": { "min": 0.01, "max": 0.04 }
+    },
     "skillRollChance": 0.15,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
@@ -222,8 +220,8 @@
     "scale": 1.2,
     "iconFrame": 7,
     "traits": [
-      "CannotHeal",
-      "MoreEnemies"
+      "cannot_heal",
+      "more_enemies"
     ],
     "effectsAtWaveEnd": [
       {
@@ -254,12 +252,12 @@
     },
     "statRollChance": 0.90,
     "maxRandomStats": 3,
-    "allowedRandomStats": [
-      "damagePercent",
-      "critChance",
-      "lifeSteal",
-      "speed"
-    ],
+    "allowedRandomStats": {
+      "damagePercent": { "min": 0.05, "max": 0.20 },
+      "critChance": { "min": 0.05, "max": 0.12 },
+      "lifeSteal": { "min": 0.01, "max": 0.04 },
+      "speed": { "min": 5.0, "max": 20.0 }
+    },
     "skillRollChance": 0.50,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
@@ -285,11 +283,11 @@
     },
     "statRollChance": 0.35,
     "maxRandomStats": 1,
-    "allowedRandomStats": [
-      "elementalDamage",
-      "engineering",
-      "attackSpeedPercent"
-    ],
+    "allowedRandomStats": {
+      "elementalDamage": { "min": 2.0, "max": 5.0 },
+      "engineering": { "min": 1.0, "max": 3.0 },
+      "attackSpeedPercent": { "min": 0.02, "max": 0.06 }
+    },
     "skillRollChance": 0.10,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
@@ -328,12 +326,12 @@
     },
     "statRollChance": 0.70,
     "maxRandomStats": 2,
-    "allowedRandomStats": [
-      "elementalDamage",
-      "engineering",
-      "attackSpeedPercent",
-      "projectileSpeedPercent"
-    ],
+    "allowedRandomStats": {
+      "elementalDamage": { "min": 6.0, "max": 15.0 },
+      "engineering": { "min": 3.0, "max": 7.0 },
+      "attackSpeedPercent": { "min": 0.05, "max": 0.12 },
+      "projectileSpeedPercent": { "min": 0.05, "max": 0.15 }
+    },
     "skillRollChance": 0.30,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
@@ -360,12 +358,12 @@
     },
     "statRollChance": 0.35,
     "maxRandomStats": 1,
-    "allowedRandomStats": [
-      "speed",
-      "haste",
-      "attackSpeedPercent",
-      "dodge"
-    ],
+    "allowedRandomStats": {
+      "speed": { "min": 5.0, "max": 15.0 },
+      "haste": { "min": 1.0, "max": 3.0 },
+      "attackSpeedPercent": { "min": 0.01, "max": 0.05 },
+      "dodge": { "min": 0.01, "max": 0.03 }
+    },
     "skillRollChance": 0.05,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
@@ -382,7 +380,8 @@
     "scale": 1.0,
     "iconFrame": 9,
     "traits": [
-      "Jittery"
+      "neo_reflexes",
+      "rushed"
     ],
     "effectsAtWaveEnd": [],
     "effectsOnPurchase": [],
@@ -402,12 +401,12 @@
     },
     "statRollChance": 0.60,
     "maxRandomStats": 2,
-    "allowedRandomStats": [
-      "speed",
-      "haste",
-      "attackSpeedPercent",
-      "dodge"
-    ],
+    "allowedRandomStats": {
+      "speed": { "min": 15.0, "max": 35.0 },
+      "haste": { "min": 3.0, "max": 8.0 },
+      "attackSpeedPercent": { "min": 0.05, "max": 0.12 },
+      "dodge": { "min": 0.03, "max": 0.06 }
+    },
     "skillRollChance": 0.25,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
@@ -434,11 +433,11 @@
     },
     "statRollChance": 0.50,
     "maxRandomStats": 2,
-    "allowedRandomStats": [
-      "luck",
-      "harvesting",
-      "xpGainPercent"
-    ],
+    "allowedRandomStats": {
+      "luck": { "min": 2.0, "max": 8.0 },
+      "harvesting": { "min": 1.0, "max": 5.0 },
+      "xpGainPercent": { "min": 0.02, "max": 0.08 }
+    },
     "skillRollChance": 0.0,
     "maxRandomSkills": 0,
     "allowedRandomSkills": []
@@ -467,11 +466,11 @@
     },
     "statRollChance": 0.45,
     "maxRandomStats": 1,
-    "allowedRandomStats": [
-      "lifeSteal",
-      "meleeDamage",
-      "hpRegen"
-    ],
+    "allowedRandomStats": {
+      "lifeSteal": { "min": 0.005, "max": 0.02 },
+      "meleeDamage": { "min": 1.0, "max": 3.0 },
+      "hpRegen": { "min": 0.2, "max": 1.0 }
+    },
     "skillRollChance": 0.0,
     "maxRandomSkills": 0,
     "allowedRandomSkills": []

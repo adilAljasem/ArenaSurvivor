@@ -35,6 +35,7 @@ public abstract class BaseGearConfig
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public int Tier { get; set; }
+    public int Price { get; set; }
 
     // --- Visuals ---
     public string TextureKey { get; set; } = string.Empty;
@@ -50,8 +51,7 @@ public abstract class BaseGearConfig
     // --- Random Roll Properties ---
     public float StatRollChance { get; set; } = 0f;
     public int MaxRandomStats { get; set; } = 0;
-    public List<string> AllowedRandomStats { get; set; } = new();
-
+    public Dictionary<string, StatRollConfig> AllowedRandomStats { get; set; } = new();
     public float SkillRollChance { get; set; } = 0f;
     public int MaxRandomSkills { get; set; } = 0;
     public List<string> AllowedRandomSkills { get; set; } = new();
@@ -62,6 +62,7 @@ public abstract class BaseGearConfig
 
     /// <summary>Whether this gear appears in the player shop. Default: true.</summary>
     public bool AvailableInShop { get; set; } = true;
+    public int MaxLevel { get; set; } = 5;
 }
 
 // =================================================================================
@@ -110,6 +111,10 @@ public class EnemyConfig
     public string Name { get; set; } = string.Empty;
     public int Tier { get; set; }
     public bool IsBoss { get; set; }
+    public int MinWave { get; set; } = 1;
+    public int MaxWave { get; set; } = 999;
+    public int SpawnWeight { get; set; } = 50;
+    public List<int> SpawnOnWaves { get; set; } = new();
 
     // --- Visuals & Animations ---
     public string TextureKey { get; set; } = string.Empty;
@@ -198,8 +203,6 @@ public class WeaponConfig : BaseGearConfig
 
 public class ItemConfig : BaseGearConfig
 {
-    // --- Shop ---
-    public int Price { get; set; }
 
     // --- Merging Identity ---
     public string ItemFamily { get; set; } = string.Empty;
@@ -285,6 +288,7 @@ public class SkillConfig
 {
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+    public string NextLevelId { get; set; } = string.Empty;
 
     // --- Visuals ---
     public string TextureKey { get; set; } = string.Empty;
@@ -337,6 +341,8 @@ public class TraitConfig
 {
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+    public string NextLevelId { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
     public bool IsNegative { get; set; } = false;
 
     // Core Stat Changes
@@ -357,4 +363,10 @@ public class MapConfig
     public string Name { get; set; } = string.Empty;
     public float Width { get; set; } = 4000f;
     public float Height { get; set; } = 4000f;
+}
+
+public class StatRollConfig
+{
+    public float Min { get; set; }
+    public float Max { get; set; }
 }

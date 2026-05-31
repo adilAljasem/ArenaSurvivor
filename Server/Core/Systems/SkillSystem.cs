@@ -126,70 +126,55 @@ public static class SkillSystem
             {
                 player.ActionState = "Casting"; // FORCE the state so client UI always shows it!
                 player.CurrentCastTimer -= dt;
+
                 if (player.CurrentCastTimer <= 0)
                 {
                     if (configs.Skills.TryGetValue(player.CurrentCastingSkillId, out var castConfig))
                     {
                         ExecuteSkill(castConfig, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, beamEvents, state, configs);
+
+                        // >>> THE FIX: Reset the Cooldown AFTER the cast finishes! <<<
+                        var activeSkill = player.SynergizedSkills.FirstOrDefault(s => s.ConfigId == player.CurrentCastingSkillId);
+                        if (activeSkill != null) activeSkill.CurrentCooldown = castConfig.CooldownSeconds;
                     }
                     player.ActionState = "Idle";
                     player.CurrentCastingSkillId = string.Empty;
                 }
             }
-            else
+
+            // >>> Unified Synergized Skills Loop <<<
+            foreach (var skill in player.SynergizedSkills)
             {
-                foreach (var skill in player.Skills)
+                // >>> THE FIX: Only tick the cooldown if we are NOT currently casting this exact spell! <<<
+                if (skill.CurrentCooldown > 0 && player.CurrentCastingSkillId != skill.ConfigId)
                 {
                     skill.CurrentCooldown -= dt;
-                    if (skill.CurrentCooldown <= 0 && configs.Skills.TryGetValue(skill.ConfigId, out var config) && config.TriggerType == SkillTriggerType.Auto)
+                }
+
+                if (skill.CurrentCooldown <= 0 && configs.Skills.TryGetValue(skill.ConfigId, out var config) && config.TriggerType == SkillTriggerType.Auto)
+                {
+                    if (config.CastTimeSeconds > 0)
                     {
-                        player.ActionState = "Casting";
-                        player.CurrentCastingSkillId = skill.ConfigId;
-                        player.MaxCastTimer = config.CastTimeSeconds;
-                        player.CurrentCastTimer = config.CastTimeSeconds;
+                        // Only start casting if the player isn't already busy casting something else
+                        if (string.IsNullOrEmpty(player.CurrentCastingSkillId))
+                        {
+                            player.ActionState = "Casting";
+                            player.CurrentCastingSkillId = skill.ConfigId;
+                            player.MaxCastTimer = config.CastTimeSeconds;
+                            player.CurrentCastTimer = config.CastTimeSeconds;
+
+                            // NOTICE: We no longer reset the CurrentCooldown here!
+                        }
+                    }
+                    else
+                    {
+                        // This is an Instant skill (CastTime = 0)
+                        ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, beamEvents, state, configs);
                         skill.CurrentCooldown = config.CooldownSeconds;
-                        break;
                     }
                 }
             }
 
-
-            foreach (var item in player.OwnedItems)
-            {
-                if (item.ItemSkills == null) continue;
-
-                foreach (var iSkill in item.ItemSkills)
-                {
-                    iSkill.CurrentCooldown -= dt;
-                    if (iSkill.CurrentCooldown <= 0 && configs.Skills.TryGetValue(iSkill.ConfigId, out var config))
-                    {
-                        if (config.TriggerType == SkillTriggerType.Auto)
-                        {
-                            ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                            iSkill.CurrentCooldown = config.CooldownSeconds;
-                        }
-                    }
-                }
-            }
-            foreach (var weapon in player.Weapons)
-            {
-                if (weapon.WeaponSkills == null) continue;
-
-
-                foreach (var wSkill in weapon.WeaponSkills)
-                {
-                    wSkill.CurrentCooldown -= dt;
-                    if (wSkill.CurrentCooldown <= 0 && configs.Skills.TryGetValue(wSkill.ConfigId, out var config))
-                    {
-                        if (config.TriggerType == SkillTriggerType.Auto)
-                        {
-                            // Instantly fires the skill in the background without locking the player!
-                            ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                            wSkill.CurrentCooldown = config.CooldownSeconds;
-                        }
-                    }
-                }
-            }
         }
     }
 
