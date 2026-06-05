@@ -4,11 +4,13 @@
         "name": "Ground Stomp",
         "textureKey": "skill_icons",
         "iconFrame": 0,
-        "animSkill": [
+        "vfxTextureKey": "boss_skills_sheet",
+        "vfxAnimFrames": [
             10,
             15
         ],
-        "animFrameRate": 15,
+        "vfxFrameRate": 15,
+        "vfxScale": 2.0,
         "cooldownSeconds": 5.0,
         "castTimeSeconds": 1.5,
         "triggerType": "Auto",
@@ -61,9 +63,18 @@
     "summon_trees": {
         "id": "summon_trees",
         "name": "Grow Forest",
+        "textureKey": "skill_icons",
+        "iconFrame": 5,
+        "chargeVfxTextureKey": "effects1",
+        "chargeVfxAnimFrames": [
+            42,
+            55
+        ],
+        "chargeVfxFrameRate": 15,
+        "chargeVfxScale": 1.0,
         "nextLevelId": "summon_trees_2",
-        "cooldownSeconds": 20.0,
-        "castTimeSeconds": 5.0,
+        "cooldownSeconds": 1.0,
+        "castTimeSeconds": 10.0,
         "triggerType": "Auto",
         "targetType": "Self",
         "actionType": "Summon",
@@ -88,6 +99,8 @@
     "nature_pulse": {
         "id": "nature_pulse",
         "name": "Nature Pulse",
+        "textureKey": "skill_icons",
+        "iconFrame": 9,
         "nextLevelId": "nature_pulse_2",
         "cooldownSeconds": 4.0,
         "castTimeSeconds": 1.0,
@@ -119,8 +132,13 @@
         "name": "Adrenaline Surge",
         "textureKey": "skill_icons",
         "iconFrame": 2,
-        "nextLevelId": "adrenaline_surge_2",
-        "animFrameRate": 15,
+        "chargeVfxTextureKey": "effects1",
+        "chargeVfxAnimFrames": [
+            0,
+            15
+        ],
+        "chargeVfxFrameRate": 15,
+        "chargeVfxScale": 1.0,
         "cooldownSeconds": 10.0,
         "castTimeSeconds": 3.5,
         "triggerType": "Auto",
@@ -237,21 +255,26 @@
     },
     "cast_orbital_fireballs": {
         "id": "cast_orbital_fireballs",
+        "name": "Orbital Fireballs",
         "nextLevelId": "cast_orbital_fireballs_2",
         "actionType": "Projectile",
         "projectileId": "test_orbital_fireball",
         "castTimeSeconds": 1.5,
-        "cooldownSeconds": 12.0,
+        "channelDurationSeconds": 25.0,
+        "cooldownSeconds": 2.0,
+        "isRepeated": false,
         "projectileCount": 30,
         "baseDamage": 15
     },
     "cast_orbital_fireballs_2": {
         "id": "cast_orbital_fireballs_2",
+        "name": "Orbital Fireballs Lv.2",
         "actionType": "Projectile",
         "projectileId": "test_orbital_fireball",
         "castTimeSeconds": 1.0,
         "cooldownSeconds": 10.0,
         "projectileCount": 45,
+        "isRepeated": false,
         "baseDamage": 25
     },
     "test_laser_beam": {
@@ -304,8 +327,9 @@
         "range": 500,
         "beamWidth": 10,
         "baseDamage": 10,
-        "cooldownSeconds": 0.0,
-        "castTimeSeconds": 0.0,
+        "cooldownSeconds": 5.0,
+        "castTimeSeconds": 2.0,
+        "channelDurationSeconds": 4.0,
         "colorTint": "0xff4400"
     },
     "laser_sweep_2": {
@@ -347,6 +371,8 @@
         "range": 1500,
         "beamWidth": 80,
         "baseDamage": 50,
+        "cooldownSeconds": 3.0,
+        "castTimeSeconds": 0.5,
         "colorTint": "0xff0000"
     },
     "drone_fire_down_2": {
@@ -356,6 +382,8 @@
         "range": 1500,
         "beamWidth": 120,
         "baseDamage": 90,
+        "cooldownSeconds": 3.0,
+        "castTimeSeconds": 0.5,
         "colorTint": "0xff0000"
     },
     "boss_cast_sweeper": {

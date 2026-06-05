@@ -9,7 +9,7 @@
     "rangedDamage": 50,
     "projectileSpeed": 600,
     "projectileId": "9mm_bullet",
-    "range": 5000,
+    "range": 500,
     "textureKey": "weapons_sheet",
     "scale": 0.15,
     "iconFrame": 10,
@@ -19,7 +19,7 @@
     "canDrop": true,
     "availableInShop": true,
     "statBonuses": {
-      "speed": 5
+      "movementSpeed": 5
     },
     "damageScaling": {
       "rangedDamage": 0.5
@@ -39,7 +39,7 @@
         "min": 0.01,
         "max": 0.05
       },
-      "speed": {
+      "movementSpeed": {
         "min": 1.0,
         "max": 5.0
       }
@@ -58,7 +58,7 @@
     "tier": 2,
     "price": 55,
     "cooldownSeconds": 0.5,
-    "rangedDamage": 300,
+    "rangedDamage": 600,
     "projectileSpeed": 600,
     "projectileId": "9mm_bullet",
     "range": 5000,
@@ -69,7 +69,7 @@
     "attackAnimType": "recoil",
     "soundFire": "ball-shoot",
     "statBonuses": {
-      "speed": 5
+      "movementSpeed": 5
     },
     "damageScaling": {
       "rangedDamage": 0.5
@@ -91,7 +91,7 @@
         "min": 0.05,
         "max": 0.10
       },
-      "speed": {
+      "movementSpeed": {
         "min": 2.0,
         "max": 8.0
       }
@@ -107,7 +107,7 @@
     "name": "SMG",
     "tier": 2,
     "price": 60,
-    "cooldownSeconds": 0.15,
+    "cooldownSeconds": 0.30,
     "rangedDamage": 5,
     "projectileSpeed": 700,
     "projectileId": "9mm_bullet",
@@ -152,11 +152,11 @@
   },
   "shotgun": {
     "id": "shotgun",
-    "name": "Double Barrel",
+    "name": "Shotgun",
     "tier": 2,
     "price": 65,
-    "cooldownSeconds": 1.2,
-    "rangedDamage": 8,
+    "cooldownSeconds": 1.5,
+    "rangedDamage": 15,
     "projectileSpeed": 500,
     "projectileId": "shotgun_shell",
     "range": 300,
@@ -170,7 +170,7 @@
       "maxHp": 2
     },
     "damageScaling": {
-      "rangedDamage": 0.4
+      "rangedDamage": 0.6
     },
     "grantedSkills": [
       "laser_sweep"
@@ -179,16 +179,12 @@
     "maxRandomStats": 2,
     "allowedRandomStats": {
       "rangedDamage": {
-        "min": 2.0,
-        "max": 6.0
-      },
-      "maxHp": {
         "min": 5.0,
-        "max": 15.0
+        "max": 12.0
       },
       "critChance": {
-        "min": 0.02,
-        "max": 0.08
+        "min": 0.05,
+        "max": 0.10
       }
     },
     "skillRollChance": 0.15,
@@ -204,10 +200,10 @@
   "sniper": {
     "id": "sniper",
     "name": "Sniper Rifle",
-    "tier": 4,
+    "tier": 2,
     "price": 150,
     "cooldownSeconds": 2.0,
-    "rangedDamage": 45,
+    "rangedDamage": 75,
     "projectileSpeed": 1200,
     "projectileId": "sniper_round",
     "range": 1000,
@@ -218,7 +214,7 @@
     "attackAnimType": "recoil",
     "soundFire": "sfx_sniper_fire",
     "statBonuses": {
-      "speed": -5
+      "movementSpeed": -5
     },
     "damageScaling": {
       "rangedDamage": 1.2
@@ -282,7 +278,7 @@
         "min": 15.0,
         "max": 40.0
       },
-      "elementalDamage": {
+      "magicDamage": {
         "min": 10.0,
         "max": 25.0
       },
@@ -320,7 +316,8 @@
       "meleeDamage": 0.5
     },
     "grantedSkills": [
-      "drone_fire_down"
+      "cast_orbital_fireballs",
+      "summon_trees"
     ],
     "statRollChance": 0.40,
     "maxRandomStats": 1,
@@ -333,7 +330,7 @@
         "min": 2.0,
         "max": 10.0
       },
-      "speed": {
+      "movementSpeed": {
         "min": 1.0,
         "max": 5.0
       }
@@ -361,7 +358,7 @@
     "attackAnimType": "swing",
     "soundFire": "sword-shoot",
     "statBonuses": {
-      "speed": 2
+      "movementSpeed": 2
     },
     "damageScaling": {
       "meleeDamage": 0.8
@@ -409,7 +406,7 @@
     "soundFire": "sfx_hammer_swing",
     "statBonuses": {
       "armor": 2,
-      "speed": -10
+      "movementSpeed": -10
     },
     "damageScaling": {
       "meleeDamage": 1.5
@@ -445,7 +442,7 @@
     "tier": 2,
     "price": 60,
     "cooldownSeconds": 0.7,
-    "elementalDamage": 12,
+    "magicDamage": 12,
     "projectileSpeed": 350,
     "projectileId": "fireball",
     "range": 600,
@@ -456,10 +453,10 @@
     "attackAnimType": "recoil",
     "soundFire": "sfx_wand_cast",
     "statBonuses": {
-      "elementalDamage": 2
+      "magicDamage": 50
     },
     "damageScaling": {
-      "elementalDamage": 1.0
+      "magicDamage": 1.0
     },
     "grantedSkills": [
       "magic_missile"
@@ -471,7 +468,7 @@
         "min": 0.02,
         "max": 0.10
       },
-      "elementalDamage": {
+      "magicDamage": {
         "min": 5.0,
         "max": 15.0
       },
@@ -487,9 +484,9 @@
       "nature_pulse"
     ]
   },
-  "potato_thrower": {
-    "id": "potato_thrower",
-    "name": "Potato Thrower",
+  "tometo_thrower": {
+    "id": "tometo_thrower",
+    "name": "Tometo Thrower",
     "tier": 3,
     "price": 95,
     "cooldownSeconds": 0.3,
@@ -502,7 +499,7 @@
     "iconFrame": 14,
     "defaultFacingRight": true,
     "attackAnimType": "recoil",
-    "soundFire": "sfx_potato_throw",
+    "soundFire": "sfx_tometo_throw",
     "statBonuses": {
       "hpRegen": 2
     },
@@ -528,10 +525,7 @@
       }
     },
     "skillRollChance": 0.15,
-    "maxRandomSkills": 1,
-    "allowedRandomSkills": [
-      "poison_volley",
-      "summon_trees"
-    ]
+    "maxRandomSkills": 0,
+    "allowedRandomSkills": []
   }
 }

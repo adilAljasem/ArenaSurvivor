@@ -1,0 +1,15 @@
+Tier 1 Weight: Base 100. Decreases as luck goes up, but never drops below 10.
+
+Tier 2 Weight: Base 20. Grows moderately with luck.
+
+Tier 3 Weight: Base 0. Starts appearing when Luck > 10. Grows fast.
+
+Tier 4 Weight: Base 0. Starts appearing when Luck > 30.
+
+What this looks like in gameplay:
+
+0 Luck: 83% chance for Tier 1 | 17% chance for Tier 2 | 0% for T3/T4.
+
+50 Luck: 25% chance for Tier 1 | 49% chance for Tier 2 | 21% chance for Tier 3 | 5% chance for Tier 4.
+
+100 Luck: 3% chance for Tier 1 | 55% chance for Tier 2 | 30% chance for Tier 3 | 12% chance for Tier 4.

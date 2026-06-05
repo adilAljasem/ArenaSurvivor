@@ -9,7 +9,8 @@ public class ProjectileEntity
     public float Y { get; set; }
     public float VelX { get; set; }
     public float VelY { get; set; }
-    public float Damage { get; set; }
+    public float PhysicalDamage { get; set; }
+    public float MagicDamage { get; set; }
     public float LifeStealChance { get; set; }
     // >>> NEW: Melee & Pierce Mechanics! <<<
     public float HitRadius { get; set; } = 15f;

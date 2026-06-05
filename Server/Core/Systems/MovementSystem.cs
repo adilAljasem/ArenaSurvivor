@@ -29,7 +29,7 @@ public static class MovementSystem
             // >>> THE FIX: Added parentheses around the Input checks! <<<
             if (canMovePlayer && (player.InputX != 0 || player.InputY != 0))
             {
-                float finalSpeed = Math.Max(0f, player.GetTotalStat("speed", configs));
+                float finalSpeed = Math.Max(0f, player.GetTotalStat("movementSpeed", configs));
                 player.X += player.InputX * finalSpeed * dt;
                 player.Y += player.InputY * finalSpeed * dt;
             }
@@ -119,7 +119,7 @@ public static class MovementSystem
                         // >>> THE FIX: PREVENT DIVIDE BY ZERO / NaN <<<
                         if (length > 0)
                         {
-                            float finalSpeed = Math.Max(0f, enemy.GetTotalStat("speed", configs));
+                            float finalSpeed = Math.Max(0f, enemy.GetTotalStat("movementSpeed", configs));
                             enemy.X += (dx / length) * finalSpeed * dt;
                             enemy.Y += (dy / length) * finalSpeed * dt;
                         }

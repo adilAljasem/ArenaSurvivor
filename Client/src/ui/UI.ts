@@ -23,30 +23,30 @@ export const UIHelpers = {
     FONT: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
 
     getSkillColorStr: (level: number): string => {
-        if (level <= 1) return '#8d6e63'; // Brown
+        if (level <= 1) return '#c0c0c0'; // Brown
         if (level === 2) return '#29b6f6'; // Blue
         if (level === 3) return '#ab47bc'; // Purple
         return '#ffca28'; // Gold
     },
 
     getSkillColorHex: (level: number): number => {
-        if (level <= 1) return 0x8d6e63;
+        if (level <= 1) return 0xc0c0c0;
         if (level === 2) return 0x29b6f6;
         if (level === 3) return 0xab47bc;
         return 0xffca28;
     },
 
     getTierColorStr: (tier: number): string => {
-        if (tier <= 2) return '#c0c0c0';
-        if (tier <= 4) return '#00aaff';
-        if (tier <= 6) return '#aa00ff';
+        if (tier <= 1) return '#c0c0c0';
+        if (tier === 2) return '#00aaff';
+        if (tier === 3) return '#aa00ff';
         return '#ffd700';
     },
 
     getTierColorHex: (tier: number): number => {
-        if (tier <= 2) return 0xc0c0c0;
-        if (tier <= 4) return 0x00aaff;
-        if (tier <= 6) return 0xaa00ff;
+        if (tier <= 1) return 0xc0c0c0;
+        if (tier === 2) return 0x00aaff;
+        if (tier === 3) return 0xaa00ff;
         return 0xffd700;
     },
 
@@ -56,13 +56,15 @@ export const UIHelpers = {
             maxHp: { e: "❤️", n: "Max HP" },
             hpRegen: { e: "🩹", n: "HP Regen" },
             lifeSteal: { e: "🧛", n: "Life Steal" },
-            speed: { e: "💨", n: "Speed" },
+            movementSpeed: { e: "💨", n: "MovementSpeed" },
             haste: { e: "⏳", n: "Haste" },
             meleeDamage: { e: "🗡️", n: "Melee Dmg" },
             rangedDamage: { e: "🏹", n: "Ranged Dmg" },
-            elementalDamage: { e: "🔥", n: "Elem Dmg" },
+            magicDamage: { e: "🔥", n: "Magic Dmg" },
             engineering: { e: "🔧", n: "Engineering" },
             armor: { e: "🛡️", n: "Armor" },
+            magicDefense: { e: "✨", n: "Magic Def" },
+            defensePercent: { e: "🧱", n: "Defense %" },
             luck: { e: "🍀", n: "Luck" },
             harvesting: { e: "🌾", n: "Harvesting" },
             dodge: { e: "👻", n: "Dodge" },
@@ -147,9 +149,8 @@ export const UIHelpers = {
             const cfgRanged = config.rangedDamage ?? config.RangedDamage;
             const rangedDmg = totalBaseStats?.rangedDamage ?? totalBaseStats?.RangedDamage ?? (cfgRanged ? cfgRanged * stackCount : undefined);
 
-            const cfgElem = config.elementalDamage ?? config.ElementalDamage;
-            const elemDmg = totalBaseStats?.elementalDamage ?? totalBaseStats?.ElementalDamage ?? (cfgElem ? cfgElem * stackCount : undefined);
-
+            const cfgMagic = config.magicDamage ?? config.MagicDamage ?? config.elementalDamage ?? config.ElementalDamage;
+            const magicDmg = totalBaseStats?.magicDamage ?? totalBaseStats?.MagicDamage ?? (cfgMagic ? cfgMagic * stackCount : undefined);
             const cooldown = config.cooldownSeconds ?? config.CooldownSeconds;
             const range = config.range ?? config.Range;
             const scaling = config.damageScaling ?? config.DamageScaling;
@@ -161,7 +162,7 @@ export const UIHelpers = {
 
             if (meleeDmg) posLines.push(`🗡️ Melee Dmg: ${meleeDmg}`);
             if (rangedDmg) posLines.push(`🏹 Ranged Dmg: ${rangedDmg}`);
-            if (elemDmg) posLines.push(`🔥 Elem Dmg: ${elemDmg}`);
+            if (magicDmg) posLines.push(`🔥 Magic Dmg: ${magicDmg}`);
             if (cooldown) posLines.push(`⏱️ Cooldown: ${cooldown}s`);
             if (range) posLines.push(`📏 Range: ${range}`);
 
@@ -185,8 +186,8 @@ export const UIHelpers = {
 
             if (statSource) {
                 Object.entries(statSource).forEach(([k, v]) => {
-                    if (["meleeDamage", "MeleeDamage", "rangedDamage", "RangedDamage", "elementalDamage", "ElementalDamage"].includes(k)) return;
-                    const num = totalBaseStats ? (v as number) : (v as number) * stackCount;
+                    if (["meleeDamage", "MeleeDamage", "rangedDamage", "RangedDamage", "magicDamage", "MagicDamage"].includes(k)) return;
+                     const num = totalBaseStats ? (v as number) : (v as number) * stackCount;
                     const info = UIHelpers.getStatInfo(k);
 
                     if (num > 0) posLines.push(`${info.e} ${info.n}: +${UIHelpers.formatVal(k, num)}`);

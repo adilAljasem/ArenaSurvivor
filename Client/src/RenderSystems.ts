@@ -63,17 +63,28 @@ export class ActorRenderer {
         const hpFill = scene.add.rectangle(-uiWidth / 2, 0, uiWidth, 6, hpColor).setOrigin(0, 0.5);
         const hpMarkers = scene.add.graphics();
 
+        const hpText = scene.add.text(0, 0, '', {
+          fontFamily: "'Segoe UI', Tahoma, sans-serif",
+          fontSize: '10px',
+          color: '#ffffff',
+          fontStyle: 'bold',
+          stroke: '#000000',
+          strokeThickness: 3,
+          resolution: 3
+        }).setOrigin(0.5, 0.5).setVisible(false);
+
         const weaponsContainer = scene.add.container(0, 0);
 
         const castBarBg = scene.add.rectangle(0, 0, 40, 6, 0x000000).setOrigin(0.5, 0.5).setStrokeStyle(1, 0x555555).setVisible(false);
         const castBarFill = scene.add.rectangle(-20, 0, 40, 6, 0xffd700).setOrigin(0, 0.5).setVisible(false);
 
-        container.add([castCircle, bodySprite, hpBg, hpFill, hpMarkers, weaponsContainer, castBarBg, castBarFill]);
+        container.add([castCircle, bodySprite, hpBg, hpFill, hpMarkers, hpText, weaponsContainer, castBarBg, castBarFill]);
 
         container.setData('bodySprite', bodySprite);
         container.setData('hpBg', hpBg);
         container.setData('hpFill', hpFill);
         container.setData('hpMarkers', hpMarkers);
+        container.setData('hpText', hpText);
         container.setData('baseWidth', uiWidth);
         container.setData('weaponsContainer', weaponsContainer);
         container.setData('castCircle', castCircle);
@@ -111,6 +122,8 @@ export class ActorRenderer {
       hpFill.width = baseW * Math.max(0, currentHp / maxHp);
       hpFill.fillColor = hpColor;
 
+
+
       hpMarkers.clear();
       if (maxHp > 50) {
         hpMarkers.lineStyle(2, 0x000000, 1.0);
@@ -127,6 +140,16 @@ export class ActorRenderer {
       const actionState = actor.actionState || actor.ActionState || "Idle";
       const currentCast = actor.currentCastTimer || actor.CurrentCastTimer || 0;
       const maxCast = actor.maxCastTimer || actor.MaxCastTimer || 0;
+
+      const hpText = container.getData('hpText') as Phaser.GameObjects.Text;
+      if (hpText) {
+        hpText.y = topY; // Stick it right in the middle of the health bar
+        hpText.setText(`${Math.round(currentHp)} / ${Math.round(maxHp)}`);
+
+        // Only show it if the 'U' key flag is true, AND the entity is not dead
+        const shouldShow = scene.data.get('showHealthNumbers') === true && actionState !== "Dead";
+        hpText.setVisible(shouldShow);
+      }
 
       const castBarBg = container.getData('castBarBg') as Phaser.GameObjects.Rectangle;
       const castBarFill = container.getData('castBarFill') as Phaser.GameObjects.Rectangle;
@@ -251,7 +274,7 @@ export class ActorRenderer {
         const skillCfg = castingSkillId ? ((configs.skills || configs.Skills)?.[castingSkillId]) : null;
         const stopMoving = skillCfg?.stopMoving === true || skillCfg?.StopMoving === true;
 
-        const isObstacle = !isPlayer && (config.baseStats?.speed === 0 || config.BaseStats?.speed === 0);
+        const isObstacle = !isPlayer && (config.baseStats?.movementSpeed === 0 || config.BaseStats?.movementSpeed === 0);
 
         let targetAnim = `${config.id}_idle`;
 
@@ -427,64 +450,7 @@ export class WorldRenderer {
       });
     });
 
-    const aoeList = state.aoeEvents || state.AoeEvents || [];
-    aoeList.forEach((aoe: any) => {
-      const configId = aoe.configId || aoe.ConfigId;
-      const skillConfig = (configs.skills || configs.Skills)?.[configId] ?? null;
 
-      if (skillConfig?.soundHit) AudioManager.getInstance().playSfx(skillConfig.soundHit);
-
-      let rendered = false;
-      const radius = aoe.radius ?? aoe.Radius;
-      const x = aoe.x ?? aoe.X;
-      const y = aoe.y ?? aoe.Y;
-
-      if (skillConfig) {
-        const animArray = skillConfig.animSkill || skillConfig.AnimSkill;
-        const textureKey = skillConfig.textureKey || skillConfig.TextureKey;
-        const iconFrame = skillConfig.iconFrame ?? skillConfig.IconFrame;
-        const colorTint = skillConfig.colorTint || skillConfig.ColorTint;
-        const frameRate = skillConfig.animFrameRate || skillConfig.AnimFrameRate || 15;
-
-        if (animArray && animArray.length === 2 && textureKey) {
-          const fxSprite = scene.add.sprite(x, y, textureKey).setDepth(15);
-          const animKey = `${skillConfig.id || skillConfig.Id}_anim`;
-
-          if (!scene.anims.exists(animKey)) {
-            scene.anims.create({
-              key: animKey,
-              frames: scene.anims.generateFrameNumbers(textureKey, { start: animArray[0], end: animArray[1] }),
-              frameRate: frameRate,
-              repeat: 0
-            });
-          }
-
-          fxSprite.setScale((radius * 2) / (fxSprite.width || 64));
-          fxSprite.play(animKey);
-          fxSprite.once('animationcomplete', () => fxSprite.destroy());
-          rendered = true;
-        } else if (iconFrame !== undefined && textureKey) {
-          const fxSprite = scene.add.sprite(x, y, textureKey, iconFrame).setDepth(15);
-          scene.tweens.add({
-            targets: fxSprite, scale: (radius * 2) / (fxSprite.width || 64), alpha: 0, duration: 500,
-            ease: 'Cubic.easeOut', onComplete: () => fxSprite.destroy()
-          });
-          rendered = true;
-        } else if (colorTint) {
-          const color = parseInt(colorTint.replace(/^#|^0x/i, ''), 16);
-          const ring = scene.add.circle(x, y, radius, color, 0.8).setStrokeStyle(10, color, 1).setDepth(15).setScale(0.1);
-          scene.tweens.add({ targets: ring, scale: 1.0, alpha: 0, duration: 600, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
-          rendered = true;
-        }
-      }
-
-      if (!rendered) {
-        const isFriendly = aoe.isFriendly ?? aoe.IsFriendly;
-        const color = isFriendly ? 0x00ff00 : 0xff0000;
-        const ring = scene.add.circle(x, y, radius, color, 0.8).setStrokeStyle(10, color, 1).setDepth(15).setScale(0.1);
-        scene.tweens.add({ targets: ring, scale: 1.0, alpha: 0, duration: 600, ease: 'Cubic.easeOut', onComplete: () => ring.destroy() });
-      }
-    });
 
     const beamList = state.beamEvents || state.BeamEvents || [];
     beamList.forEach((beam: any) => {
@@ -541,34 +507,48 @@ export function applyVisualFX(scene: Phaser.Scene, container: Phaser.GameObjects
   let yOffset = topY - 12;
 
   const renderConfig = (config: any, isSkill: boolean) => {
-    const animArray = isSkill ? (config.animSkill || config.AnimSkill) : (config.animEffect || config.AnimEffect);
-    const textureKey = config.textureKey || config.TextureKey;
-    const iconFrame = config.iconFrame ?? config.IconFrame;
+    const tex = isSkill ? (config.chargeVfxTextureKey || config.ChargeVfxTextureKey || config.textureKey || config.TextureKey) : (config.textureKey || config.TextureKey);
+    const animArray = isSkill ? (config.chargeVfxAnimFrames || config.ChargeVfxAnimFrames || config.animSkill || config.AnimSkill) : (config.animEffect || config.AnimEffect);
     const colorTint = config.colorTint || config.ColorTint;
+    const frameRate = isSkill ? (config.chargeVfxFrameRate || config.ChargeVfxFrameRate || config.animFrameRate || config.AnimFrameRate || 15) : (config.animEffectFrameRate || config.AnimEffectFrameRate || 15);
+    const vfxScale = isSkill ? (config.chargeVfxScale || config.ChargeVfxScale || 1.0) : (config.scale || config.Scale || 1.0);
     const isRepeated = config.isRepeated ?? config.IsRepeated ?? true;
-    const frameRate = config.animFrameRate || config.AnimEffectFrameRate || config.AnimFrameRate || 15;
 
-    if (animArray && animArray.length === 2 && textureKey) {
-      const fxSprite = scene.add.sprite(0, yOffset, textureKey).setName('overhead_fx');
+    // 2. Play the Charge Animation Overhead
+    if (animArray && animArray.length === 2 && tex) {
+      const fxSprite = scene.add.sprite(0, yOffset, tex).setName('overhead_fx');
+      fxSprite.setScale(vfxScale);
       container.add(fxSprite);
-      const animKey = `${config.id || config.Id}_anim`;
+
+      const animKey = `${config.id || config.Id}_${isSkill ? 'charge' : 'anim'}`;
       if (!scene.anims.exists(animKey)) {
-        scene.anims.create({ key: animKey, frames: scene.anims.generateFrameNumbers(textureKey, { start: animArray[0], end: animArray[1] }), frameRate: frameRate, repeat: isRepeated ? -1 : 0 });
+        scene.anims.create({
+          key: animKey,
+          frames: scene.anims.generateFrameNumbers(tex, { start: animArray[0], end: animArray[1] }),
+          frameRate: frameRate,
+          repeat: isRepeated ? -1 : 0
+        });
       }
       fxSprite.play(animKey);
-      yOffset -= 24;
+      yOffset -= (24 * vfxScale);
     }
-    else if (iconFrame !== undefined && textureKey) {
-      const fxSprite = scene.add.sprite(0, yOffset, textureKey, iconFrame).setName('overhead_fx');
-      container.add(fxSprite);
-      yOffset -= 24;
-    }
+    // >>> THE FIX: Add !isSkill to prevent the character from turning red while casting! <<<
     else if (colorTint && !isFlashing && !isSkill) {
-      const tintValue = parseInt(colorTint.replace(/^#|^0x/i, ''), 16);
+      const tintValue = typeof colorTint === 'string' ? parseInt(colorTint.replace(/^#|^0x/i, ''), 16) : colorTint;
       mainSprite.setTint(tintValue);
+    }
+    // 4. Static Icon 
+    else if (!isSkill) {
+      const iconFrame = config.iconFrame ?? config.IconFrame;
+      if (iconFrame !== undefined && tex) {
+        const fxSprite = scene.add.sprite(0, yOffset, tex, iconFrame).setName('overhead_fx');
+        container.add(fxSprite);
+        yOffset -= 24;
+      }
     }
   };
 
+  // Render Charging Overhead
   if (entity.actionState === 'Casting' && entity.currentCastingSkillId) {
     const skillConfig = (masterConfigs.skills || masterConfigs.Skills)?.[entity.currentCastingSkillId] ?? null;
     if (skillConfig) renderConfig(skillConfig, true);
@@ -630,4 +610,79 @@ export function precalculateSpriteTops(scene: Phaser.Scene, masterConfigs: any) 
 
   processConfigs(masterConfigs.characters);
   processConfigs(masterConfigs.enemies);
+}
+
+export class VfxRenderer {
+  static renderAoeEvents(scene: Phaser.Scene, aoeEvents: any[], configs: any) {
+    if (!aoeEvents || aoeEvents.length === 0) return;
+
+    const skillConfigs = configs.skills || configs.Skills;
+    if (!skillConfigs) return;
+
+    aoeEvents.forEach(ev => {
+      const x = ev.x ?? ev.X;
+      const y = ev.y ?? ev.Y;
+      const radius = ev.radius ?? ev.Radius;
+      const configId = ev.configId ?? ev.ConfigId;
+
+      // >>> NEW: Extract the isFriendly flag from the server! <<<
+      const isFriendly = ev.isFriendly ?? ev.IsFriendly ?? false;
+
+      const config = skillConfigs[configId];
+      if (!config) return;
+
+      const vfxTex = config.vfxTextureKey || config.VfxTextureKey;
+      const vfxFrames = config.vfxAnimFrames || config.VfxAnimFrames;
+
+      // --- OPTION A: PLAY SPRITE BURST ---
+      if (vfxTex && vfxFrames) {
+        const animKey = `${configId}_vfx`;
+        const sprite = scene.add.sprite(x, y, vfxTex).setDepth(300);
+
+        const vfxScale = config.vfxScale || config.VfxScale || 1.0;
+        sprite.setScale(vfxScale);
+
+        if (!scene.anims.exists(animKey)) {
+          const frameRate = config.vfxFrameRate || config.VfxFrameRate || 15;
+          scene.anims.create({
+            key: animKey,
+            frames: scene.anims.generateFrameNumbers(vfxTex, { start: vfxFrames[0], end: vfxFrames[1] }),
+            frameRate: frameRate,
+            repeat: 0
+          });
+        }
+
+        sprite.play(animKey);
+        sprite.once('animationcomplete', () => sprite.destroy());
+      }
+      // --- OPTION B: SMOOTH NOVA SHOCKWAVE (Fallback) ---
+      else {
+        // >>> NEW: Default to Green for Friendly, Red for Enemy <<<
+        let colorHex = isFriendly ? 0x00ff00 : 0xff0000;
+
+        const colorStr = config.colorTint || config.ColorTint;
+
+        // If you explicitly set a colorTint in JSON, it will override the Green/Red.
+        if (colorStr) {
+          colorHex = typeof colorStr === 'string' ? parseInt(colorStr.replace(/^#|^0x/i, ''), 16) : colorStr;
+        }
+
+        const visualRadius = radius > 0 ? radius : 60;
+
+        const ring = scene.add.circle(x, y, visualRadius, colorHex, 0.3);
+        ring.setStrokeStyle(4, colorHex, 1);
+        ring.setDepth(299);
+        ring.setScale(0.1);
+
+        scene.tweens.add({
+          targets: ring,
+          scale: 1.0,
+          alpha: 0,
+          duration: 800, // >>> FIX: Slowed down from 400ms to 800ms! <<<
+          ease: 'Cubic.easeOut',
+          onComplete: () => ring.destroy()
+        });
+      }
+    });
+  }
 }

@@ -38,4 +38,6 @@ public abstract class BaseActorEntity
     public float CurrentCastTimer { get; set; }
     public float MaxCastTimer { get; set; }
     public Dictionary<string, float> DynamicSkillTimers { get; set; } = new();
+
+    public abstract float GetTotalStat(string statName, Configs.ConfigManager configManager, GameState state = null);
 }

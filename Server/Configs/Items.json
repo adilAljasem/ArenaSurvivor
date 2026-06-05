@@ -67,7 +67,7 @@
     "statBonuses": {
       "meleeDamage": 10,
       "maxHp": 15,
-      "speed": -5
+      "movementSpeed": -5
     },
     "statRollChance": 0.75,
     "maxRandomStats": 2,
@@ -256,7 +256,7 @@
       "damagePercent": { "min": 0.05, "max": 0.20 },
       "critChance": { "min": 0.05, "max": 0.12 },
       "lifeSteal": { "min": 0.01, "max": 0.04 },
-      "speed": { "min": 5.0, "max": 20.0 }
+      "movementSpeed": { "min": 5.0, "max": 20.0 }
     },
     "skillRollChance": 0.50,
     "maxRandomSkills": 1,
@@ -278,13 +278,13 @@
     "effectsOnPurchase": [],
     "dynamicModifiers": [],
     "statBonuses": {
-      "elementalDamage": 3,
+      "magicDamage": 3,
       "engineering": 1
     },
     "statRollChance": 0.35,
     "maxRandomStats": 1,
     "allowedRandomStats": {
-      "elementalDamage": { "min": 2.0, "max": 5.0 },
+      "magicDamage": { "min": 2.0, "max": 5.0 },
       "engineering": { "min": 1.0, "max": 3.0 },
       "attackSpeedPercent": { "min": 0.02, "max": 0.06 }
     },
@@ -316,18 +316,18 @@
         "conditionType": "PerXStat",
         "conditionStat": "engineering",
         "conditionThreshold": 5.0,
-        "targetStat": "elementalDamage",
+        "targetStat": "magicDamage",
         "amount": 2.0
       }
     ],
     "statBonuses": {
-      "elementalDamage": 8,
+      "magicDamage": 8,
       "engineering": 3
     },
     "statRollChance": 0.70,
     "maxRandomStats": 2,
     "allowedRandomStats": {
-      "elementalDamage": { "min": 6.0, "max": 15.0 },
+      "magicDamage": { "min": 6.0, "max": 15.0 },
       "engineering": { "min": 3.0, "max": 7.0 },
       "attackSpeedPercent": { "min": 0.05, "max": 0.12 },
       "projectileSpeedPercent": { "min": 0.05, "max": 0.15 }
@@ -353,13 +353,13 @@
     "effectsOnPurchase": [],
     "dynamicModifiers": [],
     "statBonuses": {
-      "speed": 15,
+      "movementSpeed": 15,
       "attackSpeedPercent": 0.05
     },
     "statRollChance": 0.35,
     "maxRandomStats": 1,
     "allowedRandomStats": {
-      "speed": { "min": 5.0, "max": 15.0 },
+      "movementSpeed": { "min": 5.0, "max": 15.0 },
       "haste": { "min": 1.0, "max": 3.0 },
       "attackSpeedPercent": { "min": 0.01, "max": 0.05 },
       "dodge": { "min": 0.01, "max": 0.03 }
@@ -388,21 +388,21 @@
     "dynamicModifiers": [
       {
         "conditionType": "PerXStat",
-        "conditionStat": "speed",
+        "conditionStat": "movementSpeed",
         "conditionThreshold": 100.0,
         "targetStat": "dodge",
         "amount": 0.02
       }
     ],
     "statBonuses": {
-      "speed": 40,
+      "movementSpeed": 40,
       "attackSpeedPercent": 0.15,
       "haste": 5
     },
     "statRollChance": 0.60,
     "maxRandomStats": 2,
     "allowedRandomStats": {
-      "speed": { "min": 15.0, "max": 35.0 },
+      "movementSpeed": { "min": 15.0, "max": 35.0 },
       "haste": { "min": 3.0, "max": 8.0 },
       "attackSpeedPercent": { "min": 0.05, "max": 0.12 },
       "dodge": { "min": 0.03, "max": 0.06 }

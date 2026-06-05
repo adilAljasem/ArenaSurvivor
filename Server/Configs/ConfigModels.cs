@@ -44,6 +44,7 @@ public abstract class BaseGearConfig
 
     // --- Shared Traits ---
     public List<string> Traits { get; set; } = new();
+    public List<string> GrantedSkills { get; set; } = new();
 
     // --- Fixed Stat Bonuses ---
     public Dictionary<string, float> StatBonuses { get; set; } = new();
@@ -182,7 +183,7 @@ public class WeaponConfig : BaseGearConfig
     public float CooldownSeconds { get; set; }
     public float MeleeDamage { get; set; }
     public float RangedDamage { get; set; }
-    public float ElementalDamage { get; set; }
+    public float MagicDamage { get; set; }
     public float Range { get; set; }
     public float Lifespan { get; set; } = 0f;
 
@@ -197,8 +198,6 @@ public class WeaponConfig : BaseGearConfig
     public Dictionary<string, float> Mechanics { get; set; } = new();     // "critChance", "knockback"
     public Dictionary<string, float> DamageScaling { get; set; } = new();
     public List<string> ApplyEffectsOnHit { get; set; } = new();                   // "ExplodesOnImpact", "Homing"
-    // --- Granted Skills ---
-    public List<string> GrantedSkills { get; set; } = new();
 }
 
 public class ItemConfig : BaseGearConfig
@@ -295,16 +294,22 @@ public class SkillConfig
     public int? IconFrame { get; set; }
     public int[]? AnimSkill { get; set; }
     public int AnimFrameRate { get; set; } = 15;
-    public bool IsRepeated { get; set; } = true; // Added IsRepeated!
-    public string ColorTint { get; set; } = string.Empty; // Added ColorTint!
+    public bool IsRepeated { get; set; } = true;
+    public string ColorTint { get; set; } = string.Empty;
+    public string ChargeVfxTextureKey { get; set; } = string.Empty;
+    public int[]? ChargeVfxAnimFrames { get; set; }
+    public int ChargeVfxFrameRate { get; set; } = 15;
+    public float ChargeVfxScale { get; set; } = 1.0f;
+
     // --- Timing ---
     public float CooldownSeconds { get; set; }
     public float CastTimeSeconds { get; set; }
+    public float ChannelDurationSeconds { get; set; } = 0f;
 
     // --- Payload: Summon Specific ---
-    public string SummonConfigId { get; set; } = string.Empty; // e.g., "goblin_basic" or "tree"
+    public string SummonConfigId { get; set; } = string.Empty;
     public int SummonCount { get; set; } = 1;
-    public float SummonRadius { get; set; } = 50f; // Scatter them so they don't stack perfectly!
+    public float SummonRadius { get; set; } = 50f;
 
     // --- Mechanics ---
     public SkillTriggerType TriggerType { get; set; } = SkillTriggerType.Auto;
@@ -321,7 +326,7 @@ public class SkillConfig
     public float BaseDamage { get; set; } = 0f;
     public float Lifespan { get; set; } = 0f;
     public List<string> ApplyEffects { get; set; } = new();
-    public bool StopMoving { get; set; } = false; // By default, casting roots the player in place!
+    public bool StopMoving { get; set; } = false;
 
     // --- Audio ---
     public string SoundCast { get; set; } = string.Empty;

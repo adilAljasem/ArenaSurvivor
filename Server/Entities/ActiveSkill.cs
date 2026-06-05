@@ -7,4 +7,5 @@ public class ActiveSkill
     
     public bool IsCasting { get; set; }
     public float CurrentCastTimer { get; set; }
+    public float CurrentChannelTimer { get; set; }
 }

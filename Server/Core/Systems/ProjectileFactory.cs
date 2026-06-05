@@ -13,7 +13,8 @@ public static class ProjectileFactory
         string team,
         float startX, float startY,
         float dirX, float dirY,
-        float finalDamage,
+        float physicalDamage,
+        float magicDamage,
         float finalSpeed, // Passed in so Player Stats can speed up bullets!
         float lifeStealChance,
         List<string> extraEffects,
@@ -52,8 +53,8 @@ public static class ProjectileFactory
                 VelX = projConfig.MovementBehavior == "Orbital" ? 0 : (float)Math.Cos(currentAngle) * finalSpeed,
                 VelY = projConfig.MovementBehavior == "Orbital" ? 0 : (float)Math.Sin(currentAngle) * finalSpeed,
                 OrbitSpeed = projConfig.MovementBehavior == "Orbital" ? projConfig.OrbitSpeed : 0f,
-
-                Damage = finalDamage,
+                PhysicalDamage = physicalDamage,
+                MagicDamage = magicDamage,     
                 LifeStealChance = lifeStealChance,
                 HitRadius = projConfig.HitRadius,
                 PierceCount = projConfig.PierceCount,

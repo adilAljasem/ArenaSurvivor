@@ -22,11 +22,12 @@
     ],
     "animDeathFrameRate": 12,
     "baseStats": {
-      "maxHp": 300,
-      "speed": 200,
+      "maxHp": 30000,
+      "movementSpeed": 200,
       "meleeDamage": 50,
       "rangedDamage": 50,
-      "harvesting": 5
+      "harvesting": 5,
+      "luck": 50
     },
     "startingWeapons": [
     ],
@@ -34,8 +35,6 @@
       "ugly_tooth"
     ],
     "startingSkills": [
-      "frost_nova",
-      "summon_trees"
     ],
     "dynamicModifiers": [],
     "traits": []
@@ -68,7 +67,7 @@
     "baseStats": {
       "maxHp": 150,
       "hpRegen": 3,
-      "speed": 250,
+      "movementSpeed": 250,
       "meleeDamage": 500,
       "rangedDamage": 500,
       "damagePercent": 0.25,

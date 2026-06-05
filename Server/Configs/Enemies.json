@@ -21,15 +21,17 @@
     "attackDuration": 0.5,
     "baseStats": {
       "maxHp": 30,
-      "speed": 90,
+      "movementSpeed": 90,
       "meleeDamage": 5,
-      "dodge": 0.05
+      "dodge": 0.05,
+      "magicDefense": 500
     },
     "startingWeapons": [ "pistol" ],
     "startingItems": [ "ugly_tooth" ],
     "weaponDropChance": 0.05,
     "itemDropChance": 0.10,
-    "dynamicModifiers": []
+    "dynamicModifiers": [],
+    "StartingSkills": [ "laser_sweep","cast_orbital_fireballs" ]
   },
   "boss_demon_king": {
     "id": "boss_demon_king",
@@ -51,7 +53,7 @@
     "attackDuration": 1.2,
     "baseStats": {
       "maxHp": 5000,
-      "speed": 60,
+      "movementSpeed": 60,
       "meleeDamage": 50,
       "armor": 15,
       "lifeSteal": 0.05
@@ -60,7 +62,7 @@
       {
         "conditionType": "MissingHealthPercent",
         "conditionThreshold": 0.50,
-        "targetStat": "speed",
+        "targetStat": "movementSpeed",
         "amount": 30
       }
     ]
@@ -87,7 +89,7 @@
     "attackDuration": 0.3,
     "baseStats": {
       "maxHp": 15,
-      "speed": 140,
+      "movementSpeed": 140,
       "meleeDamage": 3,
       "dodge": 0.20
     },
@@ -115,7 +117,7 @@
     "attackDuration": 0.8,
     "baseStats": {
       "maxHp": 120,
-      "speed": 55,
+      "movementSpeed": 55,
       "meleeDamage": 15,
       "armor": 3
     },
@@ -126,7 +128,7 @@
     "name": "Mushroom",
     "tier": 1,
     "isBoss": false,
-    "minWave": 5,
+    "minWave": 3,
     "maxWave": 35,
     "spawnWeight": 70,
     "textureKey": "mushroomEnemy",
@@ -144,9 +146,10 @@
     "attackDuration": 0.4,
     "baseStats": {
       "maxHp": 50,
-      "speed": 100,
+      "movementSpeed": 100,
       "meleeDamage": 8,
-      "lifeSteal": 0.10
+      "lifeSteal": 0.10,
+      "armor": 500
     },
     "dynamicModifiers": []
   },
@@ -172,7 +175,7 @@
     "attackDuration": 0.6,
     "baseStats": {
       "maxHp": 250,
-      "speed": 65,
+      "movementSpeed": 65,
       "meleeDamage": 10,
       "hpRegen": 2
     },
@@ -218,14 +221,14 @@
     "attackDuration": 0.4,
     "baseStats": {
       "maxHp": 90,
-      "speed": 80,
+      "movementSpeed": 80,
       "meleeDamage": 12
     },
     "dynamicModifiers": [
       {
         "conditionType": "MissingHealthPercent",
         "conditionThreshold": 0.50,
-        "targetStat": "speed",
+        "targetStat": "movementSpeed",
         "amount": 400
       },
       {
@@ -255,7 +258,7 @@
     "startingSkills": [ "nature_pulse" ],
     "baseStats": {
       "maxHp": 300,
-      "speed": 0,
+      "movementSpeed": 0,
       "meleeDamage": 0
     }
   }

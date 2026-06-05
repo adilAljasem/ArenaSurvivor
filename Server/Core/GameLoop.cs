@@ -132,7 +132,7 @@ public class GameLoop : BackgroundService
             _gameState.Phase = GamePhase.WaveActive;
             float waveBonus = _gameState.Players.Values.Sum(p => p.GetEngineMechanic("bonusWaveSeconds", _configManager));
             _gameState.PhaseTimer = Math.Max(10f, 60f + waveBonus); // Math.Max prevents the wave from being 0 seconds!
-            _gameState.CurrentWave = 50;
+            _gameState.CurrentWave = 1;
         }
 
         if (_gameState.Phase != GamePhase.WaitingForPlayers)
@@ -198,10 +198,27 @@ public class GameLoop : BackgroundService
 
             if (player.PendingLevelUps > 0 && player.CurrentLevelUpChoices.Count == 0)
             {
-                player.CurrentLevelUpChoices = _configManager.LevelUpCards.Values
-                    .OrderBy(x => Random.Shared.Next())
-                    .Take(3)
-                    .ToList();
+                float playerLuck = player.GetTotalStat("luck", _configManager);
+                player.CurrentLevelUpChoices = new List<Configs.LevelUpCardConfig>();
+
+                // Find the highest tier of level up card that actually exists in your JSON
+                int maxCardTier = _configManager.LevelUpCards.Values.Any() ? _configManager.LevelUpCards.Values.Max(c => c.Tier) : 1;
+
+                for (int i = 0; i < 3; i++)
+                {
+                    int targetTier = RollRarityTier(playerLuck, maxCardTier);
+
+                    var validCards = _configManager.LevelUpCards.Values.Where(c => c.Tier == targetTier).ToList();
+
+                    // Fallback if no cards exist for the rolled tier
+                    if (validCards.Count == 0)
+                        validCards = _configManager.LevelUpCards.Values.Where(c => c.Tier <= targetTier).ToList();
+
+                    if (validCards.Count > 0)
+                    {
+                        player.CurrentLevelUpChoices.Add(validCards[Random.Shared.Next(validCards.Count)]);
+                    }
+                }
             }
 
             var uiData = new
@@ -325,6 +342,8 @@ public class GameLoop : BackgroundService
         }
     }
 
+
+
     private void SpawnEnemy(Configs.EnemyConfig config)
     {
         var newEnemy = new Server.Entities.EnemyEntity();
@@ -343,14 +362,61 @@ public class GameLoop : BackgroundService
 
         newEnemy.Initialize(config, spawnX, spawnY, _configManager);
 
-        float waveMultiplier = 1f + ((_gameState.CurrentWave - 1) * 0.2f);
-        float tierMultiplier = 1f + ((config.Tier - 1) * 0.5f);
+        // ==========================================
+        // NEW 1% SCALING MATH
+        // ==========================================
 
-        newEnemy.Stats.AddModifier("maxHp", 0, (waveMultiplier * tierMultiplier) - 1f);
-        newEnemy.Stats.AddModifier("meleeDamage", 0, ((_gameState.CurrentWave - 1) * 0.05f) * tierMultiplier);
+        // Exactly 1% (0.01f) bonus per wave after Wave 1
+        float waveBonus = (_gameState.CurrentWave - 1) * 0.01f;
+
+        // Optional: Keep higher tier enemies inherently stronger from the start (e.g. +50% base stats per tier).
+        // If you want ALL tiers to have the exact same base stats, change this to: float tierBonus = 0f;
+        float tierBonus = (config.Tier - 1) * 0.5f;
+
+        // Combine the bonuses
+        float finalMultiplier = waveBonus + tierBonus;
+
+        // Apply the exact same multiplier to both Max HP and Damage Percent
+        newEnemy.Stats.AddModifier("maxHp", 0, finalMultiplier);
+        newEnemy.Stats.AddModifier("damagePercent", 0, finalMultiplier);
+
+        // ==========================================
+
         newEnemy.CurrentHp = newEnemy.GetTotalStat("maxHp", _configManager);
 
         _gameState.Enemies.TryAdd(newEnemy.Id, newEnemy);
+    }
+
+
+    // =================================================================================
+    // LUCK MATH ENGINE
+    // =================================================================================
+    public static int RollRarityTier(float luck, int maxPossibleTier = 4)
+    {
+        // 1. Calculate Dynamic Weights based on Luck
+        float weightT1 = Math.Max(10f, 100f - luck);         // Slowly drops, but never hits 0
+        float weightT2 = Math.Max(0f, 20f + (luck * 1.5f));  // Starts at 20, grows fast
+        float weightT3 = Math.Max(0f, (luck - 10f) * 1.0f);  // Appears at 10+ luck
+        float weightT4 = Math.Max(0f, (luck - 30f) * 0.5f);  // Appears at 30+ luck
+
+        // Clamp to max possible tier (in case you only have T3 level up cards, etc.)
+        if (maxPossibleTier < 4) weightT4 = 0;
+        if (maxPossibleTier < 3) weightT3 = 0;
+        if (maxPossibleTier < 2) weightT2 = 0;
+
+        float totalWeight = weightT1 + weightT2 + weightT3 + weightT4;
+        float roll = (float)(Random.Shared.NextDouble() * totalWeight);
+
+        // 2. Resolve the Roll (Highest tier checked first)
+        if (roll <= weightT4) return 4;
+        roll -= weightT4;
+
+        if (roll <= weightT3) return 3;
+        roll -= weightT3;
+
+        if (roll <= weightT2) return 2;
+
+        return 1; // Fallback to Tier 1
     }
 
     // =================================================================================
@@ -359,38 +425,45 @@ public class GameLoop : BackgroundService
 
     public static void GenerateShopForPlayer(PlayerEntity player, ConfigManager configManager, int currentWave)
     {
-        int maxAllowedTier = (currentWave / 5) + 1;
-        var availableWeapons = configManager.Weapons.Values.Where(w => w.Tier <= maxAllowedTier && w.AvailableInShop).ToList();
-        var availableItems = configManager.Items.Values.Where(i => i.AvailableInShop).ToList();
+        // Get the player's dynamic luck stat
+        float playerLuck = player.GetTotalStat("luck", configManager);
 
         player.CurrentShop = player.CurrentShop.Where(item => item.IsLocked).ToList();
         int slotsNeeded = 3 - player.CurrentShop.Count;
 
         for (int i = 0; i < slotsNeeded; i++)
         {
-            bool spawnWeapon = Random.Shared.Next(0, 2) == 0 || availableItems.Count == 0;
+            // Roll a specific rarity for THIS slot based on luck
+            int targetTier = RollRarityTier(playerLuck, 4);
 
-            if (spawnWeapon && availableWeapons.Count > 0)
+            // Filter pools down to EXACTLY the target tier
+            var tierWeapons = configManager.Weapons.Values.Where(w => w.Tier == targetTier && w.AvailableInShop).ToList();
+            var tierItems = configManager.Items.Values.Where(i => i.Tier == targetTier && i.AvailableInShop).ToList();
+
+            // Fallback: If your JSON doesn't have an item for this exact tier, grab whatever is closest below it
+            if (!tierWeapons.Any()) tierWeapons = configManager.Weapons.Values.Where(w => w.Tier <= targetTier && w.AvailableInShop).ToList();
+            if (!tierItems.Any()) tierItems = configManager.Items.Values.Where(i => i.Tier <= targetTier && i.AvailableInShop).ToList();
+
+            bool spawnWeapon = Random.Shared.Next(0, 2) == 0 || !tierItems.Any();
+
+            if (spawnWeapon && tierWeapons.Any())
             {
-                var w = availableWeapons[Random.Shared.Next(availableWeapons.Count)];
+                var w = tierWeapons[Random.Shared.Next(tierWeapons.Count)];
                 var previewWeapon = Server.Core.Systems.WeaponGenerator.GenerateWeapon(w.Id, player, configManager, 1);
 
-                var shopItem = new Server.DTOs.ShopItemDto
+                player.CurrentShop.Add(new Server.DTOs.ShopItemDto
                 {
                     ConfigId = w.Id,
                     Name = w.Name,
                     Price = w.Price,
-                    TotalBaseStats = previewWeapon.TotalBaseStats, // <<< ADD THIS LINE
+                    TotalBaseStats = previewWeapon.TotalBaseStats,
                     RolledStats = previewWeapon.RolledStats,
                     WeaponSkills = previewWeapon.WeaponSkills.Select(s => s.ConfigId).ToList()
-                };
-
-                // Just add it! No more messy server-side preview math.
-                player.CurrentShop.Add(shopItem);
+                });
             }
-            else if (availableItems.Count > 0)
+            else if (tierItems.Any())
             {
-                var item = availableItems[Random.Shared.Next(availableItems.Count)];
+                var item = tierItems[Random.Shared.Next(tierItems.Count)];
                 var previewItem = Server.Core.Systems.ItemGenerator.GenerateItem(item.Id, player, configManager, 1);
 
                 player.CurrentShop.Add(new Server.DTOs.ShopItemDto

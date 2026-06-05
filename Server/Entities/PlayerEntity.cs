@@ -37,6 +37,7 @@ public class PlayerEntity : BaseActorEntity
 
     public List<string> SynergizedTraits { get; private set; } = new();
     public List<ActiveSkill> SynergizedSkills { get; private set; } = new();
+    public int CurrentSkillIndex { get; set; } = 0;
 
     // Initializes the player with the Master Stat List so it never crashes
     public void Initialize(CharacterConfig config, ConfigManager configManager)
@@ -168,7 +169,15 @@ public class PlayerEntity : BaseActorEntity
 
             // Restore the cooldown if they already had this specific skill level actively ticking
             float cooldown = previousSkills.ContainsKey(currentId) ? previousSkills[currentId].CurrentCooldown : 0f;
-            SynergizedSkills.Add(new ActiveSkill { ConfigId = currentId, CurrentCooldown = cooldown });
+            float castTimer = previousSkills.ContainsKey(currentId) ? previousSkills[currentId].CurrentCastTimer : 0f;
+            float channelTimer = previousSkills.ContainsKey(currentId) ? previousSkills[currentId].CurrentChannelTimer : 0f;
+            SynergizedSkills.Add(new ActiveSkill
+            {
+                ConfigId = currentId,
+                CurrentCooldown = cooldown,
+                CurrentCastTimer = castTimer,
+                CurrentChannelTimer = channelTimer
+            });
         }
     }
 
@@ -212,20 +221,39 @@ public class PlayerEntity : BaseActorEntity
 
         foreach (var mod in modifiers.Where(m => m.TargetStat == statName))
         {
+            // Architect Safety: Prevent DivideByZero exceptions if you accidentally set ConditionThreshold to 0 in JSON
+            float safeThreshold = Math.Max(0.01f, mod.ConditionThreshold);
+
             switch (mod.ConditionType)
             {
                 case "MissingHealthPercent":
-                    float maxHp = Stats.GetFinalStat("maxHp");
-                    float missingHpPercent = 1f - (CurrentHp / Math.Max(1f, maxHp));
-                    int chunksHp = (int)Math.Floor(missingHpPercent / Math.Max(0.01f, mod.ConditionThreshold));
+                    // 1. Get safe Max HP
+                    float maxHp = Math.Max(1f, Stats.GetFinalStat("maxHp"));
+
+                    // 2. THE FIX: Clamp HP between 0 and MaxHP. 
+                    // Prevents negative HP from granting >100% missing health, and prevents over-healing from breaking the math.
+                    float safeCurrentHp = Math.Clamp(CurrentHp, 0f, maxHp);
+
+                    // 3. Calculate safe percentage (guaranteed to be exactly between 0.0f and 1.0f)
+                    float missingHpPercent = 1f - (safeCurrentHp / maxHp);
+
+                    // 4. Calculate integer stacks
+                    int chunksHp = (int)Math.Floor(missingHpPercent / safeThreshold);
+
                     flatBonus += (mod.Amount * chunksHp * itemLevel);
                     break;
 
                 case "PerXStat":
                     if (!string.IsNullOrEmpty(mod.ConditionStat))
                     {
-                        float sourceStatValue = GetTotalStat(mod.ConditionStat, configManager); // Recursive lookup
-                        int chunksStat = (int)Math.Floor(sourceStatValue / Math.Max(0.01f, mod.ConditionThreshold));
+                        // Recursive lookup to get the source stat
+                        float sourceStatValue = GetTotalStat(mod.ConditionStat, configManager);
+
+                        // Architect Safety: Clamp to 0 so negative stats (like negative armor) 
+                        // don't accidentally reverse the formula and penalize the player.
+                        float safeSourceStat = Math.Max(0f, sourceStatValue);
+
+                        int chunksStat = (int)Math.Floor(safeSourceStat / safeThreshold);
                         flatBonus += (mod.Amount * chunksStat * itemLevel);
                     }
                     break;
@@ -242,6 +270,7 @@ public class PlayerEntity : BaseActorEntity
                 case "PerEnemyAlive":
                     if (state != null)
                     {
+                        // High Performance: We avoid allocating a new list, just lazily counting alive enemies
                         int activeEnemies = state.Enemies.Count(e => e.Value.ActionState != "Dead");
                         flatBonus += (activeEnemies * mod.Amount * itemLevel);
                     }
@@ -252,7 +281,7 @@ public class PlayerEntity : BaseActorEntity
     }
 
     // Calculates dynamic stats, passive item buffs, trait multipliers, and weapon buffs on the fly
-    public float GetTotalStat(string statName, ConfigManager configManager, GameState state = null)
+    public override float GetTotalStat(string statName, ConfigManager configManager, GameState state = null)
     {
         float baseStat = Stats.GetFinalStat(statName);
         float dynamicFlat = 0f;

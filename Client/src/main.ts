@@ -2,7 +2,7 @@ import * as Phaser from 'phaser';
 import { HubConnectionBuilder, HubConnectionState } from '@microsoft/signalr';
 import { ShopUI, SkillActionBar, Tooltip } from './ui/UI';
 import { EscMenu } from './ui/EscMenu';
-import { ActorRenderer, WorldRenderer, precalculateSpriteTops } from './RenderSystems';
+import { ActorRenderer, VfxRenderer, WorldRenderer, precalculateSpriteTops } from './RenderSystems';
 import { AudioManager } from './AudioManager';
 import pako from 'pako';
 
@@ -155,18 +155,16 @@ class GameScene extends Phaser.Scene {
   create() {
     this.cameras.main.setBackgroundColor('#2d2d2d');
     this.groundTooltip = new Tooltip(this);
-    this.skillActionBar = new SkillActionBar(this, this.groundTooltip);
-
+    this.skillActionBar = new SkillActionBar(this);
     this.skillActionBar.updateLayout(this.scale.width, this.scale.height);
 
     // Initialise the global AudioManager with this scene's sound system
     AudioManager.getInstance().init(this);
 
     // >>> FIX: Map Initialization moved strictly to Handshake Event! <<<
-    window.addEventListener('configsReady', () => {
+    const initConfigs = () => {
       if (this.anims) this.createAnimations(masterConfigs);
 
-      // >>> FIX: Bulletproof map selection! If currentMapId is missing, grab the first map in the JSON! <<<
       const mapIdToUse = masterConfigs.currentMapId || masterConfigs.CurrentMapId ||
         (masterConfigs.maps ? Object.keys(masterConfigs.maps)[0] : null) ||
         (masterConfigs.Maps ? Object.keys(masterConfigs.Maps)[0] : null);
@@ -179,21 +177,24 @@ class GameScene extends Phaser.Scene {
           this.mapWidth = currentMap.width || currentMap.Width;
           this.mapHeight = currentMap.height || currentMap.Height;
 
-          // 1. Draw Floor Grid
           this.add.grid(this.mapWidth / 2, this.mapHeight / 2, this.mapWidth, this.mapHeight, 64, 64, 0x1a1a1a, 1, 0x333333, 1).setDepth(-2);
-
-          // 2. Draw Red Glowing Border (Inset by 10 pixels so the camera doesn't clip it!)
           const border = this.add.graphics();
           border.lineStyle(16, 0xff0000, 1);
           border.strokeRect(10, 10, this.mapWidth - 20, this.mapHeight - 20);
           border.setDepth(-1);
           border.postFX.addGlow(0xff0000, 6, 0, false, 0.1, 15);
-
-          // 3. Lock Camera
           this.cameras.main.setBounds(0, 0, this.mapWidth, this.mapHeight);
         }
       }
-    }, { once: true });
+    };
+
+    // >>> THE FIX: If the data arrived before the scene loaded, fire immediately! <<<
+    // Otherwise, attach the listener. 
+    if (masterConfigs && Object.keys(masterConfigs).length > 0) {
+      initConfigs();
+    } else {
+      window.addEventListener('configsReady', initConfigs, { once: true });
+    }
 
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();
@@ -294,6 +295,13 @@ class GameScene extends Phaser.Scene {
 
     this.debugGraphics = this.add.graphics().setDepth(9998);
 
+    // >>> NEW: U Key to Toggle Health Numbers <<<
+    this.data.set('showHealthNumbers', false); // Default to hidden
+    this.input.keyboard?.on('keydown-U', () => {
+      const currentState = this.data.get('showHealthNumbers');
+      this.data.set('showHealthNumbers', !currentState);
+    });
+
     connection.on("UpdatePlayerUI", (uiData: any) => {
       if (this.shopUIModule) this.shopUIModule.updateUIData(uiData, masterConfigs);
     });
@@ -310,6 +318,8 @@ class GameScene extends Phaser.Scene {
       for (let i = 0; i < len; i++) {
         bytes[i] = binaryString.charCodeAt(i);
       }
+
+
 
       const decompressedBytes = pako.ungzip(bytes);
       const jsonString = new TextDecoder().decode(decompressedBytes);
@@ -475,6 +485,12 @@ class GameScene extends Phaser.Scene {
         aoeEvents: rawState.aoe?.map((a: any[]) => ({ x: a[0], y: a[1], radius: a[2], isFriendly: a[3], configId: a[4] })) || [],
         beamEvents: rawState.bm?.map((b: any[]) => ({ startX: b[0], startY: b[1], targetX: b[2], targetY: b[3], width: b[4], colorTint: b[5] })) || [] // <<< NEW
       };
+
+      // 1. Parse the events from the payload (Assuming they are p[10] or whatever index you assigned)
+      const aoeEvents = state.aoeEvents || [];
+
+      // 2. Pass them to the renderer instantly
+      VfxRenderer.renderAoeEvents(this, aoeEvents, masterConfigs);
 
       this.currentPhase = state.phase;
       const myPlayer = state.players.find(p => p.connectionId === connection.connectionId);
@@ -729,7 +745,33 @@ class GameScene extends Phaser.Scene {
       if (!entity.textureKey && !entity.TextureKey) return;
 
       Object.keys(entity).forEach(key => {
-        if (key.toLowerCase().startsWith('anim') && Array.isArray(entity[key]) && entity[key].length === 2) {
+
+        // --- 1. NEW: Handle VFX Animations for Skills ---
+        if (key === 'vfxAnimFrames' || key === 'VfxAnimFrames') {
+          const id = entity.id || entity.Id;
+          const animKey = `${id}_vfx`;
+
+          if (!this.anims.exists(animKey)) {
+            const textureKey = entity.vfxTextureKey || entity.VfxTextureKey;
+            const frameRate = entity.vfxFrameRate || entity.VfxFrameRate || 15;
+
+            // Only create if a vfxTextureKey was actually provided in the JSON
+            if (textureKey) {
+              this.anims.create({
+                key: animKey,
+                frames: this.anims.generateFrameNumbers(textureKey, {
+                  start: entity[key][0],
+                  end: entity[key][1]
+                }),
+                frameRate: frameRate,
+                repeat: 0 // VFX always plays exactly once and stops
+              });
+            }
+          }
+        }
+
+        // --- 2. EXISTING: Handle standard Entity Animations (walk, attack, hit, death) ---
+        else if (key.toLowerCase().startsWith('anim') && Array.isArray(entity[key]) && entity[key].length === 2) {
           const actionName = key.toLowerCase().replace('anim', '');
           const id = entity.id || entity.Id;
           const animKey = `${id}_${actionName}`;
@@ -737,17 +779,19 @@ class GameScene extends Phaser.Scene {
           if (!this.anims.exists(animKey)) {
             const textureKey = entity.textureKey || entity.TextureKey;
             const customFrameRate = entity[`${key}FrameRate`] || 15;
-            const shouldLoop = (actionName === 'attack' || actionName === 'hit' || actionName === 'death') ? 0 : -1;
+            const shouldLoop = (actionName === 'attack' || actionName === 'hit' || actionName === 'death' || actionName === 'skill') ? 0 : -1;
 
-            this.anims.create({
-              key: animKey,
-              frames: this.anims.generateFrameNumbers(textureKey, {
-                start: entity[key][0],
-                end: entity[key][1]
-              }),
-              frameRate: customFrameRate,
-              repeat: shouldLoop
-            });
+            if (textureKey) {
+              this.anims.create({
+                key: animKey,
+                frames: this.anims.generateFrameNumbers(textureKey, {
+                  start: entity[key][0],
+                  end: entity[key][1]
+                }),
+                frameRate: customFrameRate,
+                repeat: shouldLoop
+              });
+            }
           }
         }
       });

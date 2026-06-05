@@ -23,6 +23,7 @@ public class EnemyEntity : BaseActorEntity
 
     // Tracks which weapon slots fired this tick (cleared at end of network tick)
     public List<int> FiredWeaponsThisTick { get; set; } = new();
+    public int CurrentSkillIndex { get; set; } = 0;
 
     // Initializes the enemy with the Master Stat List so it never crashes
     public void Initialize(Configs.EnemyConfig config, float spawnX, float spawnY, ConfigManager configManager)
@@ -91,10 +92,33 @@ public class EnemyEntity : BaseActorEntity
             }
         }
 
+        foreach (var weapon in Weapons)
+        {
+            if (weapon.WeaponSkills != null)
+            {
+                foreach (var s in weapon.WeaponSkills)
+                {
+                    if (!Skills.Any(x => x.ConfigId == s.ConfigId))
+                        Skills.Add(new ActiveSkill { ConfigId = s.ConfigId, CurrentCooldown = 0f });
+                }
+            }
+        }
+        foreach (var item in OwnedItems)
+        {
+            if (item.ItemSkills != null)
+            {
+                foreach (var s in item.ItemSkills)
+                {
+                    if (!Skills.Any(x => x.ConfigId == s.ConfigId))
+                        Skills.Add(new ActiveSkill { ConfigId = s.ConfigId, CurrentCooldown = 0f });
+                }
+            }
+        }
+
         CurrentHp = GetTotalStat("maxHp", configManager);
     }
 
-    public float GetTotalStat(string statName, ConfigManager configManager)
+    public override float GetTotalStat(string statName, ConfigManager configManager, GameState state = null)
     {
         float baseStat = Stats.GetFinalStat(statName);
         float dynamicFlat = 0f;

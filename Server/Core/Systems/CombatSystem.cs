@@ -48,26 +48,7 @@ public static class CombatSystem
 
                         player.FiredWeaponsThisTick.Add(weapon.SlotIndex);
 
-                        float baseMelee = weapon.TotalBaseStats.GetValueOrDefault("meleeDamage", 0f);
-                        float baseRanged = weapon.TotalBaseStats.GetValueOrDefault("rangedDamage", 0f);
-                        float baseElemental = weapon.TotalBaseStats.GetValueOrDefault("elementalDamage", 0f);
-
-                        if (weapon.RolledStats.TryGetValue("meleeDamage", out var rm)) baseMelee += rm;
-                        if (weapon.RolledStats.TryGetValue("rangedDamage", out var rr)) baseRanged += rr;
-                        if (weapon.RolledStats.TryGetValue("elementalDamage", out var re)) baseElemental += re;
-
-                        float finalDamage = baseMelee + baseRanged + baseElemental;
-
-                        if (config.DamageScaling != null)
-                        {
-                            foreach (var scale in config.DamageScaling)
-                            {
-                                finalDamage += player.GetTotalStat(scale.Key, configs) * scale.Value;
-                            }
-                        }
-
-                        float damagePercent = player.GetTotalStat("damagePercent", configs);
-                        finalDamage = finalDamage * (1f + damagePercent);
+                        var (physDmg, magicDmg) = CalculateWeaponDamageSplit(player, config, weapon, configs);
 
                         float localLifeSteal = config.Mechanics != null && config.Mechanics.ContainsKey("lifeSteal")
                                                ? config.Mechanics["lifeSteal"] : 0f;
@@ -90,11 +71,13 @@ public static class CombatSystem
                             if (projConfig.Lifespan > 0) computedLifespan = projConfig.Lifespan;
                             if (config.Lifespan > 0) computedLifespan = config.Lifespan;
 
+
                             var newBullets = ProjectileFactory.Create(
-                                projConfig, player.ConnectionId, "Player",
-                                spawnX, spawnY, dirX, dirY,
-                                finalDamage, finalSpeed, totalLifeStealForThisAttack, config.ApplyEffectsOnHit, 1, computedLifespan
-                            );
+                                                            projConfig, player.ConnectionId, "Player",
+                                                            spawnX, spawnY, dirX, dirY,
+                                                            physDmg, magicDmg, // <<< PASS BOTH HERE
+                                                            finalSpeed, totalLifeStealForThisAttack, config.ApplyEffectsOnHit, 1, computedLifespan
+                                                        );
 
                             foreach (var b in newBullets) state.Projectiles.TryAdd(b.Id, b);
                         }
@@ -162,19 +145,8 @@ public static class CombatSystem
                     float summonDirLen = (float)Math.Sqrt(summonDirX * summonDirX + summonDirY * summonDirY);
                     if (summonDirLen <= 0) continue;
 
-                    float baseMelee = weapon.TotalBaseStats.GetValueOrDefault("meleeDamage", 0f);
-                    float baseRanged = weapon.TotalBaseStats.GetValueOrDefault("rangedDamage", 0f);
-                    float baseElemental = weapon.TotalBaseStats.GetValueOrDefault("elementalDamage", 0f);
-
-                    if (weapon.RolledStats.TryGetValue("meleeDamage", out var rm2)) baseMelee += rm2;
-                    if (weapon.RolledStats.TryGetValue("rangedDamage", out var rr2)) baseRanged += rr2;
-                    if (weapon.RolledStats.TryGetValue("elementalDamage", out var re2)) baseElemental += re2;
-
-                    float finalDmg2 = (baseMelee + baseRanged + baseElemental) * (1f + enemy.GetTotalStat("damagePercent", configs));
-
-                    if (wCfgS.DamageScaling != null)
-                        foreach (var scale in wCfgS.DamageScaling)
-                            finalDmg2 += enemy.GetTotalStat(scale.Key, configs) * scale.Value;
+                    // >>> USE DRY HELPER <<<
+                    var (physDmg, magicDmg) = CalculateWeaponDamageSplit(enemy, wCfgS, weapon, configs);
 
                     float finalRange2 = wCfgS.Range + enemy.GetTotalStat("range", configs);
                     string projId2 = wCfgS.ProjectileId;
@@ -197,7 +169,8 @@ public static class CombatSystem
                     var newBullets = ProjectileFactory.Create(
                         pCfg2, enemy.Id, enemy.Team,
                         spawnX, spawnY, summonDirX, summonDirY,
-                        finalDmg2, finalSpeed2, 0f, wCfgS.ApplyEffectsOnHit, 1, lifespan2
+                        physDmg, magicDmg, // <<< PASS BOTH HERE
+                        finalSpeed2, 0f, wCfgS.ApplyEffectsOnHit, 1, lifespan2
                     );
 
                     foreach (var b in newBullets) state.Projectiles.TryAdd(b.Id, b);
@@ -276,25 +249,7 @@ public static class CombatSystem
                 float dirLength = (float)Math.Sqrt(dirToTargetX * dirToTargetX + dirToTargetY * dirToTargetY);
                 if (dirLength <= 0) continue;
 
-
-                float baseMelee = weapon.TotalBaseStats.GetValueOrDefault("meleeDamage", 0f);
-                float baseRanged = weapon.TotalBaseStats.GetValueOrDefault("rangedDamage", 0f);
-                float baseElemental = weapon.TotalBaseStats.GetValueOrDefault("elementalDamage", 0f);
-
-                if (weapon.RolledStats.TryGetValue("meleeDamage", out var rm)) baseMelee += rm;
-                if (weapon.RolledStats.TryGetValue("rangedDamage", out var rr)) baseRanged += rr;
-                if (weapon.RolledStats.TryGetValue("elementalDamage", out var re)) baseElemental += re;
-
-                float finalDamage = baseMelee + baseRanged + baseElemental;
-
-                if (weaponConfig.DamageScaling != null)
-                {
-                    foreach (var scale in weaponConfig.DamageScaling)
-                        finalDamage += enemy.GetTotalStat(scale.Key, configs) * scale.Value;
-                }
-
-                float damagePercent = enemy.GetTotalStat("damagePercent", configs);
-                finalDamage = finalDamage * (1f + damagePercent);
+                var (physDmg, magicDmg) = CalculateWeaponDamageSplit(enemy, weaponConfig, weapon, configs);
 
                 float finalRange = weaponConfig.Range + enemy.GetTotalStat("range", configs);
 
@@ -320,20 +275,20 @@ public static class CombatSystem
 
 
                 var newBullets = ProjectileFactory.Create(
-                                    projConfig,
-                                    enemy.Id,
-                                    enemy.Team,
-                                    spawnX,
-                                    spawnY,
-                                    dirToTargetX,
-                                    dirToTargetY,
-                                    finalDamage,
-                                    finalSpeed,
-                                    0f, // No lifesteal for enemies
-                                    weaponConfig.ApplyEffectsOnHit,
-                                    1,
-                                    computedLifespan
-                                );
+                                                    projConfig,
+                                                    enemy.Id,
+                                                    enemy.Team,
+                                                    spawnX,
+                                                    spawnY,
+                                                    dirToTargetX,
+                                                    dirToTargetY,
+                                                    physDmg, magicDmg, // <<< PASS BOTH HERE
+                                                    finalSpeed,
+                                                    0f, // No lifesteal for enemies
+                                                    weaponConfig.ApplyEffectsOnHit,
+                                                    1,
+                                                    computedLifespan
+                                                );
 
                 foreach (var b in newBullets) state.Projectiles.TryAdd(b.Id, b);
             }
@@ -449,11 +404,15 @@ public static class CombatSystem
 
                     if (isHit)
                     {
-                        enemy.CurrentHp -= proj.Damage;
+                        // 1. Mitigate & Apply Damage
+                        float finalDamage = CalculateMitigatedDamage(proj.PhysicalDamage, proj.MagicDamage, enemy, configs);
+                        
+                        enemy.CurrentHp -= finalDamage;
                         proj.HitEnemies.Add(enemy.Id);
 
-                        tickDamageEvents.Add(new DamageEventDto { X = enemy.X, Y = enemy.Y, Amount = proj.Damage });
+                        tickDamageEvents.Add(new DamageEventDto { X = enemy.X, Y = enemy.Y, Amount = finalDamage });
 
+                        // 2. Apply Status Effects
                         if (proj.ApplyEffectsOnHit != null)
                         {
                             foreach (var effectId in proj.ApplyEffectsOnHit)
@@ -467,9 +426,9 @@ public static class CombatSystem
                             }
                         }
 
+                        // 3. Life Steal
                         if (Random.Shared.NextDouble() < proj.LifeStealChance)
                         {
-                            // Renamed 'p' to 'playerToHeal' to avoid the naming collision
                             if (state.Players.TryGetValue(proj.OwnerId, out var playerToHeal))
                             {
                                 float maxHp = playerToHeal.GetTotalStat("maxHp", configs);
@@ -477,39 +436,33 @@ public static class CombatSystem
                             }
                         }
 
-
+                        // 4. THE DEATH CHECK 
                         if (enemy.CurrentHp <= 0 && enemy.ActionState != "Dead")
                         {
                             enemy.ActionState = "Dead";
 
-                            // Gold drop
                             var gold = new PickupEntity { X = enemy.X, Y = enemy.Y, Value = 1 };
                             state.Pickups.TryAdd(gold.Id, gold);
 
-                            // Gear drops (weapon and item loot rolls)
                             if (configs.Enemies.TryGetValue(enemy.ConfigId, out var eCfg))
                             {
                                 SpawnGearDrops(enemy, eCfg, state, configs);
-
-                                // Death skills
                                 SkillSystem.FireOnDeathSkills(enemy.Id, enemy.X, enemy.Y, enemy.Team, eCfg.OnDeathSkills, state, configs, tickDamageEvents, tickAoeEvents, tickBeamEvents);
                             }
                         }
 
+                        // 5. Pierce Check
                         if (proj.HitEnemies.Count > proj.PierceCount)
                         {
                             if (!projectilesToRemove.Contains(proj.Id))
                             {
                                 projectilesToRemove.Add(proj.Id);
-
-                                // >>> FIX: FIRE THE ON-DEATH SKILL ON IMPACT! <<<
                                 if (!string.IsNullOrEmpty(proj.OnDeathSkillId) && configs.Skills.TryGetValue(proj.OnDeathSkillId, out var deathSkill))
                                 {
                                     SkillSystem.ExecuteSkill(deathSkill, proj.OwnerId, proj.X, proj.Y, proj.Team, tickDamageEvents, tickAoeEvents, tickBeamEvents, state, configs);
                                 }
                             }
-
-                            break; // Bullet is dead, stop checking collisions for it
+                            break; 
                         }
                     }
                 }
@@ -547,11 +500,11 @@ public static class CombatSystem
                             if (!projectilesToRemove.Contains(proj.Id)) projectilesToRemove.Add(proj.Id);
                             break;
                         }
-
-                        player.CurrentHp -= proj.Damage;
+                        float finalDamage = CalculateMitigatedDamage(proj.PhysicalDamage, proj.MagicDamage, player, configs);
+                        player.CurrentHp -= finalDamage;
                         proj.HitEnemies.Add(player.ConnectionId);
 
-                        tickDamageEvents.Add(new DamageEventDto { X = player.X, Y = player.Y, Amount = proj.Damage });
+                        tickDamageEvents.Add(new DamageEventDto { X = player.X, Y = player.Y, Amount = finalDamage });
 
                         if (proj.ApplyEffectsOnHit != null)
                         {
@@ -596,10 +549,11 @@ public static class CombatSystem
 
                         if (distSqToSegment <= hitThresholdSq)
                         {
-                            summon.CurrentHp -= proj.Damage;
+                            float finalDamage = CalculateMitigatedDamage(proj.PhysicalDamage, proj.MagicDamage, summon, configs);
+                            summon.CurrentHp -= finalDamage;
                             proj.HitEnemies.Add(summon.Id);
 
-                            tickDamageEvents.Add(new DamageEventDto { X = summon.X, Y = summon.Y, Amount = proj.Damage });
+                            tickDamageEvents.Add(new DamageEventDto { X = summon.X, Y = summon.Y, Amount = finalDamage });
 
                             if (proj.ApplyEffectsOnHit != null)
                             {
@@ -712,6 +666,53 @@ public static class CombatSystem
 
         foreach (var id in projectilesToRemove) state.Projectiles.TryRemove(id, out _);
         foreach (var id in pickupsToRemove) state.Pickups.TryRemove(id, out _);
+    }
+
+    // =========================================================================
+    // MITIGATION MATH (MOBA FORMULA)
+    // =========================================================================
+    public static float CalculateMitigatedDamage(float physDmg, float magicDmg, BaseActorEntity target, ConfigManager configs)
+    {
+        // 1. Fetch defensive stats (Math.Max prevents negative armor from amplifying damage)
+        float armor = Math.Max(0f, target.GetTotalStat("armor", configs));
+        float magicDef = Math.Max(0f, target.GetTotalStat("magicDefense", configs));
+
+        // 2. The MOBA Formula
+        float physMult = 100f / (100f + armor);
+        float magicMult = 100f / (100f + magicDef);
+
+        // 3. Return final combined damage
+        return (physDmg * physMult) + (magicDmg * magicMult);
+    }
+
+    // =========================================================================
+    // DRY HELPER: WEAPON MATH
+    // =========================================================================
+    public static (float phys, float magic) CalculateWeaponDamageSplit(BaseActorEntity actor, WeaponConfig wCfg, EquippedWeapon weapon, ConfigManager configs)
+    {
+        float baseMelee = weapon.TotalBaseStats.GetValueOrDefault("meleeDamage", 0f) + weapon.RolledStats.GetValueOrDefault("meleeDamage", 0f);
+        float baseRanged = weapon.TotalBaseStats.GetValueOrDefault("rangedDamage", 0f) + weapon.RolledStats.GetValueOrDefault("rangedDamage", 0f);
+        float baseMagic = weapon.TotalBaseStats.GetValueOrDefault("magicDamage", 0f) + weapon.RolledStats.GetValueOrDefault("magicDamage", 0f);
+
+
+        float physDamage = baseMelee + baseRanged;
+        float magicDamage = baseMagic;
+
+        if (wCfg.DamageScaling != null)
+        {
+            foreach (var scale in wCfg.DamageScaling)
+            {
+                float bonus = actor.GetTotalStat(scale.Key, configs) * scale.Value;
+                if (scale.Key == "magicDamage" || scale.Key == "elementalDamage") magicDamage += bonus;
+                else physDamage += bonus;
+            }
+        }
+
+        float damagePercent = actor.GetTotalStat("damagePercent", configs);
+        physDamage *= (1f + damagePercent);
+        magicDamage *= (1f + damagePercent);
+
+        return (physDamage, magicDamage);
     }
 
     // Rolls loot drops for all gear the dying enemy was carrying
