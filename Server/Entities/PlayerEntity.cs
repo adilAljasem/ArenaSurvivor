@@ -349,7 +349,16 @@ public class PlayerEntity : BaseActorEntity
             }
         }
 
-        return (baseStat + dynamicFlat) * traitMultiplier;
+        float finalValue = (baseStat + dynamicFlat) * traitMultiplier;
+
+        // >>> SERVER-SIDE HARD CAPS <<<
+        // Ensure UI and Game Logic always see a max of 1.0 (100%)
+        if (statName == "critChance" || statName == "projectileBlockChance")
+        {
+            finalValue = Math.Min(1.0f, finalValue);
+        }
+
+        return finalValue;
     }
 
     public void GainXp(float amount, Configs.ConfigManager configManager)

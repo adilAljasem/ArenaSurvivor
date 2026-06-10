@@ -47,7 +47,7 @@ interface ServerPickup {
   rolledStats: Record<string, number>;
   skills: string[];
 }
-interface DamageEvent { x: number; y: number; amount: number; }
+interface DamageEvent { x: number; y: number; amount: number; isCritical: boolean; isDodge: boolean; isBlock: boolean; }
 interface BeamEvent { startX: number; startY: number; targetX: number; targetY: number; width: number; colorTint: string; }
 
 export interface GameStatePayload {
@@ -107,9 +107,7 @@ class GameScene extends Phaser.Scene {
 
   private isDebugMode: boolean = false;
   private debugGraphics!: Phaser.GameObjects.Graphics;
-  private bytesReceivedSinceLastTick: number = 0;
   private lastBandwidthTime: number = 0;
-  private currentKbps: string = "0.00";
   private currentDrawCalls: number = 0;
   private maxDrawCalls: number = 0;
   private pingMs: number = 0;
@@ -138,8 +136,10 @@ class GameScene extends Phaser.Scene {
     this.load.spritesheet('effects1', 'assets/Effects/effects1.png', { frameWidth: 64, frameHeight: 64 });
     this.load.spritesheet('characters_sheet1', 'assets/Characters/char1.png', { frameWidth: 32, frameHeight: 32 });
     this.load.spritesheet('ammo_sheet2', '/assets/Weapons/ammo2.png', { frameWidth: 240, frameHeight: 218 });
+    this.load.spritesheet('goblinCavebat_sheet', '/assets/Enemies/goblin-cavbat.png', { frameWidth: 400, frameHeight: 268 });
 
     this.load.spritesheet('skill_icons', '/assets/Skills/skillsicon.png', { frameWidth: 312, frameHeight: 307 });
+    this.load.spritesheet('Enemies1_sheet', '/assets/Enemies/mosquito-fly devil - fly fortest.png', { frameWidth: 64, frameHeight: 64 });
 
 
 
@@ -162,14 +162,19 @@ class GameScene extends Phaser.Scene {
     AudioManager.getInstance().init(this);
 
     // >>> FIX: Map Initialization moved strictly to Handshake Event! <<<
+    // >>> BULLETPROOF HANDSHAKE WRAPPER <<<
     const initConfigs = () => {
+      // Prevent running twice if hot reloaded
+      if (this.isMapInitialized) return;
+      if (!masterConfigs || Object.keys(masterConfigs).length === 0) return;
+
       if (this.anims) this.createAnimations(masterConfigs);
 
       const mapIdToUse = masterConfigs.currentMapId || masterConfigs.CurrentMapId ||
         (masterConfigs.maps ? Object.keys(masterConfigs.maps)[0] : null) ||
         (masterConfigs.Maps ? Object.keys(masterConfigs.Maps)[0] : null);
 
-      if (!this.isMapInitialized && mapIdToUse) {
+      if (mapIdToUse) {
         const currentMap = (masterConfigs.maps && masterConfigs.maps[mapIdToUse]) || (masterConfigs.Maps && masterConfigs.Maps[mapIdToUse]);
 
         if (currentMap) {
@@ -188,13 +193,12 @@ class GameScene extends Phaser.Scene {
       }
     };
 
-    // >>> THE FIX: If the data arrived before the scene loaded, fire immediately! <<<
-    // Otherwise, attach the listener. 
-    if (masterConfigs && Object.keys(masterConfigs).length > 0) {
-      initConfigs();
-    } else {
-      window.addEventListener('configsReady', initConfigs, { once: true });
-    }
+    // 1. Try to run it immediately (if SignalR was super fast)
+    initConfigs();
+
+    // 2. Also listen for the event (if Phaser loaded before SignalR finished)
+    window.addEventListener('configsReady', initConfigs);
+
 
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();
@@ -301,8 +305,8 @@ class GameScene extends Phaser.Scene {
       const currentState = this.data.get('showHealthNumbers');
       this.data.set('showHealthNumbers', !currentState);
     });
-
     connection.on("UpdatePlayerUI", (uiData: any) => {
+      this.data.set('latestPlayerStats', uiData.stats); // <<< SAVE STATS HERE
       if (this.shopUIModule) this.shopUIModule.updateUIData(uiData, masterConfigs);
     });
 
@@ -481,7 +485,14 @@ class GameScene extends Phaser.Scene {
         enemies: Array.from(this.enemyCache.values()),
         pickups: Array.from(this.pickupCache.values()),
         projectiles: [], // Kept empty because Fire-and-Forget physics controls them!
-        damageEvents: rawState.dmg?.map((d: any[]) => ({ x: d[0], y: d[1], amount: d[2] })) || [],
+        damageEvents: rawState.dmg?.map((d: any[]) => ({
+          x: d[0],
+          y: d[1],
+          amount: d[2],
+          isCritical: d[3] === 1,
+          isDodge: d[4] === 1, // Read Dodge
+          isBlock: d[5] === 1  // Read Block
+        })) || [],
         aoeEvents: rawState.aoe?.map((a: any[]) => ({ x: a[0], y: a[1], radius: a[2], isFriendly: a[3], configId: a[4] })) || [],
         beamEvents: rawState.bm?.map((b: any[]) => ({ startX: b[0], startY: b[1], targetX: b[2], targetY: b[3], width: b[4], colorTint: b[5] })) || [] // <<< NEW
       };
@@ -496,9 +507,9 @@ class GameScene extends Phaser.Scene {
       const myPlayer = state.players.find(p => p.connectionId === connection.connectionId);
       if (myPlayer) {
         this.goldUIText.setText(`💰 ${myPlayer.gold}`);
-        this.skillActionBar.updateSkills(myPlayer.synergizedSkills, masterConfigs);
+        const pStats = this.data.get('latestPlayerStats') || {}; // <<< GET STATS
+        this.skillActionBar.updateSkills(myPlayer.synergizedSkills, masterConfigs, pStats); // <<< PASS STATS
       }
-
       // Detect the nearest gear loot within pickup radius and manage the ground tooltip
       const PICKUP_RADIUS_SQ = 50 * 50;
       let newNearbyLootId: string | null = null;
@@ -778,9 +789,16 @@ class GameScene extends Phaser.Scene {
 
           if (!this.anims.exists(animKey)) {
             const textureKey = entity.textureKey || entity.TextureKey;
-            const customFrameRate = entity[`${key}FrameRate`] || 15;
-            const shouldLoop = (actionName === 'attack' || actionName === 'hit' || actionName === 'death' || actionName === 'skill') ? 0 : -1;
+            let customFrameRate = entity[`${key}FrameRate`] || 15;
 
+            // >>> NEW: AUTO-CALCULATE ATTACK ANIMATION FPS <<<
+            if (actionName === 'attack' && (entity.attackDuration || entity.AttackDuration)) {
+              const duration = entity.attackDuration || entity.AttackDuration;
+              const totalFrames = (entity[key][1] - entity[key][0]) + 1;
+              customFrameRate = totalFrames / duration; // e.g., 9 frames / 0.4s = 22.5 FPS!
+            }
+
+            const shouldLoop = (actionName === 'attack' || actionName === 'hit' || actionName === 'death' || actionName === 'skill') ? 0 : -1;
             if (textureKey) {
               this.anims.create({
                 key: animKey,

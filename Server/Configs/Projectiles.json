@@ -124,7 +124,6 @@
         "baseSpeed": 3.0,
         "hitRadius": 25,
         "pierceCount": 999,
-        "lifespan": 10.0,
         "movementBehavior": "Orbital",
         "orbitRadius": 220,
         "orbitSpeed": 60
@@ -137,7 +136,7 @@
         "pierceCount": 999,
         "lifespan": 15.0,
         "movementBehavior": "Linear",
-        "tickRate": 0.01,
+        "tickRate": 0.1,
         "tickSkillId": "laser_sweep"
     }
 }

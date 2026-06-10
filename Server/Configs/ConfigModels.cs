@@ -87,7 +87,6 @@ public class CharacterConfig
     public int[]? AnimMove { get; set; }
     public int AnimMoveFrameRate { get; set; } = 15;
     public int[]? AnimAttack { get; set; }
-    public int AnimAttackFrameRate { get; set; } = 15;
     public int[]? AnimDeath { get; set; }
     public int AnimDeathFrameRate { get; set; } = 15;
 
@@ -129,7 +128,6 @@ public class EnemyConfig
     public int[]? AnimMove { get; set; }
     public int AnimMoveFrameRate { get; set; } = 15;
     public int[]? AnimAttack { get; set; }
-    public int AnimAttackFrameRate { get; set; } = 15;
     public int[]? AnimDeath { get; set; }
     public int AnimDeathFrameRate { get; set; } = 15;
 
@@ -295,6 +293,7 @@ public class SkillConfig
     public int[]? AnimSkill { get; set; }
     public int AnimFrameRate { get; set; } = 15;
     public bool IsRepeated { get; set; } = true;
+    public bool IsIndependent { get; set; } = false;
     public string ColorTint { get; set; } = string.Empty;
     public string ChargeVfxTextureKey { get; set; } = string.Empty;
     public int[]? ChargeVfxAnimFrames { get; set; }

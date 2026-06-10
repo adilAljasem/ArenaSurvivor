@@ -103,7 +103,7 @@
         "iconFrame": 9,
         "nextLevelId": "nature_pulse_2",
         "cooldownSeconds": 4.0,
-        "castTimeSeconds": 1.0,
+        "castTimeSeconds": 10.0,
         "triggerType": "Auto",
         "targetType": "Self",
         "actionType": "AoE",
@@ -264,7 +264,7 @@
         "cooldownSeconds": 2.0,
         "isRepeated": false,
         "projectileCount": 30,
-        "baseDamage": 15
+        "baseDamage": 20
     },
     "cast_orbital_fireballs_2": {
         "id": "cast_orbital_fireballs_2",
@@ -307,6 +307,9 @@
         "range": 1000,
         "beamWidth": 20,
         "baseDamage": 15,
+        "castTimeSeconds": 1.5,
+        "channelDurationSeconds": 25.0,
+        "cooldownSeconds": 2.0,
         "colorTint": "0xff00ff"
     },
     "laser_closest_2": {
@@ -321,14 +324,15 @@
     "laser_sweep": {
         "id": "laser_sweep",
         "nextLevelId": "laser_sweep_2",
+        "name": "Sweeping Laser",
         "actionType": "Beam",
         "targetType": "Sweep",
         "sweepAngleSpeed": 0.05,
         "range": 500,
         "beamWidth": 10,
-        "baseDamage": 10,
-        "cooldownSeconds": 5.0,
-        "castTimeSeconds": 2.0,
+        "baseDamage": 20,
+        "cooldownSeconds": 10.0,
+        "castTimeSeconds": 5.0,
         "channelDurationSeconds": 4.0,
         "colorTint": "0xff4400"
     },
@@ -350,9 +354,11 @@
         "actionType": "Projectile",
         "targetType": "AimDirection",
         "projectileId": "invisible_drone",
+        "isIndependent": true,
         "projectileCount": 1,
-        "cooldownSeconds": 4.0,
-        "castTimeSeconds": 1.0
+        "cooldownSeconds": 0.5,
+        "castTimeSeconds": 0.0,
+        "channelDurationSeconds": 0.0
     },
     "cast_invisible_drone_2": {
         "id": "cast_invisible_drone_2",

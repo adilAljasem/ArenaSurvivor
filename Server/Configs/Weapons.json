@@ -19,7 +19,10 @@
     "canDrop": true,
     "availableInShop": true,
     "statBonuses": {
-      "movementSpeed": 5
+      "movementSpeed": 5,
+      "critChance": 0.5,
+      "haste": 100,
+      "dodge": 0.7
     },
     "damageScaling": {
       "rangedDamage": 0.5
@@ -412,7 +415,7 @@
       "meleeDamage": 1.5
     },
     "grantedSkills": [
-      "boss_cast_sweeper"
+      "laser_sweep"
     ],
     "statRollChance": 0.60,
     "maxRandomStats": 2,

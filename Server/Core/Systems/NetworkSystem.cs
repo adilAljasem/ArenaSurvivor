@@ -161,7 +161,7 @@ public static class NetworkSystem
                 (pk.DroppedWeapon != null ? (pk.DroppedWeapon.WeaponSkills?.Select(s => s.ConfigId).ToList() ?? new List<string>()) : (pk.DroppedItem?.ItemSkills?.Select(s => s.ConfigId).ToList() ?? new List<string>()))
             }).ToList(),
 
-            Damage = dmgEvents.Select(d => new object[] { (int)d.X, (int)d.Y, (int)d.Amount }).ToList(),
+            Damage = dmgEvents.Select(d => new object[] { (int)d.X, (int)d.Y, (int)d.Amount, d.IsCritical ? 1 : 0, d.IsDodge ? 1 : 0, d.IsBlock ? 1 : 0 }).ToList(),
             Aoe = aoeEvents.Select(a => new object[] { (int)a.X, (int)a.Y, (int)a.Radius, a.IsFriendly, a.ConfigId }).ToList(),
             Beams = beamEvents.Select(b => new object[] { (int)b.StartX, (int)b.StartY, (int)b.TargetX, (int)b.TargetY, (int)b.Width, b.ColorTint }).ToList()
         };

@@ -16,6 +16,7 @@ public class ProjectileEntity
     public float HitRadius { get; set; } = 15f;
     public float Lifespan { get; set; } = 1f;
     public int PierceCount { get; set; } = 0;
+    public float SweepAngle { get; set; } = (float)(Random.Shared.NextDouble() * Math.PI * 2);
     // >>> NEW: Orbit & Death Mechanics <<<
     public string MovementBehavior { get; set; } = "Linear";
     public float OrbitRadius { get; set; }
@@ -30,4 +31,5 @@ public class ProjectileEntity
     public string Team { get; set; } = string.Empty;
     public HashSet<string> HitEnemies { get; set; } = new();
     public List<string> ApplyEffectsOnHit { get; set; } = new();
+    public bool IsCritical { get; set; }
 }

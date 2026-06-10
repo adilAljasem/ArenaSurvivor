@@ -4,51 +4,85 @@
     "name": "Goblin Scrapper",
     "tier": 1,
     "isBoss": false,
-    "minWave": 1,
+    "minWave": 20,
     "maxWave": 15,
     "spawnWeight": 100,
-    "textureKey": "enemies_sheet",
-    "scale": 1.0,
-    "iconFrame": 0,
-    "animIdle": [ 0, 5 ],
+    "textureKey": "goblinCavebat_sheet",
+    "scale": 0.5,
+    "iconFrame": 1,
+    "animIdle": [
+      1,
+      1
+    ],
     "animIdleFrameRate": 20,
-    "animMove": [ 6, 11 ],
-    "animMoveFrameRate": 20,
-    "animAttack": [ 12, 16 ],
+    "animMove": [
+      18,
+      23
+    ],
+    "animMoveFrameRate": 5,
+    "animAttack": [
+      12,
+      16
+    ],
     "animAttackFrameRate": 15,
-    "animDeath": [ 17, 22 ],
+    "animDeath": [
+      17,
+      22
+    ],
     "animDeathFrameRate": 15,
     "attackDuration": 0.5,
     "baseStats": {
       "maxHp": 30,
       "movementSpeed": 90,
       "meleeDamage": 5,
-      "dodge": 0.05,
-      "magicDefense": 500
+      "magicDefense": 5,
+      "armor": 2
     },
-    "startingWeapons": [ "pistol" ],
-    "startingItems": [ "ugly_tooth" ],
+    "startingWeapons": [
+      "pistol"
+    ],
+    "startingItems": [
+      "ugly_tooth"
+    ],
     "weaponDropChance": 0.05,
     "itemDropChance": 0.10,
     "dynamicModifiers": [],
-    "StartingSkills": [ "laser_sweep","cast_orbital_fireballs" ]
+    "StartingSkills": []
   },
   "boss_demon_king": {
     "id": "boss_demon_king",
     "name": "Demon King",
     "tier": 1,
     "isBoss": true,
-    "spawnOnWaves": [ 10, 20, 30, 40, 50 ],
+    "spawnOnWaves": [
+      10,
+      20,
+      30,
+      40,
+      50
+    ],
     "textureKey": "enemies_sheet",
     "scale": 2.5,
     "iconFrame": 5,
-    "animIdle": [ 20, 25 ],
+    "animIdle": [
+      20,
+      25
+    ],
     "animIdleFrameRate": 20,
-    "animMove": [ 26, 31 ],
+    "animMove": [
+      26,
+      31
+    ],
     "animMoveFrameRate": 20,
-    "animAttack": [ 32, 38 ],
+    "animAttack": [
+      32,
+      38
+    ],
     "animAttackFrameRate": 15,
-    "animDeath": [ 39, 45 ],
+    "animDeath": [
+      39,
+      45
+    ],
     "animDeathFrameRate": 12,
     "attackDuration": 1.2,
     "baseStats": {
@@ -72,21 +106,32 @@
     "name": "Cave Bat",
     "tier": 1,
     "isBoss": false,
-    "minWave": 2,
+    "minWave": 20,
     "maxWave": 25,
     "spawnWeight": 80,
-    "textureKey": "enemies_sheet",
-    "scale": 0.8,
+    "textureKey": "goblinCavebat_sheet",
+    "scale": 0.3,
     "iconFrame": 1,
-    "animIdle": [ 0, 5 ],
+    "animIdle": [
+      6,
+      11
+    ],
     "animIdleFrameRate": 20,
-    "animMove": [ 6, 11 ],
-    "animMoveFrameRate": 20,
-    "animAttack": [ 12, 16 ],
-    "animAttackFrameRate": 15,
-    "animDeath": [ 17, 20 ],
-    "animDeathFrameRate": 15,
-    "attackDuration": 0.3,
+    "animMove": [
+      18,
+      23
+    ],
+    "animMoveFrameRate": 10,
+    "animAttack": [
+      24,
+      27
+    ],
+    "animDeath": [
+      30,
+      35
+    ],
+    "animDeathFrameRate": 10,
+    "attackDuration": 1.3,
     "baseStats": {
       "maxHp": 15,
       "movementSpeed": 140,
@@ -100,19 +145,31 @@
     "name": "Iron Enemy",
     "tier": 2,
     "isBoss": false,
-    "minWave": 20,
+    "minWave": 1,
     "maxWave": 999,
     "spawnWeight": 60,
     "textureKey": "ironenemy",
     "scale": 1.0,
     "iconFrame": 5,
-    "animIdle": [ 0, 0 ],
+    "animIdle": [
+      0,
+      0
+    ],
     "animIdleFrameRate": 20,
-    "animMove": [ 0, 5 ],
+    "animMove": [
+      0,
+      5
+    ],
     "animMoveFrameRate": 5,
-    "animAttack": [ 5, 11 ],
+    "animAttack": [
+      5,
+      11
+    ],
     "animAttackFrameRate": 10,
-    "animDeath": [ 17, 23 ],
+    "animDeath": [
+      17,
+      23
+    ],
     "animDeathFrameRate": 15,
     "attackDuration": 0.8,
     "baseStats": {
@@ -128,22 +185,33 @@
     "name": "Mushroom",
     "tier": 1,
     "isBoss": false,
-    "minWave": 3,
+    "minWave": 20,
     "maxWave": 35,
     "spawnWeight": 70,
     "textureKey": "mushroomEnemy",
     "defaultFacingRight": false,
     "scale": 2.1,
     "iconFrame": 3,
-    "animIdle": [ 0, 0 ],
+    "animIdle": [
+      30,
+      36
+    ],
     "animIdleFrameRate": 20,
-    "animMove": [ 46, 50 ],
+    "animMove": [
+      46,
+      50
+    ],
     "animMoveFrameRate": 5,
-    "animAttack": [ 1, 9 ],
-    "animAttackFrameRate": 12,
-    "animDeath": [ 17, 23 ],
+    "animAttack": [
+      1,
+      9
+    ],
+    "animDeath": [
+      15,
+      29
+    ],
     "animDeathFrameRate": 10,
-    "attackDuration": 0.4,
+    "attackDuration": 0.9,
     "baseStats": {
       "maxHp": 50,
       "movementSpeed": 100,
@@ -151,6 +219,9 @@
       "lifeSteal": 0.10,
       "armor": 500
     },
+    "startingSkills": [
+      "nature_pulse"
+    ],
     "dynamicModifiers": []
   },
   "troll_runt": {
@@ -158,19 +229,31 @@
     "name": "Troll Runt",
     "tier": 1,
     "isBoss": false,
-    "minWave": 15,
+    "minWave": 20,
     "maxWave": 999,
     "spawnWeight": 25,
     "textureKey": "enemies_sheet1",
     "scale": 0.2,
     "iconFrame": 4,
-    "animIdle": [ 0, 0 ],
+    "animIdle": [
+      0,
+      0
+    ],
     "animIdleFrameRate": 30,
-    "animMove": [ 0, 17 ],
+    "animMove": [
+      0,
+      17
+    ],
     "animMoveFrameRate": 20,
-    "animAttack": [ 0, 0 ],
+    "animAttack": [
+      0,
+      0
+    ],
     "animAttackFrameRate": 15,
-    "animDeath": [ 26, 30 ],
+    "animDeath": [
+      26,
+      30
+    ],
     "animDeathFrameRate": 15,
     "attackDuration": 0.6,
     "baseStats": {
@@ -180,11 +263,21 @@
       "hpRegen": 2
     },
     "dynamicModifiers": [],
-    "onDeathSkills": [ "frost_nova" ],
-    "startingWeapons": [ "pistol_t2" ],
-    "startingWeaponTiers": [ 2 ],
-    "startingItems": [ "ugly_tooth" ],
-    "startingItemTiers": [ 3 ],
+    "onDeathSkills": [
+      "frost_nova"
+    ],
+    "startingWeapons": [
+      "pistol_t2"
+    ],
+    "startingWeaponTiers": [
+      2
+    ],
+    "startingItems": [
+      "ugly_tooth"
+    ],
+    "startingItemTiers": [
+      3
+    ],
     "weaponDropChance": 0.9,
     "itemDropChance": 0.10,
     "AttackRadius": 600,
@@ -203,20 +296,31 @@
     "name": "Flying Forest",
     "tier": 1,
     "isBoss": false,
-    "minWave": 10,
+    "minWave": 20,
     "maxWave": 50,
-    "spawnWeight": 50,
-    "textureKey": "Flying_Forest",
+    "spawnWeight": 500,
+    "textureKey": "Enemies1_sheet",
     "defaultFacingRight": false,
     "scale": 1.5,
     "iconFrame": 6,
-    "animIdle": [ 0, 0 ],
+    "animIdle": [
+      120,
+      127
+    ],
     "animIdleFrameRate": 15,
-    "animMove": [ 34, 41 ],
+    "animMove": [
+      112,
+      119
+    ],
     "animMoveFrameRate": 15,
-    "animAttack": [ 0, 2 ],
-    "animAttackFrameRate": 15,
-    "animDeath": [ 17, 34 ],
+    "animAttack": [
+      92,
+      97
+    ],
+    "animDeath": [
+      93,
+      108
+    ],
     "animDeathFrameRate": 12,
     "attackDuration": 0.4,
     "baseStats": {
@@ -238,7 +342,9 @@
         "amount": 10
       }
     ],
-    "startingSkills": [ "summon_trees" ]
+    "startingSkills": [
+      "summon_trees"
+    ]
   },
   "tree_obstacle": {
     "id": "tree_obstacle",
@@ -250,12 +356,20 @@
     "maxWave": 999,
     "spawnWeight": 0,
     "textureKey": "tree",
-    "animIdle": [ 0, 9 ],
+    "animIdle": [
+      0,
+      9
+    ],
     "animIdleFrameRate": 3,
-    "animAttack": [ 0, 9 ],
+    "animAttack": [
+      0,
+      9
+    ],
     "animAttackFrameRate": 5,
     "scale": 1.5,
-    "startingSkills": [ "nature_pulse" ],
+    "startingSkills": [
+      "nature_pulse"
+    ],
     "baseStats": {
       "maxHp": 300,
       "movementSpeed": 0,

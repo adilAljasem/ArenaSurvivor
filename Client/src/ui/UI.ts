@@ -83,9 +83,15 @@ export const UIHelpers = {
     },
 
     formatVal: (key: string, val: number): string => {
-        if (!key) return `${val}`;
-        const isPct = key.toLowerCase().includes('percent') || key === 'lifeSteal' || key === 'dodge' || key === 'critChance';
-        return isPct ? `${Math.round(val * 100)}%` : `${val}`;
+        if (!key) return `${Math.round(val)}`;
+        const isPct = key.toLowerCase().includes('percent') || key === 'lifeSteal' || key === 'dodge' || key === 'critChance' || key === 'projectileBlockChance';
+
+        // Cap visual percentages at 100% (1.0) so the UI doesn't look broken
+        if (key === 'critChance' || key === 'dodge' || key === 'projectileBlockChance') {
+            val = Math.min(1.0, val);
+        }
+
+        return isPct ? `${Math.round(val * 100)}%` : `${Math.round(val)}`;
     },
 
     formatEffectName: (str: string): string => {
@@ -128,7 +134,7 @@ export const UIHelpers = {
     buildStatBlocks: (
         config: any,
         totalBaseStats: any = null,
-        rolledStats: any = null,
+        _rolledStats: any = null,
         rolledSkills: any = null,
         atlasConfigs: any = null,
         stackCount: number = 1
@@ -160,11 +166,11 @@ export const UIHelpers = {
             const onPurchase = config.effectsOnPurchase ?? config.EffectsOnPurchase;
             const mechanics = config.mechanics ?? config.Mechanics;
 
-            if (meleeDmg) posLines.push(`🗡️ Melee Dmg: ${meleeDmg}`);
-            if (rangedDmg) posLines.push(`🏹 Ranged Dmg: ${rangedDmg}`);
-            if (magicDmg) posLines.push(`🔥 Magic Dmg: ${magicDmg}`);
-            if (cooldown) posLines.push(`⏱️ Cooldown: ${cooldown}s`);
-            if (range) posLines.push(`📏 Range: ${range}`);
+            if (meleeDmg) posLines.push(`🗡️ Melee Dmg: ${Math.round(meleeDmg)}`);
+            if (rangedDmg) posLines.push(`🏹 Ranged Dmg: ${Math.round(rangedDmg)}`);
+            if (magicDmg) posLines.push(`🔥 Magic Dmg: ${Math.round(magicDmg)}`);
+            if (cooldown) posLines.push(`⏱️ Cooldown: ${cooldown}s`); // Keep decimals for cooldowns (e.g., 1.5s)
+            if (range) posLines.push(`📏 Range: ${Math.round(range)}`);
 
             if (scaling) {
                 const parts = Object.entries(scaling).map(([k, v]) => `${Math.round((v as number) * 100)}% ${UIHelpers.getStatInfo(k).n}`);
@@ -187,7 +193,7 @@ export const UIHelpers = {
             if (statSource) {
                 Object.entries(statSource).forEach(([k, v]) => {
                     if (["meleeDamage", "MeleeDamage", "rangedDamage", "RangedDamage", "magicDamage", "MagicDamage"].includes(k)) return;
-                     const num = totalBaseStats ? (v as number) : (v as number) * stackCount;
+                    const num = totalBaseStats ? (v as number) : (v as number) * stackCount;
                     const info = UIHelpers.getStatInfo(k);
 
                     if (num > 0) posLines.push(`${info.e} ${info.n}: +${UIHelpers.formatVal(k, num)}`);
@@ -420,7 +426,7 @@ export class Tooltip extends Phaser.GameObjects.Container {
         });
     }
 
-    public showSkill(config: any, level: number, x: number, y: number) {
+    public showSkill(config: any, level: number, x: number, y: number, playerStats?: any) { // <<< FIX: Added playerStats to signature
         if (!config) return;
         if (this.hideTimer) { this.hideTimer.remove(); this.hideTimer = undefined; }
 
@@ -439,17 +445,30 @@ export class Tooltip extends Phaser.GameObjects.Container {
                 currentY += t.displayHeight + 4;
             };
 
-            const cd = config.cooldownSeconds ?? config.CooldownSeconds;
-            const cast = config.castTimeSeconds ?? config.CastTimeSeconds;
+            // >>> MOBA HASTE MATH <<<
+            const hasteVal = Math.max(0, playerStats?.haste || 0);
+            const hasteMult = (100 + hasteVal) / 100;
+
+            const rawCd = config.cooldownSeconds ?? config.CooldownSeconds;
+            const rawCast = config.castTimeSeconds ?? config.CastTimeSeconds;
             const rad = config.radius ?? config.Radius;
             const dmg = config.baseDamage ?? config.BaseDamage;
             const effects = config.applyEffects ?? config.ApplyEffects;
             const root = config.stopMoving ?? config.StopMoving;
 
-            if (cd) addLine(`⏱️ Cooldown: ${cd}s`, '#4fc3f7');
-            if (cast) addLine(`⏳ Cast Time: ${cast}s`, '#4fc3f7');
-            if (dmg) addLine(`💥 Base Damage: ${dmg}`, '#ff8a65');
-            if (rad) addLine(`📏 Radius/Range: ${rad}`, '#aed581');
+            if (rawCd) {
+                const actualCd = (rawCd / hasteMult).toFixed(1);
+                const cdStr = hasteMult > 1 ? `⏱️ Cooldown: ${actualCd}s (${rawCd}s base)` : `⏱️ Cooldown: ${rawCd}s`;
+                addLine(cdStr, '#4fc3f7');
+            }
+            if (rawCast) {
+                const actualCast = (rawCast / hasteMult).toFixed(1);
+                const castStr = hasteMult > 1 ? `⏳ Cast Time: ${actualCast}s (${rawCast}s base)` : `⏳ Cast Time: ${rawCast}s`;
+                addLine(castStr, '#4fc3f7');
+            }
+
+            if (dmg) addLine(`💥 Base Damage: ${Math.round(dmg)}`, '#ff8a65');
+            if (rad) addLine(`📏 Radius/Range: ${Math.round(rad)}`, '#aed581');
             if (root) addLine(`🛑 Roots player while casting!`, '#ef5350');
 
             if (effects && effects.length > 0) {
@@ -463,7 +482,6 @@ export class Tooltip extends Phaser.GameObjects.Container {
             this.bg.clear().fillStyle(0x111317, 0.95).fillRoundedRect(0, 0, 264, this.currentHeight, 8)
                 .lineStyle(2, colorHex, 1).strokeRoundedRect(0, 0, 264, this.currentHeight, 8);
 
-            // EXACT INVENTORY MATCH: Use standard coordinates
             this.updatePosition(x, y);
             this.setDepth(9999).setVisible(true);
         } catch (e) {
@@ -484,9 +502,9 @@ export class StatDisplay extends Phaser.GameObjects.Container {
 
         const bg = scene.add.graphics();
         bg.fillStyle(0x161920, 0.95);
-        bg.fillRoundedRect(0, 0, 240, 560, 12);
+        bg.fillRoundedRect(0, 0, 240, 640, 12); // Increased height to 640
         bg.lineStyle(2, 0x3a4454, 1);
-        bg.strokeRoundedRect(0, 0, 240, 560, 12);
+        bg.strokeRoundedRect(0, 0, 240, 640, 12); // Increased height to 640
 
         const title = scene.add.text(120, 15, 'Character Stats', {
             fontFamily: UIHelpers.FONT, fontSize: '22px', color: '#ffffff', fontStyle: 'bold', resolution: 3
@@ -508,11 +526,11 @@ export class StatDisplay extends Phaser.GameObjects.Container {
             let index = 0;
             Object.keys(statsPayload).forEach(key => {
                 const info = UIHelpers.getStatInfo(key);
-                const labelText = this.scene.add.text(15, 85 + (index * 24), `${info.e} ${info.n}`, {
-                    fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#aaaaaa', resolution: 3
+                const labelText = this.scene.add.text(15, 80 + (index * 21), `${info.e} ${info.n}`, {
+                    fontFamily: UIHelpers.FONT, fontSize: '12px', color: '#aaaaaa', resolution: 3
                 });
-                const valueText = this.scene.add.text(220, 85 + (index * 24), '0', {
-                    fontFamily: UIHelpers.FONT, fontSize: '14px', color: '#ffffff', fontStyle: 'bold', resolution: 3
+                const valueText = this.scene.add.text(220, 80 + (index * 21), '0', {
+                    fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#ffffff', fontStyle: 'bold', resolution: 3
                 }).setOrigin(1, 0);
                 this.add([labelText, valueText]);
                 this.statTexts.set(key, valueText);
@@ -851,7 +869,7 @@ export class ShopUI {
         this.inventoryDisplay.setScale(scale);
 
         const statsWidth = 240 * scale;
-        this.statDisplay.setPosition(width - statsWidth, Math.max(20, (height - (560 * scale)) / 2));
+        this.statDisplay.setPosition(width - statsWidth, Math.max(20, (height - (640 * scale)) / 2));
         this.inventoryDisplay.setPosition(40 * scale, height - (90 * scale));
 
         const availableWidth = width - statsWidth - (40 * scale);
@@ -1146,7 +1164,8 @@ export class ShopUI {
                 const cardHitbox = this.scene.add.rectangle(cardX + 120, 240, 240, 480, 0x000000, 0)
                     .setScrollFactor(0).setInteractive();
 
-                cardHitbox.on('wheel', (pointer: Phaser.Input.Pointer, dx: number, dy: number, dz: number, event: Phaser.Types.Input.EventData) => {
+                // >>> FIX: Added underscores to unused variables <<<
+                cardHitbox.on('wheel', (_pointer: Phaser.Input.Pointer, _dx: number, dy: number, _dz: number, event: Phaser.Types.Input.EventData) => {
                     if (maxScroll > 0) {
                         statsContainer.y -= dy * 0.5;
                         if (statsContainer.y < -maxScroll) statsContainer.y = -maxScroll;
@@ -1157,7 +1176,8 @@ export class ShopUI {
                 });
 
                 this.scene.input.setDraggable(cardHitbox);
-                cardHitbox.on('drag', (pointer: Phaser.Input.Pointer, dragX: number, dragY: number) => {
+                // >>> FIX: Added underscores to unused variables <<<
+                cardHitbox.on('drag', (pointer: Phaser.Input.Pointer, _dragX: number, _dragY: number) => {
                     if (maxScroll > 0) {
                         statsContainer.y += (pointer.y - pointer.prevPosition.y);
                         if (statsContainer.y < -maxScroll) statsContainer.y = -maxScroll;
@@ -1198,6 +1218,7 @@ export class SkillActionBar extends Phaser.GameObjects.Container {
     private slots: Map<string, { bg: Phaser.GameObjects.Graphics, icon: Phaser.GameObjects.Sprite | Phaser.GameObjects.Rectangle, cdOverlay: Phaser.GameObjects.Rectangle, border: Phaser.GameObjects.Graphics, text: Phaser.GameObjects.Text, hitbox: Phaser.GameObjects.Rectangle }> = new Map();
     private atlasConfigs: any = null;
     private tooltip: Tooltip;
+    private playerStats: any = null;
 
     private activeSkillsData: { configId: string, currentCooldown: number }[] = [];
 
@@ -1220,9 +1241,10 @@ export class SkillActionBar extends Phaser.GameObjects.Container {
         this.setPosition(width / 2, height - (35 * scale));
     }
 
-    public updateSkills(skills: { configId: string, currentCooldown: number }[], atlasConfigs: any) {
+    public updateSkills(skills: { configId: string, currentCooldown: number }[], atlasConfigs: any, playerStats?: any) {
         this.atlasConfigs = atlasConfigs;
         this.activeSkillsData = skills;
+        this.playerStats = playerStats;
 
         const skillMap = atlasConfigs?.skills ?? atlasConfigs?.Skills;
         if (!skillMap) return;
@@ -1286,7 +1308,8 @@ export class SkillActionBar extends Phaser.GameObjects.Container {
 
                 hitbox.on('pointerover', (p: Phaser.Input.Pointer) => {
                     border.clear().lineStyle(3, 0xffffff, 1).strokeRoundedRect(xPos - slotSize / 2, -slotSize / 2, slotSize, slotSize, 6);
-                    this.tooltip.showSkill(config, level, p.x, p.y);
+                    // >>> 4. PASS STATS TO THE TOOLTIP <<<
+                    this.tooltip.showSkill(config, level, p.x, p.y, this.playerStats);
                 });
 
                 hitbox.on('pointermove', (p: Phaser.Input.Pointer) => {
@@ -1315,19 +1338,37 @@ export class SkillActionBar extends Phaser.GameObjects.Container {
         const skillMap = this.atlasConfigs?.skills ?? this.atlasConfigs?.Skills;
         if (!skillMap) return;
 
+        // >>> MOBA HASTE MATH <<<
+        const hasteVal = Math.max(0, this.playerStats?.haste || 0);
+        const hasteMult = (100 + hasteVal) / 100;
+
         this.activeSkillsData.forEach(skillData => {
             const slot = this.slots.get(skillData.configId);
             if (slot) {
                 skillData.currentCooldown = Math.max(0, skillData.currentCooldown - deltaSeconds);
                 const config = skillMap[skillData.configId];
-                const maxCd = config?.cooldownSeconds ?? config?.CooldownSeconds ?? 1;
+
+                // >>> DIVIDE BY HASTE MULTIPLIER <<<
+                const rawMaxCd = config?.cooldownSeconds ?? config?.CooldownSeconds ?? 1;
+                const trueMaxCd = rawMaxCd / hasteMult;
 
                 if (skillData.currentCooldown > 0) {
-                    const pct = skillData.currentCooldown / maxCd;
+                    const pct = skillData.currentCooldown / trueMaxCd;
                     slot.cdOverlay.scaleY = Phaser.Math.Clamp(pct, 0, 1);
                     slot.cdOverlay.setVisible(true);
+
+                    // >>> RESTORE THE TIMER TEXT <<<
+                    // Shows the remaining seconds (e.g., "1.2")
+                    slot.text.setText(skillData.currentCooldown.toFixed(1));
+
                 } else {
                     slot.cdOverlay.setVisible(false);
+
+                    // >>> RESTORE THE LEVEL TEXT WHEN READY <<<
+                    const nameStr = config?.name ?? config?.Name ?? "";
+                    const lvlMatch = nameStr.match(/Lv\.(\d+)/i);
+                    const levelText = lvlMatch ? `L${lvlMatch[1]}` : "";
+                    slot.text.setText(levelText);
                 }
             }
         });

@@ -13,3 +13,30 @@ What this looks like in gameplay:
 50 Luck: 25% chance for Tier 1 | 49% chance for Tier 2 | 21% chance for Tier 3 | 5% chance for Tier 4.
 
 100 Luck: 3% chance for Tier 1 | 55% chance for Tier 2 | 30% chance for Tier 3 | 12% chance for Tier 4.
+
+
+=========================================================
+🔥 SKILL SYSTEM CHEAT SHEET (DO NOT FORGET!) 🔥
+=========================================================
+
+1. THE 3 TIMERS (Strict Order)
+   • CastTime: The wind-up. Locks the player in "Casting" state.
+   • ChannelDuration: The active spell time (e.g., firing a laser, maintaining an aura). 
+   • Cooldown: Starts ticking ONLY AFTER the Channel Duration hits 0.
+
+2. QUEUED VS INDEPENDENT
+   • Standard Skills: Wait in a round-robin queue. Only cast when 100% idle.
+   • "isIndependent": true -> Bypasses the queue. Casts in the background instantly (e.g., Drones). Does NOT lock the player's casting bar.
+
+3. LIFESPAN VS DURATION
+   • ChannelDurationSeconds = Belongs to the CASTER (how long they hold the spell).
+   • Lifespan = Belongs to the PROJECTILE (how long it exists).
+   • Rule of Thumb: Delete "lifespan" from your projectile JSON! The C# engine auto-calculates it perfectly (Range/Speed for bullets, ChannelDuration for orbitals). Only use "lifespan" if you want to force an override.
+
+4. DAMAGE TYPE
+   • Skill "baseDamage" is ALWAYS treated as Magic Damage! It scales with the "magicDamage" stat.
+
+5. TARGETING & SHOP PHASE
+   • Ceasefire: Auto-skills will NEVER fire during the Shop Phase.
+   • "ClosestEnemy": If a skill targets the closest enemy during the Shop Phase (or when the map is empty), it will SILENTLY FAIL. 
+   • Orbitals/Auras: Always use "targetType": "Self" so they spawn on you regardless of enemies.

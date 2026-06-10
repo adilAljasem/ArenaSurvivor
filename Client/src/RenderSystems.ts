@@ -273,28 +273,60 @@ export class ActorRenderer {
         const castingSkillId = actor.currentCastingSkillId || actor.CurrentCastingSkillId;
         const skillCfg = castingSkillId ? ((configs.skills || configs.Skills)?.[castingSkillId]) : null;
         const stopMoving = skillCfg?.stopMoving === true || skillCfg?.StopMoving === true;
-
         const isObstacle = !isPlayer && (config.baseStats?.movementSpeed === 0 || config.BaseStats?.movementSpeed === 0);
+
+        // Check if they have weapons equipped
+        const weaponsList = actor.weapons || actor.Weapons || [];
+        const hasWeapons = weaponsList.length > 0;
+
+        const meleeAimX = actor.aimX ?? actor.AimX ?? container.x;
+        const meleeAimY = actor.aimY ?? actor.AimY ?? container.y;
+        const distToAim = Math.sqrt(Math.pow(meleeAimX - container.x, 2) + Math.pow(meleeAimY - container.y, 2));
+        const attackRadius = config.attackRadius ?? config.AttackRadius ?? 40;
+        const inMeleeRange = distToAim <= (attackRadius + 15);
 
         let targetAnim = `${config.id}_idle`;
 
+        // 1. Determine if they are physically allowed to move
+        const isActuallyMoving = isMoving && !stopMoving && !isObstacle;
+
+        // >>> THE GLITCH FIX: Check if an attack animation is physically playing right now! <<<
+        const isCurrentlyAttacking = body.anims?.currentAnim?.key?.endsWith('_attack') && body.anims?.isPlaying;
+
         if (actionState === "Dead" && config.animDeath) {
           targetAnim = `${config.id}_death`;
-        } else if (actionState === "Attacking" && config.animAttack) {
+        } else if (!hasWeapons && config.animAttack && (actionState === "Attacking" || (actionState === "Casting" && inMeleeRange && !stopMoving))) {
+          // 2. Force attack if Server says Attacking OR they are doing a mobile cast right in your face
           targetAnim = `${config.id}_attack`;
-        } else {
-          if (isMoving && !stopMoving && !isObstacle && config.animMove) {
-            targetAnim = `${config.id}_move`;
-          } else if (config.animIdle) {
-            targetAnim = `${config.id}_idle`;
-          }
+        } else if (isCurrentlyAttacking) {
+          // 3. If they are already in the middle of swinging, LET IT FINISH!
+          // >>> TS FIX: Added optional chaining and a fallback! <<<
+          targetAnim = body.anims?.currentAnim?.key ?? `${config.id}_attack`;
+        } else if (isActuallyMoving && config.animMove) {
+          // 4. Move: They are moving
+          targetAnim = `${config.id}_move`;
+        } else if (config.animIdle) {
+          // 5. Idle: Stopped for ANY reason
+          targetAnim = `${config.id}_idle`;
         }
 
         const isCorrectAnim = body.anims?.currentAnim?.key === targetAnim;
-        const isFinishedAttacking = body.anims && !body.anims.isPlaying && actionState === "Attacking";
+
+        // Only restart if the attack finishes naturally
+        const isFinishedAttacking = body.anims && !body.anims.isPlaying && targetAnim.endsWith('_attack');
 
         if (targetAnim !== '' && (!isCorrectAnim || isFinishedAttacking)) {
           body.play(targetAnim);
+        }
+
+        // >>> NEW: DYNAMIC ANIMATION SPEED SCALING <<<
+        if (actionState === "Attacking") {
+          // Check if there is an attackSpeedPercent stat coming from the server
+          const atkSpeedPct = actor.stats?.attackSpeedPercent ?? 0;
+          body.anims.timeScale = 1 + atkSpeedPct; // Speds up the animation dynamically!
+        } else {
+          // Reset to normal speed for walking/idle
+          body.anims.timeScale = 1;
         }
 
         const isDefaultRight = config.defaultFacingRight !== false;
@@ -439,17 +471,61 @@ export class WorldRenderer {
       const startY = (de.y || de.Y) - 16 + Phaser.Math.Between(-10, 10);
       const amt = de.amount ?? de.Amount ?? 0;
       const isHeal = amt < 0;
+      const isCrit = de.isCritical ?? false;
+      const isDodge = de.isDodge ?? false;
+      const isBlock = de.isBlock ?? false;
 
-      const floatingText = scene.add.text(startX, startY, isHeal ? `+${Math.round(Math.abs(amt))}` : Math.round(amt).toString(), {
-        fontFamily: "'Segoe UI', Tahoma, sans-serif", fontSize: '20px', color: isHeal ? '#00ff00' : '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 4
-      }).setOrigin(0.5).setDepth(20).setScale(0.5);
+      let color = '#ffffff';
+      let stroke = '#000000';
+      let textStr = Math.round(Math.abs(amt)).toString();
+      let finalScale = 0.5;
+
+      // >>> DODGE & BLOCK VISUALS <<<
+      if (isDodge) {
+        color = '#00e5ff'; // Cyan
+        stroke = '#005b9f';
+        textStr = 'DODGE';
+        finalScale = 0.6;
+      } else if (isBlock) {
+        color = '#b0bec5'; // Silver/Gray
+        stroke = '#455a64';
+        textStr = 'BLOCK';
+        finalScale = 0.6;
+      } else if (isHeal) {
+        color = '#00ff00';
+        textStr = `+${textStr}`;
+      } else if (isCrit) {
+        color = '#ffeb3b'; // Yellow
+        stroke = '#d32f2f'; // Red stroke
+        textStr = `💥 ${textStr}`;
+        finalScale = 0.75;
+      }
+
+      const floatingText = scene.add.text(startX, startY, textStr, {
+        fontFamily: "'Segoe UI', Tahoma, sans-serif",
+        fontSize: '20px',
+        color: color,
+        fontStyle: isCrit || isDodge || isBlock ? 'italic bold' : 'bold',
+        stroke: stroke,
+        strokeThickness: isCrit ? 6 : 4
+      }).setOrigin(0.5).setDepth(20).setScale(finalScale);
 
       scene.tweens.add({
-        targets: floatingText, scale: 1.2, y: startY - 20, duration: 150, ease: 'Back.easeOut',
-        onComplete: () => scene.tweens.add({ targets: floatingText, y: floatingText.y - 30, alpha: 0, scale: 0.8, duration: 400, onComplete: () => floatingText.destroy() })
+        targets: floatingText,
+        scale: finalScale * 1.5, // Pop larger
+        y: startY - (isCrit ? 30 : 20), // Crits fly higher
+        duration: isCrit ? 200 : 150,
+        ease: 'Back.easeOut',
+        onComplete: () => scene.tweens.add({
+          targets: floatingText,
+          y: floatingText.y - 30,
+          alpha: 0,
+          scale: finalScale * 0.8,
+          duration: 400,
+          onComplete: () => floatingText.destroy()
+        })
       });
     });
-
 
 
     const beamList = state.beamEvents || state.BeamEvents || [];

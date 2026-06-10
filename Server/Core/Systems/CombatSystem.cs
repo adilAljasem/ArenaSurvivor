@@ -9,6 +9,31 @@ namespace Server.Core.Systems;
 
 public static class CombatSystem
 {
+
+    public static void ProcessRegen(float dt, GameState state, ConfigManager configs)
+    {
+        // Smoothly heal Players over time
+        foreach (var player in state.Players.Values)
+        {
+            if (player.ActionState == "Dead") continue;
+            float regen = player.GetTotalStat("hpRegen", configs);
+            if (regen > 0 && player.CurrentHp < player.GetTotalStat("maxHp", configs))
+            {
+                player.CurrentHp = Math.Min(player.GetTotalStat("maxHp", configs), player.CurrentHp + (regen * dt));
+            }
+        }
+
+        // Smoothly heal Enemies over time
+        foreach (var enemy in state.Enemies.Values)
+        {
+            if (enemy.ActionState == "Dead") continue;
+            float regen = enemy.GetTotalStat("hpRegen", configs);
+            if (regen > 0 && enemy.CurrentHp < enemy.GetTotalStat("maxHp", configs))
+            {
+                enemy.CurrentHp = Math.Min(enemy.GetTotalStat("maxHp", configs), enemy.CurrentHp + (regen * dt));
+            }
+        }
+    }
     public static void ProcessShooting(float dt, GameState state, ConfigManager configs)
     {
         // --- 1. PLAYER WEAPONS ---
@@ -26,7 +51,7 @@ public static class CombatSystem
                     // >>> DYNAMIC OFFSET FIX: Match Client Exactly! <<<
                     float entityScale = 1.0f;
                     if (configs.Characters.TryGetValue(player.ConfigId, out var pCfg)) entityScale = pCfg.Scale;
-                    float offset = (10f * entityScale) + 15f; // <<< NEW MATCHING SMALL GAP
+                    float offset = (10f * entityScale) + 15f;
 
                     float spawnX = player.X;
                     float spawnY = player.Y;
@@ -48,7 +73,8 @@ public static class CombatSystem
 
                         player.FiredWeaponsThisTick.Add(weapon.SlotIndex);
 
-                        var (physDmg, magicDmg) = CalculateWeaponDamageSplit(player, config, weapon, configs);
+                        // >>> CRIT IMPLEMENTED HERE <<<
+                        var (physDmg, magicDmg, isCrit) = CalculateWeaponDamageSplit(player, config, weapon, configs);
 
                         float localLifeSteal = config.Mechanics != null && config.Mechanics.ContainsKey("lifeSteal")
                                                ? config.Mechanics["lifeSteal"] : 0f;
@@ -71,13 +97,13 @@ public static class CombatSystem
                             if (projConfig.Lifespan > 0) computedLifespan = projConfig.Lifespan;
                             if (config.Lifespan > 0) computedLifespan = config.Lifespan;
 
-
                             var newBullets = ProjectileFactory.Create(
-                                                            projConfig, player.ConnectionId, "Player",
-                                                            spawnX, spawnY, dirX, dirY,
-                                                            physDmg, magicDmg, // <<< PASS BOTH HERE
-                                                            finalSpeed, totalLifeStealForThisAttack, config.ApplyEffectsOnHit, 1, computedLifespan
-                                                        );
+                                projConfig, player.ConnectionId, "Player",
+                                spawnX, spawnY, dirX, dirY,
+                                physDmg, magicDmg,
+                                finalSpeed, totalLifeStealForThisAttack, config.ApplyEffectsOnHit, 1, computedLifespan,
+                                isCrit // <<< PASS CRIT TO FACTORY
+                            );
 
                             foreach (var b in newBullets) state.Projectiles.TryAdd(b.Id, b);
                         }
@@ -100,7 +126,7 @@ public static class CombatSystem
                 foreach (var hostile in state.Enemies.Values)
                 {
                     if (hostile.Id == enemy.Id || hostile.ActionState == "Dead") continue;
-                    if (hostile.Team == enemy.Team) continue; // Skip same-team entities
+                    if (hostile.Team == enemy.Team) continue;
                     float dx = hostile.X - enemy.X;
                     float dy = hostile.Y - enemy.Y;
                     float distSq = dx * dx + dy * dy;
@@ -108,7 +134,6 @@ public static class CombatSystem
                 }
 
                 if (summonTarget == null) continue;
-
 
                 enemy.AimX = summonTarget.X;
                 enemy.AimY = summonTarget.Y;
@@ -125,9 +150,10 @@ public static class CombatSystem
                     if (weapon.CurrentCooldown > 0) continue;
                     if (!configs.Weapons.TryGetValue(weapon.ConfigId, out var wCfgS)) continue;
 
-                    weapon.CurrentCooldown = wCfgS.CooldownSeconds;
+                    // >>> ENEMY ATTACK SPEED SCALING <<<
+                    float attackSpeedPct = enemy.GetTotalStat("attackSpeedPercent", configs);
+                    weapon.CurrentCooldown = wCfgS.CooldownSeconds / Math.Max(0.1f, (1f + attackSpeedPct));
 
-                    // >>> DYNAMIC OFFSET FIX: Match Client Exactly! <<<
                     float entityScale = 1.0f;
                     if (configs.Enemies.TryGetValue(enemy.ConfigId, out var eCfg)) entityScale = eCfg.Scale;
                     float offset = (40f * entityScale) + 30f;
@@ -139,14 +165,13 @@ public static class CombatSystem
                     else if (weapon.SlotIndex == 2) spawnY -= offset;
                     else if (weapon.SlotIndex == 3) spawnY += offset;
 
-                    // >>> Recalculate direction strictly from the weapon's muzzle! <<<
                     float summonDirX = summonTarget.X - spawnX;
                     float summonDirY = summonTarget.Y - spawnY;
                     float summonDirLen = (float)Math.Sqrt(summonDirX * summonDirX + summonDirY * summonDirY);
                     if (summonDirLen <= 0) continue;
 
-                    // >>> USE DRY HELPER <<<
-                    var (physDmg, magicDmg) = CalculateWeaponDamageSplit(enemy, wCfgS, weapon, configs);
+                    // >>> CRIT IMPLEMENTED HERE <<<
+                    var (physDmg, magicDmg, isCrit) = CalculateWeaponDamageSplit(enemy, wCfgS, weapon, configs);
 
                     float finalRange2 = wCfgS.Range + enemy.GetTotalStat("range", configs);
                     string projId2 = wCfgS.ProjectileId;
@@ -163,14 +188,12 @@ public static class CombatSystem
 
                     enemy.FiredWeaponsThisTick.Add(weapon.SlotIndex);
 
-
-
-                    // >>> CLEAN FACTORY CALL <<<
                     var newBullets = ProjectileFactory.Create(
                         pCfg2, enemy.Id, enemy.Team,
                         spawnX, spawnY, summonDirX, summonDirY,
-                        physDmg, magicDmg, // <<< PASS BOTH HERE
-                        finalSpeed2, 0f, wCfgS.ApplyEffectsOnHit, 1, lifespan2
+                        physDmg, magicDmg,
+                        finalSpeed2, 0f, wCfgS.ApplyEffectsOnHit, 1, lifespan2,
+                        isCrit // <<< PASS CRIT TO FACTORY
                     );
 
                     foreach (var b in newBullets) state.Projectiles.TryAdd(b.Id, b);
@@ -208,18 +231,13 @@ public static class CombatSystem
 
             if (!foundTarget) continue;
 
-
-
-            // Always update aim direction so weapon sprites point at target
             enemy.AimX = targetX;
             enemy.AimY = targetY;
 
-            // Fetch the config to check the attack radius
             float attackRadius = 300f;
             if (configs.Enemies.TryGetValue(enemy.ConfigId, out var enemyCfg))
                 attackRadius = enemyCfg.AttackRadius;
 
-            // Weapons only fire when the player is inside the attack radius
             if (bestDistSq > attackRadius * attackRadius) continue;
 
             foreach (var weapon in enemy.Weapons)
@@ -229,12 +247,13 @@ public static class CombatSystem
 
                 if (!configs.Weapons.TryGetValue(weapon.ConfigId, out var weaponConfig)) continue;
 
-                weapon.CurrentCooldown = weaponConfig.CooldownSeconds;
+                // >>> ENEMY ATTACK SPEED SCALING <<<
+                float attackSpeedPct = enemy.GetTotalStat("attackSpeedPercent", configs);
+                weapon.CurrentCooldown = weaponConfig.CooldownSeconds / Math.Max(0.1f, (1f + attackSpeedPct));
 
-                // >>> DYNAMIC OFFSET FIX: Match Client Exactly! (Goal 3) <<<
                 float entityScale = 1.0f;
                 if (configs.Enemies.TryGetValue(enemy.ConfigId, out var eCfg)) entityScale = eCfg.Scale;
-                float offset = (40f * entityScale) + 30f; // <<< NEW DYNAMIC GAP
+                float offset = (40f * entityScale) + 30f;
 
                 float spawnX = enemy.X;
                 float spawnY = enemy.Y;
@@ -249,7 +268,8 @@ public static class CombatSystem
                 float dirLength = (float)Math.Sqrt(dirToTargetX * dirToTargetX + dirToTargetY * dirToTargetY);
                 if (dirLength <= 0) continue;
 
-                var (physDmg, magicDmg) = CalculateWeaponDamageSplit(enemy, weaponConfig, weapon, configs);
+                // >>> CRIT IMPLEMENTED HERE <<<
+                var (physDmg, magicDmg, isCrit) = CalculateWeaponDamageSplit(enemy, weaponConfig, weapon, configs);
 
                 float finalRange = weaponConfig.Range + enemy.GetTotalStat("range", configs);
 
@@ -273,22 +293,13 @@ public static class CombatSystem
                     spawnY = enemy.Y;
                 }
 
-
                 var newBullets = ProjectileFactory.Create(
-                                                    projConfig,
-                                                    enemy.Id,
-                                                    enemy.Team,
-                                                    spawnX,
-                                                    spawnY,
-                                                    dirToTargetX,
-                                                    dirToTargetY,
-                                                    physDmg, magicDmg, // <<< PASS BOTH HERE
-                                                    finalSpeed,
-                                                    0f, // No lifesteal for enemies
-                                                    weaponConfig.ApplyEffectsOnHit,
-                                                    1,
-                                                    computedLifespan
-                                                );
+                    projConfig, enemy.Id, enemy.Team,
+                    spawnX, spawnY, dirToTargetX, dirToTargetY,
+                    physDmg, magicDmg,
+                    finalSpeed, 0f, weaponConfig.ApplyEffectsOnHit, 1, computedLifespan,
+                    isCrit // <<< PASS CRIT TO FACTORY
+                );
 
                 foreach (var b in newBullets) state.Projectiles.TryAdd(b.Id, b);
             }
@@ -333,21 +344,20 @@ public static class CombatSystem
 
             proj.Lifespan -= dt;
 
-            if (proj.TickRate > 0 && !string.IsNullOrEmpty(proj.TickSkillId))
+            if (!string.IsNullOrEmpty(proj.TickSkillId) && configs.Skills.TryGetValue(proj.TickSkillId, out var tickSkill))
             {
                 proj.TimeSinceLastTick += dt;
-                if (proj.TimeSinceLastTick >= proj.TickRate)
+
+                float effectiveTickRate = proj.TickRate > 0 ? proj.TickRate : tickSkill.CooldownSeconds;
+                if (effectiveTickRate <= 0) effectiveTickRate = 0.1f;
+
+                if (proj.TimeSinceLastTick >= effectiveTickRate)
                 {
-                    proj.TimeSinceLastTick -= proj.TickRate;
-                    if (configs.Skills.TryGetValue(proj.TickSkillId, out var tickSkill))
-                    {
-                        // The projectile casts the skill from its own X/Y coordinates!
-                        SkillSystem.ExecuteSkill(tickSkill, proj.OwnerId, proj.X, proj.Y, proj.Team, tickDamageEvents, tickAoeEvents, tickBeamEvents, state, configs);
-                    }
+                    proj.TimeSinceLastTick %= effectiveTickRate;
+                    SkillSystem.ExecuteSkill(tickSkill, proj.OwnerId, proj.X, proj.Y, proj.Team, tickDamageEvents, tickAoeEvents, tickBeamEvents, state, configs, proj);
                 }
             }
 
-            // >>> NEW: DEATH SKILL TRIGGER <<<
             bool isDead = proj.Lifespan <= 0 || proj.HitEnemies.Count > proj.PierceCount;
 
             if (isDead)
@@ -358,14 +368,12 @@ public static class CombatSystem
 
                     if (!string.IsNullOrEmpty(proj.OnDeathSkillId) && configs.Skills.TryGetValue(proj.OnDeathSkillId, out var deathSkill))
                     {
-                        // Fire the explosion precisely where the bullet died!
                         SkillSystem.ExecuteSkill(deathSkill, proj.OwnerId, proj.X, proj.Y, proj.Team, tickDamageEvents, tickAoeEvents, tickBeamEvents, state, configs);
                     }
                 }
                 continue;
             }
 
-            // Player-fired projectiles, and projectiles fired by friendly summons (Team != "Enemy"), can hit hostile enemies
             bool isPlayerProjectile = state.Players.ContainsKey(proj.OwnerId) ||
                 (state.Enemies.TryGetValue(proj.OwnerId, out var projOwner) && projOwner.Team != "Enemy");
 
@@ -381,7 +389,6 @@ public static class CombatSystem
 
                     bool isHit = false;
 
-                    // Keeps 360-degree weapons from "slicing" the whole screen
                     if (proj.MovementBehavior == "Orbital")
                     {
                         float distX = proj.X - enemy.X;
@@ -404,13 +411,34 @@ public static class CombatSystem
 
                     if (isHit)
                     {
+                        // >>> ENEMY DODGE LOGIC <<<
+                        float dodgeChance = Math.Clamp(enemy.GetTotalStat("dodge", configs), 0f, 0.9f);
+                        if (dodgeChance > 0 && Random.Shared.NextDouble() <= dodgeChance)
+                        {
+                            tickDamageEvents.Add(new DamageEventDto { X = enemy.X, Y = enemy.Y, Amount = 0, IsDodge = true });
+                            proj.HitEnemies.Add(enemy.Id);
+                            // Even if dodged, it counts towards the projectile's pierce limit
+                            if (proj.HitEnemies.Count > proj.PierceCount && !projectilesToRemove.Contains(proj.Id))
+                                projectilesToRemove.Add(proj.Id);
+                            continue; // Skip the damage logic!
+                        }
+
                         // 1. Mitigate & Apply Damage
                         float finalDamage = CalculateMitigatedDamage(proj.PhysicalDamage, proj.MagicDamage, enemy, configs);
-                        
+                        // =========================================================================
+                        // FUTURE: REAL DAMAGE TRACKING PREP 
+                        // =========================================================================
+                        // If you add a "TotalDamageDealt" property to PlayerEntity, you can tally it here!
+                        // if (state.Players.TryGetValue(proj.OwnerId, out var damageOwner)) {
+                        //     damageOwner.TotalDamageDealt += finalDamage;
+                        // }
+                        // =========================================================================
+
                         enemy.CurrentHp -= finalDamage;
                         proj.HitEnemies.Add(enemy.Id);
 
-                        tickDamageEvents.Add(new DamageEventDto { X = enemy.X, Y = enemy.Y, Amount = finalDamage });
+                        // Pass the critical flag to the Damage DTO for the frontend UI pop!
+                        tickDamageEvents.Add(new DamageEventDto { X = enemy.X, Y = enemy.Y, Amount = finalDamage, IsCritical = proj.IsCritical });
 
                         // 2. Apply Status Effects
                         if (proj.ApplyEffectsOnHit != null)
@@ -436,12 +464,26 @@ public static class CombatSystem
                             }
                         }
 
-                        // 4. THE DEATH CHECK 
+                        // 4. THE DEATH CHECK & HARVESTING
                         if (enemy.CurrentHp <= 0 && enemy.ActionState != "Dead")
                         {
                             enemy.ActionState = "Dead";
 
-                            var gold = new PickupEntity { X = enemy.X, Y = enemy.Y, Value = 1 };
+                            // >>> HARVESTING LOGIC <<<
+                            int bonusGold = 0;
+                            // proj.OwnerId is our killerId
+                            if (state.Players.TryGetValue(proj.OwnerId, out var killer))
+                            {
+                                float harvesting = killer.GetTotalStat("harvesting", configs);
+                                bonusGold = (int)Math.Floor(harvesting / 100f);
+                                if (Random.Shared.NextDouble() < (harvesting % 100f) / 100f)
+                                {
+                                    bonusGold++;
+                                }
+                            }
+
+                            // Add the bonus gold to the drop
+                            var gold = new PickupEntity { X = enemy.X, Y = enemy.Y, Value = 1 + bonusGold };
                             state.Pickups.TryAdd(gold.Id, gold);
 
                             if (configs.Enemies.TryGetValue(enemy.ConfigId, out var eCfg))
@@ -462,19 +504,18 @@ public static class CombatSystem
                                     SkillSystem.ExecuteSkill(deathSkill, proj.OwnerId, proj.X, proj.Y, proj.Team, tickDamageEvents, tickAoeEvents, tickBeamEvents, state, configs);
                                 }
                             }
-                            break; 
+                            break;
                         }
                     }
                 }
             }
-            else // <<< ADD THIS ENTIRE ELSE BLOCK
+            else
             {
                 // 1. Hostile projectiles hitting Players
                 foreach (var player in state.Players.Values)
                 {
                     if (proj.HitEnemies.Contains(player.ConnectionId)) continue;
 
-                    // Assuming a standard player hit radius of 15f
                     float combinedRadius = proj.HitRadius + 15f;
                     float hitThresholdSq = combinedRadius * combinedRadius;
 
@@ -490,21 +531,30 @@ public static class CombatSystem
 
                     if (distSqToSegment <= hitThresholdSq)
                     {
+                        // >>> 2. NEW DODGE & BLOCK LOGIC <<<
+                        // A. Check Dodge (Passes through but deals 0 damage)
+                        float dodgeChance = Math.Clamp(player.GetTotalStat("dodge", configs), 0f, 0.9f); // Hard cap at 90%
+                        if (dodgeChance > 0 && Random.Shared.NextDouble() <= dodgeChance)
+                        {
+                            tickDamageEvents.Add(new DamageEventDto { X = player.X, Y = player.Y, Amount = 0, IsDodge = true });
+                            proj.HitEnemies.Add(player.ConnectionId);
+                            if (proj.HitEnemies.Count > proj.PierceCount) projectilesToRemove.Add(proj.Id);
+                            continue;
+                        }
 
-                        float blockChance = player.GetEngineMechanic("projectileBlockChance", configs);
+                        // B. Check Block (Destroys the projectile instantly)
+                        float blockChance = Math.Clamp(player.GetEngineMechanic("projectileBlockChance", configs), 0f, 0.9f);
                         if (blockChance > 0 && Random.Shared.NextDouble() <= blockChance)
                         {
-                            // Block successful! Pop a "0" damage number to give the player visual feedback, then destroy the bullet.
-                            tickDamageEvents.Add(new DamageEventDto { X = player.X, Y = player.Y, Amount = 0 });
-
+                            tickDamageEvents.Add(new DamageEventDto { X = player.X, Y = player.Y, Amount = 0, IsBlock = true });
                             if (!projectilesToRemove.Contains(proj.Id)) projectilesToRemove.Add(proj.Id);
                             break;
                         }
-                        float finalDamage = CalculateMitigatedDamage(proj.PhysicalDamage, proj.MagicDamage, player, configs);
-                        player.CurrentHp -= finalDamage;
+
+                        float finalDamage = CalculateMitigatedDamage(proj.PhysicalDamage, proj.MagicDamage, player, configs); player.CurrentHp -= finalDamage;
                         proj.HitEnemies.Add(player.ConnectionId);
 
-                        tickDamageEvents.Add(new DamageEventDto { X = player.X, Y = player.Y, Amount = finalDamage });
+                        tickDamageEvents.Add(new DamageEventDto { X = player.X, Y = player.Y, Amount = finalDamage, IsCritical = proj.IsCritical });
 
                         if (proj.ApplyEffectsOnHit != null)
                         {
@@ -549,11 +599,22 @@ public static class CombatSystem
 
                         if (distSqToSegment <= hitThresholdSq)
                         {
+                            // >>> SUMMON DODGE LOGIC <<<
+                            float dodgeChance = Math.Clamp(summon.GetTotalStat("dodge", configs), 0f, 0.9f);
+                            if (dodgeChance > 0 && Random.Shared.NextDouble() <= dodgeChance)
+                            {
+                                tickDamageEvents.Add(new DamageEventDto { X = summon.X, Y = summon.Y, Amount = 0, IsDodge = true });
+                                proj.HitEnemies.Add(summon.Id);
+                                if (proj.HitEnemies.Count > proj.PierceCount && !projectilesToRemove.Contains(proj.Id))
+                                    projectilesToRemove.Add(proj.Id);
+                                continue;
+                            }
+
                             float finalDamage = CalculateMitigatedDamage(proj.PhysicalDamage, proj.MagicDamage, summon, configs);
                             summon.CurrentHp -= finalDamage;
                             proj.HitEnemies.Add(summon.Id);
 
-                            tickDamageEvents.Add(new DamageEventDto { X = summon.X, Y = summon.Y, Amount = finalDamage });
+                            tickDamageEvents.Add(new DamageEventDto { X = summon.X, Y = summon.Y, Amount = finalDamage, IsCritical = proj.IsCritical });
 
                             if (proj.ApplyEffectsOnHit != null)
                             {
@@ -586,7 +647,7 @@ public static class CombatSystem
             }
         }
 
-        // 2. Players vs Pickups (Gold / XP only – weapons and items require manual spacebar pickup)
+        // 2. Players vs Pickups
         foreach (var player in state.Players.Values)
         {
             foreach (var pickup in state.Pickups.Values)
@@ -602,10 +663,10 @@ public static class CombatSystem
                         player.GainXp(pickup.Value, configs);
                         pickupsToRemove.Add(pickup.Id);
                     }
-                    // Weapon and Item pickups are handled by TryPickupLoot (manual spacebar)
                 }
             }
         }
+
         // 3. Enemy Normal Attacks (Contact / Bump Damage)
         foreach (var enemy in state.Enemies.Values)
         {
@@ -614,8 +675,22 @@ public static class CombatSystem
 
             if (enemy.Weapons.Count > 0) continue;
 
-            // Only apply damage on the exact frame the attack initiates
-            if (enemy.ActionState == "Attacking" && Math.Abs(enemy.AttackCooldown - enemyCfg.AttackDuration) < (dt * 2))
+            // >>> 1. CALCULATE ATTACK SPEED & SHRINK DURATION <<<
+            float attackSpeedPct = Math.Max(0f, enemy.GetTotalStat("attackSpeedPercent", configs));
+            float scaledDuration = enemyCfg.AttackDuration / (1f + attackSpeedPct);
+
+            // >>> FIX: BLOCK MELEE ATTACKS IF ROOTED BY A SPELL <<<
+            bool isRootedBySpell = false;
+            if (enemy.ActionState == "Casting" && !string.IsNullOrEmpty(enemy.CurrentCastingSkillId))
+            {
+                if (configs.Skills.TryGetValue(enemy.CurrentCastingSkillId, out var eCastCfg) && eCastCfg.StopMoving)
+                {
+                    isRootedBySpell = true;
+                }
+            }
+
+            // >>> 2. USE THE SCALED DURATION IN THE CHECK <<<
+            if (!isRootedBySpell && (enemy.ActionState == "Attacking" || enemy.ActionState == "Casting") && Math.Abs(enemy.AttackCooldown - scaledDuration) < (dt * 2))
             {
                 float meleeDmg = enemy.GetTotalStat("meleeDamage", configs);
                 if (meleeDmg <= 0) continue;
@@ -624,40 +699,59 @@ public static class CombatSystem
 
                 if (enemy.Team == "Enemy")
                 {
-                    // Hostile bumps Player
                     foreach (var player in state.Players.Values)
                     {
                         float distSq = (player.X - enemy.X) * (player.X - enemy.X) + (player.Y - enemy.Y) * (player.Y - enemy.Y);
                         if (distSq <= attackRadiusSq)
                         {
+                            // >>> 3. NEW MELEE DODGE LOGIC <<<
+                            float dodgeChance = Math.Clamp(player.GetTotalStat("dodge", configs), 0f, 0.9f);
+                            if (dodgeChance > 0 && Random.Shared.NextDouble() <= dodgeChance)
+                            {
+                                tickDamageEvents.Add(new DamageEventDto { X = player.X, Y = player.Y, Amount = 0, IsDodge = true });
+                                continue; // Skip damage!
+                            }
+
                             player.CurrentHp -= meleeDmg;
-                            tickDamageEvents.Add(new DamageEventDto { X = player.X, Y = player.Y, Amount = meleeDmg });
+                            tickDamageEvents.Add(new DamageEventDto { X = player.X, Y = player.Y, Amount = meleeDmg, IsCritical = false });
                         }
                     }
 
-                    // Hostile bumps Friendly Summon
                     foreach (var summon in state.Enemies.Values)
                     {
                         if (summon.ActionState == "Dead" || summon.Team == "Enemy") continue;
                         float distSq = (summon.X - enemy.X) * (summon.X - enemy.X) + (summon.Y - enemy.Y) * (summon.Y - enemy.Y);
                         if (distSq <= attackRadiusSq)
                         {
+                            float dodgeChance = Math.Clamp(summon.GetTotalStat("dodge", configs), 0f, 0.9f);
+                            if (dodgeChance > 0 && Random.Shared.NextDouble() <= dodgeChance)
+                            {
+                                tickDamageEvents.Add(new DamageEventDto { X = summon.X, Y = summon.Y, Amount = 0, IsDodge = true });
+                                continue;
+                            }
+
                             summon.CurrentHp -= meleeDmg;
-                            tickDamageEvents.Add(new DamageEventDto { X = summon.X, Y = summon.Y, Amount = meleeDmg });
+                            tickDamageEvents.Add(new DamageEventDto { X = summon.X, Y = summon.Y, Amount = meleeDmg, IsCritical = false });
                         }
                     }
                 }
                 else
                 {
-                    // Friendly Summon bumps Hostile Enemy
                     foreach (var hostile in state.Enemies.Values)
                     {
                         if (hostile.ActionState == "Dead" || hostile.Team != "Enemy") continue;
                         float distSq = (hostile.X - enemy.X) * (hostile.X - enemy.X) + (hostile.Y - enemy.Y) * (hostile.Y - enemy.Y);
                         if (distSq <= attackRadiusSq)
                         {
+                            float dodgeChance = Math.Clamp(hostile.GetTotalStat("dodge", configs), 0f, 0.9f);
+                            if (dodgeChance > 0 && Random.Shared.NextDouble() <= dodgeChance)
+                            {
+                                tickDamageEvents.Add(new DamageEventDto { X = hostile.X, Y = hostile.Y, Amount = 0, IsDodge = true });
+                                continue;
+                            }
+
                             hostile.CurrentHp -= meleeDmg;
-                            tickDamageEvents.Add(new DamageEventDto { X = hostile.X, Y = hostile.Y, Amount = meleeDmg });
+                            tickDamageEvents.Add(new DamageEventDto { X = hostile.X, Y = hostile.Y, Amount = meleeDmg, IsCritical = false });
                         }
                     }
                 }
@@ -668,32 +762,25 @@ public static class CombatSystem
         foreach (var id in pickupsToRemove) state.Pickups.TryRemove(id, out _);
     }
 
-    // =========================================================================
-    // MITIGATION MATH (MOBA FORMULA)
-    // =========================================================================
     public static float CalculateMitigatedDamage(float physDmg, float magicDmg, BaseActorEntity target, ConfigManager configs)
     {
-        // 1. Fetch defensive stats (Math.Max prevents negative armor from amplifying damage)
         float armor = Math.Max(0f, target.GetTotalStat("armor", configs));
         float magicDef = Math.Max(0f, target.GetTotalStat("magicDefense", configs));
 
-        // 2. The MOBA Formula
         float physMult = 100f / (100f + armor);
         float magicMult = 100f / (100f + magicDef);
 
-        // 3. Return final combined damage
         return (physDmg * physMult) + (magicDmg * magicMult);
     }
 
     // =========================================================================
-    // DRY HELPER: WEAPON MATH
+    // DRY HELPER: WEAPON MATH (CRIT IMPLEMENTED HERE)
     // =========================================================================
-    public static (float phys, float magic) CalculateWeaponDamageSplit(BaseActorEntity actor, WeaponConfig wCfg, EquippedWeapon weapon, ConfigManager configs)
+    public static (float phys, float magic, bool isCrit) CalculateWeaponDamageSplit(BaseActorEntity actor, WeaponConfig wCfg, EquippedWeapon weapon, ConfigManager configs)
     {
         float baseMelee = weapon.TotalBaseStats.GetValueOrDefault("meleeDamage", 0f) + weapon.RolledStats.GetValueOrDefault("meleeDamage", 0f);
         float baseRanged = weapon.TotalBaseStats.GetValueOrDefault("rangedDamage", 0f) + weapon.RolledStats.GetValueOrDefault("rangedDamage", 0f);
         float baseMagic = weapon.TotalBaseStats.GetValueOrDefault("magicDamage", 0f) + weapon.RolledStats.GetValueOrDefault("magicDamage", 0f);
-
 
         float physDamage = baseMelee + baseRanged;
         float magicDamage = baseMagic;
@@ -712,10 +799,22 @@ public static class CombatSystem
         physDamage *= (1f + damagePercent);
         magicDamage *= (1f + damagePercent);
 
-        return (physDamage, magicDamage);
+        // --- CRIT LOGIC ---
+        bool isCrit = false;
+        float critChance = Math.Clamp(actor.GetTotalStat("critChance", configs), 0f, 1f);
+
+        // Crit strictly affects physical (melee/ranged) damage
+        if (physDamage > 0 && Random.Shared.NextDouble() <= critChance)
+        {
+            isCrit = true;
+            // Provide a minimum floor of 1.5x in case the player hasn't built any Crit Mult yet
+            float critMult = Math.Max(1.5f, actor.GetTotalStat("critMultiplier", configs));
+            physDamage *= critMult;
+        }
+
+        return (physDamage, magicDamage, isCrit);
     }
 
-    // Rolls loot drops for all gear the dying enemy was carrying
     private static void SpawnGearDrops(EnemyEntity enemy, EnemyConfig config, GameState state, ConfigManager configs)
     {
         float scatterRadius = 20f;

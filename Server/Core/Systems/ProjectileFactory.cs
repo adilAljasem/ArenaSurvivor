@@ -19,7 +19,8 @@ public static class ProjectileFactory
         float lifeStealChance,
         List<string> extraEffects,
         int count = 1,
-        float lifespanOverride = 0f)
+        float lifespanOverride = 0f,
+        bool isCritical = false)
     {
         var results = new List<ProjectileEntity>();
 
@@ -60,6 +61,7 @@ public static class ProjectileFactory
                 PierceCount = projConfig.PierceCount,
                 Lifespan = lifespan,
                 ApplyEffectsOnHit = combinedEffects,
+                IsCritical = isCritical,
 
                 MovementBehavior = projConfig.MovementBehavior,
                 OrbitRadius = projConfig.OrbitRadius,

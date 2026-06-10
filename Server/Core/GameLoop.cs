@@ -97,6 +97,7 @@ public class GameLoop : BackgroundService
             MovementSystem.Process(dt, _gameState, _configManager);
             EffectSystem.Process(dt, _gameState, _configManager, tickDamageEvents, tickAoeEvents, tickBeamEvents);
             CombatSystem.ProcessShooting(dt, _gameState, _configManager);
+            CombatSystem.ProcessRegen(dt, _gameState, _configManager);
             SkillSystem.Process(dt, _gameState, _configManager, tickDamageEvents, tickAoeEvents, tickBeamEvents);
             CombatSystem.ProcessCollisions(dt, _gameState, _configManager, tickDamageEvents, tickAoeEvents, tickBeamEvents);
             var currProjectiles = _gameState.Projectiles.Keys.ToHashSet();
@@ -131,7 +132,7 @@ public class GameLoop : BackgroundService
         {
             _gameState.Phase = GamePhase.WaveActive;
             float waveBonus = _gameState.Players.Values.Sum(p => p.GetEngineMechanic("bonusWaveSeconds", _configManager));
-            _gameState.PhaseTimer = Math.Max(10f, 60f + waveBonus); // Math.Max prevents the wave from being 0 seconds!
+            _gameState.PhaseTimer = Math.Max(10f, 500f + waveBonus); // Math.Max prevents the wave from being 0 seconds!
             _gameState.CurrentWave = 1;
         }
 
@@ -155,6 +156,8 @@ public class GameLoop : BackgroundService
 
         _gameState.Enemies.Clear();
         _gameState.Projectiles.Clear();
+
+        Server.Core.Systems.SkillSystem.ResetAllPlayerSkills(_gameState);
 
         // 2. The Co-Op Loot Sweep — auto-collect only Gold/XP; leave weapon & item drops on the ground
         int totalLootValue = _gameState.Pickups.Values

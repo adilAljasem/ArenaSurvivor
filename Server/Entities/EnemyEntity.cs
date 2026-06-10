@@ -174,6 +174,14 @@ public class EnemyEntity : BaseActorEntity
                 dynamicFlat += iRoll;
         }
 
-        return baseStat + dynamicFlat;
+        float finalValue = baseStat + dynamicFlat;
+
+        // >>> SERVER-SIDE HARD CAPS <<<
+        if (statName == "critChance" || statName == "projectileBlockChance")
+        {
+            finalValue = Math.Min(1.0f, finalValue);
+        }
+
+        return finalValue;
     }
 }
