@@ -381,6 +381,8 @@ public class PlayerEntity : BaseActorEntity
         // >>> NEW: Get the max level cap from the JSON <<<
         int maxLevel = incomingCfg?.MaxLevel ?? 5;
 
+        bool allowDupes = incomingCfg?.AllowDuplicates ?? false;
+
         // 1. Find a match based on TIER and (FAMILY or EXACT ID)
         var match = Weapons.FirstOrDefault(w =>
         {
@@ -405,8 +407,21 @@ public class PlayerEntity : BaseActorEntity
             return true;
         }
 
-        // 3. Otherwise, try to put it in an empty slot (Max 4 slots)
-        for (int i = 0; i < 4; i++)
+        // If we didn't merge (meaning it's either brand new OR our existing one is Max Level),
+        // check if we are allowed to take up a new slot!
+        if (!allowDupes && incomingCfg != null)
+        {
+            bool alreadyOwns = Weapons.Any(w =>
+            {
+                if (!configs.Weapons.TryGetValue(w.ConfigId, out var existCfg)) return false;
+                return (!string.IsNullOrEmpty(incomingCfg.WeaponFamily) && existCfg.WeaponFamily == incomingCfg.WeaponFamily) || w.ConfigId == incomingWeapon.ConfigId;
+            });
+
+            if (alreadyOwns) return false; // REJECT! The shop will not deduct gold.
+        }
+
+        // 3. Otherwise, try to put it in an empty slot (Max 2 slots!)
+        for (int i = 0; i < 2; i++)
         {
             if (!Weapons.Any(w => w.SlotIndex == i))
             {
@@ -419,11 +434,45 @@ public class PlayerEntity : BaseActorEntity
         return false; // Inventory is full
     }
 
+    // >>> NEW: Safe Gear Removal Methods <<<
+    public void RemoveWeapon(int slotIndex, ConfigManager configs)
+    {
+        var weapon = Weapons.FirstOrDefault(w => w.SlotIndex == slotIndex);
+        if (weapon != null)
+        {
+            Weapons.Remove(weapon);
+            // Shift remaining slots so there are no gaps
+            var sorted = Weapons.OrderBy(w => w.SlotIndex).ToList();
+            for (int i = 0; i < sorted.Count; i++) sorted[i].SlotIndex = i;
+            RecalculateSynergies(configs);
+        }
+    }
+
+    public void RemoveItem(int slotIndex, ConfigManager configs)
+    {
+        var item = OwnedItems.FirstOrDefault(i => i.SlotIndex == slotIndex);
+        if (item != null)
+        {
+            OwnedItems.Remove(item);
+            var sorted = OwnedItems.OrderBy(i => i.SlotIndex).ToList();
+            for (int i = 0; i < sorted.Count; i++) sorted[i].SlotIndex = i;
+            RecalculateSynergies(configs);
+        }
+    }
+
+    // >>> NEW: Dynamic Item Cap based on Traits <<<
+    public int GetMaxItemSlots(ConfigManager configs)
+    {
+        // Base 5 slots + any bonus slots from traits/items!
+        return (int)Math.Max(1, 5 + GetEngineMechanic("bonusItemSlots", configs));
+    }
+
     public bool TryAddOrMergeItem(EquippedItem incomingItem, ConfigManager configs)
     {
         configs.Items.TryGetValue(incomingItem.ConfigId, out var incomingCfg);
 
         int maxLevel = incomingCfg?.MaxLevel ?? 5;
+        bool allowDupes = incomingCfg?.AllowDuplicates ?? false;
 
         // 1. Find a match based on TIER and (FAMILY or EXACT ID)
         var match = OwnedItems.FirstOrDefault(i =>
@@ -450,7 +499,20 @@ public class PlayerEntity : BaseActorEntity
             return true;
         }
 
-        // 3. Otherwise, add to endless item inventory
+        if (!allowDupes && incomingCfg != null)
+        {
+            bool alreadyOwns = OwnedItems.Any(i =>
+            {
+                if (!configs.Items.TryGetValue(i.ConfigId, out var existCfg)) return false;
+                return (!string.IsNullOrEmpty(incomingCfg.ItemFamily) && existCfg.ItemFamily == incomingCfg.ItemFamily) || i.ConfigId == incomingItem.ConfigId;
+            });
+            
+            if (alreadyOwns) return false; // REJECT!
+        }
+
+        // 3. Otherwise, check the dynamic inventory cap!
+        if (OwnedItems.Count >= GetMaxItemSlots(configs)) return false; // Inventory is full!
+
         incomingItem.SlotIndex = OwnedItems.Count;
         OwnedItems.Add(incomingItem);
         RecalculateSynergies(configs);

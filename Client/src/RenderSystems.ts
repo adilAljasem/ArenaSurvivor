@@ -8,7 +8,8 @@ export class ActorRenderer {
     sprites: Map<string, Phaser.GameObjects.Container>,
     configs: any,
     targets: Map<string, { x: number, y: number }>,
-    isPlayer: boolean
+    isPlayer: boolean,
+    enemyList?: any[]
   ): Set<string> {
     const activeIds = new Set<string>();
 
@@ -159,7 +160,12 @@ export class ActorRenderer {
       castBarFill.y = bottomY + 6;
       castCircle.y = bottomY;
 
-      if (actionState === "Casting" && maxCast > 0) {
+      // Extract the casting config if available to check the UI toggle
+      const castingSkillId = actor.currentCastingSkillId || actor.CurrentCastingSkillId;
+      const skillCfg = castingSkillId ? ((configs.skills || configs.Skills)?.[castingSkillId]) : null;
+      const showCastBar = skillCfg ? (skillCfg.showCastBar !== false && skillCfg.ShowCastBar !== false) : true;
+
+      if (actionState === "Casting" && maxCast > 0 && showCastBar) {
         castBarBg.setVisible(true);
         castBarFill.setVisible(true);
         castCircle.setVisible(true);
@@ -199,8 +205,68 @@ export class ActorRenderer {
         }
 
         if (sprite && wConfig) {
-          const aimX = actor.aimX ?? actor.AimX ?? targetX;
-          const aimY = actor.aimY ?? actor.AimY ?? targetY;
+          // Default to player aim (mouse pointer)
+          let aimX = actor.aimX ?? actor.AimX ?? targetX;
+          let aimY = actor.aimY ?? actor.AimY ?? targetY;
+
+          // ✅ NEW: AutoShot Visual Rotation Tracking
+          const isAutoShot = wConfig.autoShot === true || wConfig.AutoShot === true;
+          if (isPlayer && isAutoShot && enemyList && enemyList.length > 0) {
+            const baseRange = wConfig.range ?? wConfig.Range ?? 300;
+            const latestStats = scene.data.get('latestPlayerStats');
+            const rangeBonus = latestStats?.range ?? 0;
+            const finalRange = baseRange + rangeBonus;
+
+            let bestDistSq = finalRange * finalRange;
+            let targetFound = false;
+
+            const weaponWorldX = targetX + wx;
+            const weaponWorldY = targetY + wy;
+
+            // 1. Scan for the closest enemy within weapon range
+            enemyList.forEach((enemy: any) => {
+              const ex = enemy.x ?? enemy.X ?? 0;
+              const ey = enemy.y ?? enemy.Y ?? 0;
+              const eState = enemy.actionState || enemy.ActionState || "Idle";
+              const eTeam = enemy.team || enemy.Team || "Enemy";
+
+              if (eState !== "Dead" && eTeam === "Enemy") {
+                const dx = ex - weaponWorldX;
+                const dy = ey - weaponWorldY;
+                const distSq = dx * dx + dy * dy;
+
+                if (distSq <= bestDistSq) {
+                  bestDistSq = distSq;
+                  aimX = ex;
+                  aimY = ey;
+                  targetFound = true;
+                }
+              }
+            });
+
+            // 2. Fallback: If no enemy is in range, aim at the absolute closest enemy 
+            // so the gun doesn't awkwardly snap back to the mouse pointer
+            if (!targetFound) {
+              let absoluteClosestDistSq = Number.MAX_VALUE;
+              enemyList.forEach((enemy: any) => {
+                const eState = enemy.actionState || enemy.ActionState || "Idle";
+                const eTeam = enemy.team || enemy.Team || "Enemy";
+
+                if (eState !== "Dead" && eTeam === "Enemy") {
+                  const dx = (enemy.x ?? enemy.X) - weaponWorldX;
+                  const dy = (enemy.y ?? enemy.Y) - weaponWorldY;
+                  const distSq = dx * dx + dy * dy;
+
+                  if (distSq < absoluteClosestDistSq) {
+                    absoluteClosestDistSq = distSq;
+                    aimX = enemy.x ?? enemy.X;
+                    aimY = enemy.y ?? enemy.Y;
+                  }
+                }
+              });
+            }
+          }
+
           const angle = Math.atan2(aimY - targetY, aimX - targetX);
 
           sprite.rotation = angle;
@@ -475,7 +541,80 @@ export class WorldRenderer {
       const isDodge = de.isDodge ?? false;
       const isBlock = de.isBlock ?? false;
 
+
+      // ====================================================================
+      // >>> REVISED: CHUNKY PARTICLES & GENTLE CAMERA BUMP <<<
+      // ====================================================================
+      if (!isDodge && !isBlock && !isHeal) {
+
+        // 1. GENTLE CAMERA BUMP (CRITS ONLY)
+        // Removed all normal-hit shaking. Crits now produce a micro-bump (40ms).
+        if (isCrit && Math.random() < 0.5) {
+          const cam = scene.cameras.main;
+
+          // Only trigger if the camera isn't already tweening from a previous hit
+          if (!scene.tweens.isTweening(cam)) {
+            scene.tweens.add({
+              targets: cam,
+              zoom: 1.002, // Zoom in by just 1.5%
+              rotation: (Math.random() - 0.5) * 0.005, // Microscopic random tilt
+              duration: 50, // Fast punch in
+              yoyo: true,   // Automatically reverse back to normal
+              ease: 'Sine.easeInOut' // Smooth curve, no jagged snapping
+            });
+          }
+        }
+        // 2. CHUNKY BROTATO PARTICLES
+        if (Math.random() < 0.35 || isCrit) {
+          let hitColor = 0xff0000; // Default Red
+          let closestDistSq = 999999;
+
+          if (state.enemies) {
+            state.enemies.forEach((e: any) => {
+              const ex = e.x ?? e.X ?? 0;
+              const ey = e.y ?? e.Y ?? 0;
+              const distSq = (ex - startX) * (ex - startX) + (ey - startY) * (ey - startY);
+
+              if (distSq < closestDistSq && distSq < 10000) {
+                closestDistSq = distSq;
+                const eCfg = configs.enemies?.[e.configId || e.ConfigId] || configs.Enemies?.[e.configId || e.ConfigId];
+                if (eCfg && eCfg.calculatedBloodColor !== undefined) {
+                  hitColor = eCfg.calculatedBloodColor;
+                }
+              }
+            });
+          }
+
+          const numParticles = isCrit ? 8 : 4;
+          for (let i = 0; i < numParticles; i++) {
+            // MASSIVE SIZE INCREASE: 20 to 32 pixels wide
+            const pSize = Phaser.Math.Between(20, 32);
+            const p = scene.add.rectangle(startX, startY, pSize, pSize, hitColor).setDepth(19);
+
+            // Add a solid black border to make the chunky particles pop against the map
+            p.setStrokeStyle(2, 0x000000, 1);
+
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 120 + 60; // Faster burst outward
+
+            scene.tweens.add({
+              targets: p,
+              x: startX + Math.cos(angle) * speed,
+              y: startY + Math.sin(angle) * speed,
+              scale: 0,
+              alpha: 1, // Kept at full opacity so they stay visible while shrinking
+              duration: Math.random() * 300 + 200,
+              ease: 'Cubic.easeOut', // Snappier popping animation
+              onComplete: () => p.destroy()
+            });
+          }
+        }
+      }
+      // ====================================================================
+      // ====================================================================
+
       let color = '#ffffff';
+
       let stroke = '#000000';
       let textStr = Math.round(Math.abs(amt)).toString();
       let finalScale = 0.5;
@@ -660,27 +799,51 @@ export function precalculateSpriteTops(scene: Phaser.Scene, masterConfigs: any) 
 
       const sourceImage = texture.getSourceImage() as HTMLImageElement | HTMLCanvasElement;
       ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 0, 0, frame.cutWidth, frame.cutHeight);
-
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const data = imageData.data;
 
       let topY = 0;
       let foundTop = false;
 
+      // >>> NEW: Variables to track average color
+      let rSum = 0, gSum = 0, bSum = 0, pixelCount = 0;
+
       for (let y = 0; y < canvas.height; y++) {
         for (let x = 0; x < canvas.width; x++) {
-          const alpha = data[(y * canvas.width + x) * 4 + 3];
+          const idx = (y * canvas.width + x) * 4;
+          const r = data[idx];
+          const g = data[idx + 1];
+          const b = data[idx + 2];
+          const alpha = data[idx + 3];
+
+          // If the pixel is visible
           if (alpha > 10) {
-            topY = y;
-            foundTop = true;
-            break;
+            if (!foundTop) {
+              topY = y;
+              foundTop = true;
+            }
+
+            // Add the pixel's color to our average pool
+            rSum += r;
+            gSum += g;
+            bSum += b;
+            pixelCount++;
           }
         }
-        if (foundTop) break;
       }
 
       const centerY = frame.cutHeight / 2;
       config.calculatedTopOffset = topY - centerY;
+
+      // >>> NEW: Calculate the average color of the sprite and save it as a hex number!
+      if (pixelCount > 0) {
+        const avgR = Math.round(rSum / pixelCount);
+        const avgG = Math.round(gSum / pixelCount);
+        const avgB = Math.round(bSum / pixelCount);
+        config.calculatedBloodColor = (avgR << 16) | (avgG << 8) | avgB;
+      } else {
+        config.calculatedBloodColor = 0xff0000; // Fallback red just in case
+      }
     }
   };
 

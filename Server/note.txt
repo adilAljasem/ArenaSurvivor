@@ -40,3 +40,32 @@ What this looks like in gameplay:
    • Ceasefire: Auto-skills will NEVER fire during the Shop Phase.
    • "ClosestEnemy": If a skill targets the closest enemy during the Shop Phase (or when the map is empty), it will SILENTLY FAIL. 
    • Orbitals/Auras: Always use "targetType": "Self" so they spawn on you regardless of enemies.
+
+
+
+   =========================================================
+💀 DIFFICULTY SYSTEM CHEAT SHEET 💀
+=========================================================
+
+1. WHERE TO EDIT
+   • All core math is controlled strictly via "Configs/Difficulties.json". 
+   • Do not hardcode scaling in C#!
+
+2. ENEMY STAT SCALING
+   • "EnemyBaseScaling": 0.025 means enemies gain +2.5% Max HP and Damage per wave. 
+
+3. SPAWN RATE ENGINE (The Ramp-Up)
+   • "InitialSpawnDelay": How slow enemies spawn on Wave 1 (e.g., 2.0s).
+   • "DelayDecreasePerWave": How much time is subtracted from the delay every wave (e.g., 0.1s).
+   • "MinimumSpawnDelay": The absolute floor so the game doesn't crash (e.g., 0.1s).
+   • NOTE: The final delay is ALWAYS divided by the number of players. More players = exponentially faster spawns!
+
+4. ECONOMY & PUNISHMENT
+   • "GoldMultiplier" / "XpMultiplier": Directly multiplies the value of drops when picked up.
+   • "BaseRerollCost": The starting reroll price on Wave 1.
+   • "RerollCostIncreasePerWave": How much the STARTING price inflates per wave.
+   • "RerollInflation": How much the price jumps EVERY TIME the player clicks the Reroll button in a single shop phase.
+
+5. EXCLUSIVE ENEMIES (Enemies.json)
+   • "AllowedDifficulties": ["hard"] -> This enemy will ONLY spawn on Hard mode.
+   • "AllowedDifficulties": [] -> (Empty list) This enemy spawns on all difficulties.

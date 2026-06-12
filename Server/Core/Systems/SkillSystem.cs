@@ -19,6 +19,12 @@ public static class SkillSystem
         {
             if (enemy.ActionState == "Dead") continue;
 
+            if (enemy.SkillWaitTimer > 0)
+            {
+                enemy.SkillWaitTimer -= dt;
+                continue; // Skip all casting and cooldown logic until the timer finishes
+            }
+
             bool isCasting = false;
             // >>> THE HASTE FIX: Calculate Haste Multiplier for Enemy <<<
             float hasteMult = (100f + Math.Max(0f, enemy.GetTotalStat("haste", configs))) / 100f; // For Enemy

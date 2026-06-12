@@ -36,6 +36,7 @@ public abstract class BaseGearConfig
     public string Name { get; set; } = string.Empty;
     public int Tier { get; set; }
     public int Price { get; set; }
+    public bool AllowDuplicates { get; set; } = false;
 
     // --- Visuals ---
     public string TextureKey { get; set; } = string.Empty;
@@ -109,6 +110,7 @@ public class EnemyConfig
     // --- Identity ---
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+    public bool MovesRandomly { get; set; } = false;
     public int Tier { get; set; }
     public bool IsBoss { get; set; }
     public int MinWave { get; set; } = 1;
@@ -164,6 +166,8 @@ public class EnemyConfig
     public List<DynamicModifier> DynamicModifiers { get; set; } = new();
     public List<string> OnDeathSkills { get; set; } = new();
     public List<DynamicSkillTrigger> DynamicSkills { get; set; } = new();
+    public List<string> AllowedDifficulties { get; set; } = new();
+
 }
 
 // =================================================================================
@@ -176,6 +180,7 @@ public class WeaponConfig : BaseGearConfig
     public string WeaponFamily { get; set; } = string.Empty;
     public bool DefaultFacingRight { get; set; } = true;
     public string AttackAnimType { get; set; } = "recoil"; // Can be: "recoil", "stab", "swing", or "none"
+    public bool AutoShot { get; set; } = false;
 
     // --- Core Combat Stats ---
     public float CooldownSeconds { get; set; }
@@ -286,6 +291,7 @@ public class SkillConfig
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string NextLevelId { get; set; } = string.Empty;
+    public bool ShowCastBar { get; set; } = true;
 
     // --- Visuals ---
     public string TextureKey { get; set; } = string.Empty;
@@ -367,10 +373,36 @@ public class MapConfig
     public string Name { get; set; } = string.Empty;
     public float Width { get; set; } = 4000f;
     public float Height { get; set; } = 4000f;
+    public string TextureKey { get; set; } = string.Empty;
+    public float TextureScale { get; set; } = 1.0f;
 }
 
 public class StatRollConfig
 {
     public float Min { get; set; }
     public float Max { get; set; }
+}
+
+public class DifficultyConfig
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+
+    public float EnemyBaseScaling { get; set; } = 0.01f;
+    public float EnemyScalingPerPlayer { get; set; } = 1.0f;
+
+    // Spawn Rates
+    public float InitialSpawnDelay { get; set; } = 2.0f;
+    public float DelayDecreasePerWave { get; set; } = 0.1f;
+    public float MinimumSpawnDelay { get; set; } = 0.3f;
+    public int MaxActiveEnemies { get; set; } = 100;
+
+    // Economy
+    public float GoldMultiplier { get; set; } = 1.0f;
+    public float XpMultiplier { get; set; } = 1.0f;
+    public int BaseRerollCost { get; set; } = 2;
+    public float RerollCostIncreasePerWave { get; set; } = 0.5f;
+    public int RerollInflation { get; set; } = 2;
+
+    public float RecycleValueMultiplier { get; set; } = 1.0f;
 }

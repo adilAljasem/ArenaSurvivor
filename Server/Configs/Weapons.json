@@ -1,6 +1,7 @@
 {
   "pistol": {
     "id": "pistol",
+    "autoShot": true,
     "weaponFamily": "pistol_family",
     "name": "Pistol",
     "tier": 1,

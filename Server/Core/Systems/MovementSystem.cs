@@ -65,8 +65,68 @@ public static class MovementSystem
             // Reduce attack cooldown natively
             if (enemy.AttackCooldown > 0) enemy.AttackCooldown -= dt;
 
+            // ==========================================================
+            // >>> NEW: RANDOM WANDER LOGIC (WITH MAP ENTRY) <<<
+            // ==========================================================
+            if (config.MovesRandomly)
+            {
+                // 1. Are they outside or on the very edge of the map? (Spawn check)
+                bool isOutsideMap = enemy.X < 100 || enemy.X > mapW - 100 || enemy.Y < 100 || enemy.Y > mapH - 100;
+
+                if (isOutsideMap)
+                {
+                    // Force them to walk directly towards the center of the map!
+                    enemy.WanderTargetX = mapW / 2;
+                    enemy.WanderTargetY = mapH / 2;
+                    enemy.WanderTimer = 2.0f; // Keep the timer paused while they enter
+                }
+                else
+                {
+                    enemy.WanderTimer -= dt;
+
+                    // Pick a new spot if timer is up, or if we haven't picked one yet
+                    if (enemy.WanderTimer <= 0 || enemy.WanderTargetX < 0)
+                    {
+                        // Pick a random spot within ~500 pixels, strictly inside the map bounds
+                        enemy.WanderTargetX = Math.Clamp(enemy.X + Random.Shared.Next(-500, 500), 100, mapW - 100);
+                        enemy.WanderTargetY = Math.Clamp(enemy.Y + Random.Shared.Next(-500, 500), 100, mapH - 100);
+
+                        // Wander for 2 to 5 seconds before picking a new spot
+                        enemy.WanderTimer = (float)(Random.Shared.NextDouble() * 3.0 + 2.0);
+                    }
+                }
+
+                float dx = enemy.WanderTargetX - enemy.X;
+                float dy = enemy.WanderTargetY - enemy.Y;
+                float length = (float)Math.Sqrt(dx * dx + dy * dy);
+
+                if (length > 10f) // Keep moving until close to the target spot
+                {
+                    enemy.ActionState = "Moving";
+                    float finalSpeed = Math.Max(0f, enemy.GetTotalStat("movementSpeed", configs));
+                    enemy.X += (dx / length) * finalSpeed * dt;
+                    enemy.Y += (dy / length) * finalSpeed * dt;
+
+                    // Look where they are walking so the sprite flips correctly!
+                    enemy.AimX = enemy.WanderTargetX;
+                    enemy.AimY = enemy.WanderTargetY;
+                }
+                else
+                {
+                    enemy.ActionState = "Idle";
+                }
+
+                enemy.X = Math.Clamp(enemy.X, 0, mapW);
+                enemy.Y = Math.Clamp(enemy.Y, 0, mapH);
+
+                // >>> CRITICAL: Skip the rest of the targeting logic so they don't chase players! <<<
+                continue;
+            }
+            // ==========================================================
+
             // Find Target Logic
             float closestDistSq = float.MaxValue;
+
             float targetX = 0;
             float targetY = 0;
             bool foundTarget = false;

@@ -132,7 +132,7 @@ public class GameLoop : BackgroundService
         {
             _gameState.Phase = GamePhase.WaveActive;
             float waveBonus = _gameState.Players.Values.Sum(p => p.GetEngineMechanic("bonusWaveSeconds", _configManager));
-            _gameState.PhaseTimer = Math.Max(10f, 500f + waveBonus); // Math.Max prevents the wave from being 0 seconds!
+            _gameState.PhaseTimer = Math.Max(60f, 5f + waveBonus); // Math.Max prevents the wave from being 0 seconds!
             _gameState.CurrentWave = 1;
         }
 
@@ -183,9 +183,15 @@ public class GameLoop : BackgroundService
         }
 
         // 3. Shop Setup & UI Broadcast
+        if (!_configManager.Difficulties.TryGetValue(_gameState.CurrentDifficulty, out var currentDiff))
+            currentDiff = new DifficultyConfig();
+
+        // Calculate the starting Reroll cost for this specific wave!
+        int calculatedRerollCost = currentDiff.BaseRerollCost + (int)((_gameState.CurrentWave - 1) * currentDiff.RerollCostIncreasePerWave);
+
         foreach (var player in _gameState.Players.Values)
         {
-            player.CurrentRerollCost = 2;
+            player.CurrentRerollCost = calculatedRerollCost;
             GenerateShopForPlayer(player, _configManager, _gameState.CurrentWave);
 
             foreach (var item in player.OwnedItems)
@@ -257,7 +263,7 @@ public class GameLoop : BackgroundService
 
         // >>> NEW: RUSHED TRAIT HOOK <<<
         float waveBonus = _gameState.Players.Values.Sum(p => p.GetEngineMechanic("bonusWaveSeconds", _configManager));
-        _gameState.PhaseTimer = Math.Max(10f, 60f + waveBonus);
+        _gameState.PhaseTimer = Math.Max(60f, 5f + waveBonus);
 
         _gameState.CurrentWave++;
 
@@ -276,21 +282,30 @@ public class GameLoop : BackgroundService
 
     private void HandleEnemySpawning(DateTime currentTickTime)
     {
-        float baseSpawnRate = Math.Max(0.5f, 2.0f - (_gameState.CurrentWave * 0.1f));
+        if (!_configManager.Difficulties.TryGetValue(_gameState.CurrentDifficulty, out var currentDiff))
+            currentDiff = new DifficultyConfig(); // Fallback to easy
 
-        // >>> NEW: THE MORE ENEMIES ENGINE HOOK <<<
-        // Sum up the spawn multiplier across ALL players in the game
+        // 1. Calculate Base Delay based on the Wave and JSON settings
+        float waveReduction = (_gameState.CurrentWave - 1) * currentDiff.DelayDecreasePerWave;
+        float baseDelay = Math.Max(currentDiff.MinimumSpawnDelay, currentDiff.InitialSpawnDelay - waveReduction);
+
+        // 2. Apply Player Count Multiplier (More players = smaller denominator = faster spawns)
         float totalSpawnBonus = _gameState.Players.Values.Sum(p => p.GetEngineMechanic("enemySpawnRateMult", _configManager));
+        float denominator = Math.Max(0.1f, (1f + totalSpawnBonus) * Math.Max(1, _gameState.Players.Count));
 
-        // Math: 
-        // If bonus is 0.10 (10% More), denominator = 1.10. Division makes the timer smaller (Faster spawns).
-        // If bonus is -0.10 (10% Less), denominator = 0.90. Division makes the timer larger (Slower spawns).
-        float denominator = Math.Max(0.1f, 1f + totalSpawnBonus);
-        float finalSpawnRate = Math.Max(0.1f, baseSpawnRate / denominator);
+        float finalSpawnRate = Math.Max(0.05f, baseDelay / denominator); // Absolute floor of 0.05s to prevent crashes
 
-        // Use finalSpawnRate for the timer check!
         if ((currentTickTime - _lastSpawnTime).TotalSeconds > finalSpawnRate && !_gameState.Players.IsEmpty)
         {
+
+            // If the map is full, abort the spawn!
+            // Notice we DO NOT reset _lastSpawnTime. This means the spawn timer 
+            // stays "ready," and the exact millisecond an enemy dies, a new one instantly replaces it!
+            if (_gameState.Enemies.Count >= currentDiff.MaxActiveEnemies)
+            {
+                return;
+            }
+
             _lastSpawnTime = currentTickTime;
             bool skipRegularSpawn = false;
 
@@ -318,6 +333,8 @@ public class GameLoop : BackgroundService
             {
                 var validEnemies = _configManager.Enemies.Values
                     .Where(e => !e.IsBoss && !e.IsSummonOnly && e.MinWave <= _gameState.CurrentWave && e.MaxWave >= _gameState.CurrentWave)
+                    // >>> NEW: DIFFICULTY FILTER <<<
+                    .Where(e => e.AllowedDifficulties == null || e.AllowedDifficulties.Count == 0 || e.AllowedDifficulties.Contains(_gameState.CurrentDifficulty))
                     .ToList();
 
                 if (validEnemies.Any())
@@ -366,23 +383,27 @@ public class GameLoop : BackgroundService
         newEnemy.Initialize(config, spawnX, spawnY, _configManager);
 
         // ==========================================
-        // NEW 1% SCALING MATH
+        // DYNAMIC DIFFICULTY SCALING MATH
         // ==========================================
+        if (!_configManager.Difficulties.TryGetValue(_gameState.CurrentDifficulty, out var currentDiff))
+            currentDiff = new DifficultyConfig();
 
-        // Exactly 1% (0.01f) bonus per wave after Wave 1
-        float waveBonus = (_gameState.CurrentWave - 1) * 0.01f;
+        // 1. Wave Bonus
+        float waveBonus = (_gameState.CurrentWave - 1) * currentDiff.EnemyBaseScaling;
 
-        // Optional: Keep higher tier enemies inherently stronger from the start (e.g. +50% base stats per tier).
-        // If you want ALL tiers to have the exact same base stats, change this to: float tierBonus = 0f;
+        // 2. Tier Bonus
         float tierBonus = (config.Tier - 1) * 0.5f;
 
-        // Combine the bonuses
-        float finalMultiplier = waveBonus + tierBonus;
+        // 3. Co-Op Player Scaling
+        // We subtract 1 from PlayerCount so solo players don't receive an unnecessary stat penalty/buff.
+        int playerCount = Math.Max(1, _gameState.Players.Count);
+        float playerStatBonus = (playerCount - 1) * (currentDiff.EnemyScalingPerPlayer - 1f);
 
-        // Apply the exact same multiplier to both Max HP and Damage Percent
+        // Add them all together!
+        float finalMultiplier = waveBonus + tierBonus + playerStatBonus;
+
         newEnemy.Stats.AddModifier("maxHp", 0, finalMultiplier);
         newEnemy.Stats.AddModifier("damagePercent", 0, finalMultiplier);
-
         // ==========================================
 
         newEnemy.CurrentHp = newEnemy.GetTotalStat("maxHp", _configManager);

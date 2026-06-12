@@ -1,0 +1,56 @@
+{
+  "easy": {
+    "Id": "easy",
+    "Name": "Easy",
+    "EnemyBaseScaling": 0.01,
+    "EnemyScalingPerPlayer": 1.5,
+    
+    "InitialSpawnDelay": 0.1,
+    "DelayDecreasePerWave": 0.1,
+    "MinimumSpawnDelay": 0.5,
+    "MaxActiveEnemies": 100,
+
+    "GoldMultiplier": 1.2,
+    "XpMultiplier": 0.5,
+
+    "BaseRerollCost": 2,
+    "RerollCostIncreasePerWave": 1.0,
+    "RerollInflation": 5
+  },
+  "normal": {
+    "Id": "normal",
+    "Name": "Normal",
+    "EnemyBaseScaling": 0.02,
+    "EnemyScalingPerPlayer": 1.1,
+
+    "InitialSpawnDelay": 2.0,
+    "DelayDecreasePerWave": 0.1,
+    "MinimumSpawnDelay": 0.5,
+    "MaxActiveEnemies": 150,
+    
+    "GoldMultiplier": 1.0,
+    "XpMultiplier": 1.0,
+
+    "BaseRerollCost": 2,
+    "RerollCostIncreasePerWave": 3.0,
+    "RerollInflation": 10
+  },
+  "hard": {
+    "Id": "hard",
+    "Name": "Hard",
+    "EnemyBaseScaling": 0.04,
+    "EnemyScalingPerPlayer": 1.1,
+
+    "InitialSpawnDelay": 1.5,
+    "DelayDecreasePerWave": 0.15,
+    "MinimumSpawnDelay": 0.3,
+    "MaxActiveEnemies": 150,
+
+    "GoldMultiplier": 0.8,
+    "XpMultiplier": 0.8,
+
+    "BaseRerollCost": 3,
+    "RerollCostIncreasePerWave": 6.0,
+    "RerollInflation": 25
+  }
+}

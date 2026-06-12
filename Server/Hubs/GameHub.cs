@@ -132,6 +132,7 @@ public class GameHub : Hub
             XpRequired = player.GetXpRequirement(),
             PendingLevelUps = player.PendingLevelUps,
             LevelUpChoices = player.CurrentLevelUpChoices,
+            MaxItemSlots = player.GetMaxItemSlots(_configManager),
 
             Stats = _configManager.AllStats.ToDictionary(k => k, k => player.GetTotalStat(k, _configManager)),
 
@@ -261,15 +262,19 @@ public class GameHub : Hub
     {
         if (_gameState.Players.TryGetValue(Context.ConnectionId, out var player))
         {
+            // Grab difficulty config
+            if (!_configManager.Difficulties.TryGetValue(_gameState.CurrentDifficulty, out var diffConfig))
+                diffConfig = new DifficultyConfig();
+
             lock (player)
             {
                 if (player.Gold >= player.CurrentRerollCost)
                 {
-                    // Deduct gold and increase cost for the next reroll
                     player.Gold -= player.CurrentRerollCost;
-                    player.CurrentRerollCost += 1;
 
-                    // Regenerate the non-locked items
+                    // >>> USE JSON INFLATION <<<<
+                    player.CurrentRerollCost += diffConfig.RerollInflation;
+
                     Core.GameLoop.GenerateShopForPlayer(player, _configManager, _gameState.CurrentWave);
                 }
             }
@@ -362,7 +367,55 @@ public class GameHub : Hub
     }
 
 
+    public void SetDifficulty(string difficultyId)
+    {
+        // Only allow changing difficulty before the game has officially started!
+        if (_gameState.Phase == GamePhase.WaitingForPlayers)
+        {
+            _gameState.CurrentDifficulty = difficultyId;
+            Console.WriteLine($"[LOBBY] Difficulty locked in as: {difficultyId.ToUpper()}");
+        }
+    }
 
+    public async Task RecycleGear(bool isWeapon, int slotIndex)
+    {
+        if (!_gameState.Players.TryGetValue(Context.ConnectionId, out var player)) return;
+
+        lock (player)
+        {
+            if (!_configManager.Difficulties.TryGetValue(_gameState.CurrentDifficulty, out var currentDiff))
+                currentDiff = new DifficultyConfig();
+
+            int basePrice = 0;
+            if (isWeapon)
+            {
+                var w = player.Weapons.FirstOrDefault(x => x.SlotIndex == slotIndex);
+                if (w != null && _configManager.Weapons.TryGetValue(w.ConfigId, out var wCfg)) basePrice = wCfg.Price;
+            }
+            else
+            {
+                var i = player.OwnedItems.FirstOrDefault(x => x.SlotIndex == slotIndex);
+                if (i != null && _configManager.Items.TryGetValue(i.ConfigId, out var iCfg)) basePrice = iCfg.Price;
+            }
+
+            if (basePrice > 0)
+            {
+                // Calculate payout/penalty: 10% of base price * Difficulty Multiplier
+                int payout = (int)Math.Floor(basePrice * 0.10f * currentDiff.RecycleValueMultiplier);
+
+                // If payout is negative (Hard Mode), check if they have enough gold to afford the disposal fee
+                if (payout < 0 && player.Gold < Math.Abs(payout)) return;
+
+                player.Gold += payout;
+
+                if (isWeapon) player.RemoveWeapon(slotIndex, _configManager);
+                else player.RemoveItem(slotIndex, _configManager);
+            }
+        }
+
+        // Push the updated inventory instantly
+        await SendPlayerUI(player);
+    }
 
 
 

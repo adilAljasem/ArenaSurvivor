@@ -145,7 +145,7 @@
     "name": "Iron Enemy",
     "tier": 2,
     "isBoss": false,
-    "minWave": 1,
+    "minWave": 20,
     "maxWave": 999,
     "spawnWeight": 60,
     "textureKey": "ironenemy",
@@ -184,8 +184,9 @@
     "id": "mushroom",
     "name": "Mushroom",
     "tier": 1,
+    "movesRandomly": true,
     "isBoss": false,
-    "minWave": 20,
+    "minWave": 1,
     "maxWave": 35,
     "spawnWeight": 70,
     "textureKey": "mushroomEnemy",
@@ -220,7 +221,7 @@
       "armor": 500
     },
     "startingSkills": [
-      "nature_pulse"
+    
     ],
     "dynamicModifiers": []
   },

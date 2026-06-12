@@ -3,12 +3,16 @@
     "Id": "map_forest",
     "Name": "Dark Forest",
     "Width": 4000,
-    "Height": 4000
+    "Height": 4000,
+    "TextureKey": "tex_grass",
+    "TextureScale": 1.0
   },
   "map_arena": {
     "Id": "map_arena",
     "Name": "Gladiator Arena",
     "Width": 2500,
-    "Height": 2500
+    "Height": 2500,
+    "TextureKey": "tex_sand",
+    "TextureScale": 1.0
   }
 }

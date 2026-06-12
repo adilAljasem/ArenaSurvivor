@@ -59,13 +59,6 @@ export interface GameStatePayload {
 
 let masterConfigs: any = {};
 
-connection.on("ReceiveHandshake", (payload: any) => {
-  masterConfigs = payload;
-  console.log("Handshake received. Configs loaded.");
-  window.dispatchEvent(new Event('configsReady'));
-});
-
-connection.start().then(() => console.log("SignalR Connected!")).catch((err: any) => console.error(err));
 
 // --- PHASER SCENE ---
 class GameScene extends Phaser.Scene {
@@ -141,7 +134,8 @@ class GameScene extends Phaser.Scene {
     this.load.spritesheet('skill_icons', '/assets/Skills/skillsicon.png', { frameWidth: 312, frameHeight: 307 });
     this.load.spritesheet('Enemies1_sheet', '/assets/Enemies/mosquito-fly devil - fly fortest.png', { frameWidth: 64, frameHeight: 64 });
 
-
+    this.load.image('tex_grass', '/assets/obstacles/grass map.jpg');
+    this.load.image('tex_sand', '/assets/obstacles/map1.jpg');
 
 
     this.load.audio('sfx_shoot', 'assets/Audio/weapon-fire-1.wav');
@@ -161,10 +155,7 @@ class GameScene extends Phaser.Scene {
     // Initialise the global AudioManager with this scene's sound system
     AudioManager.getInstance().init(this);
 
-    // >>> FIX: Map Initialization moved strictly to Handshake Event! <<<
-    // >>> BULLETPROOF HANDSHAKE WRAPPER <<<
     const initConfigs = () => {
-      // Prevent running twice if hot reloaded
       if (this.isMapInitialized) return;
       if (!masterConfigs || Object.keys(masterConfigs).length === 0) return;
 
@@ -182,7 +173,18 @@ class GameScene extends Phaser.Scene {
           this.mapWidth = currentMap.width || currentMap.Width;
           this.mapHeight = currentMap.height || currentMap.Height;
 
-          this.add.grid(this.mapWidth / 2, this.mapHeight / 2, this.mapWidth, this.mapHeight, 64, 64, 0x1a1a1a, 1, 0x333333, 1).setDepth(-2);
+          const mapTex = currentMap.textureKey || currentMap.TextureKey;
+          const texScale = currentMap.textureScale ?? currentMap.TextureScale ?? 1.0;
+
+          if (mapTex && this.textures.exists(mapTex)) {
+            const groundTile = this.add.tileSprite(this.mapWidth / 2, this.mapHeight / 2, this.mapWidth, this.mapHeight, mapTex).setDepth(-2);
+
+            // This stretches or shrinks the image pattern inside the grid!
+            groundTile.setTileScale(texScale, texScale);
+          } else {
+            this.add.grid(this.mapWidth / 2, this.mapHeight / 2, this.mapWidth, this.mapHeight, 64, 64, 0x1a1a1a, 1, 0x333333, 1).setDepth(-2);
+          }
+          
           const border = this.add.graphics();
           border.lineStyle(16, 0xff0000, 1);
           border.strokeRect(10, 10, this.mapWidth - 20, this.mapHeight - 20);
@@ -193,12 +195,12 @@ class GameScene extends Phaser.Scene {
       }
     };
 
-    // 1. Try to run it immediately (if SignalR was super fast)
-    initConfigs();
-
-    // 2. Also listen for the event (if Phaser loaded before SignalR finished)
-    window.addEventListener('configsReady', initConfigs);
-
+    // Bind the handshake receiver directly inside the scene BEFORE connecting
+    connection.on("ReceiveHandshake", (payload: any) => {
+      masterConfigs = payload;
+      console.log("Handshake received. Configs loaded.");
+      initConfigs();
+    });
 
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();
@@ -554,7 +556,7 @@ class GameScene extends Phaser.Scene {
 
       state.projectiles = [];
 
-      const activePlayers = ActorRenderer.render(this, state.players, this.playerSprites, masterConfigs, this.targetPositions, true);
+      const activePlayers = ActorRenderer.render(this, state.players, this.playerSprites, masterConfigs, this.targetPositions, true, state.enemies);
 
       // The 'false' flag at the end identifies them as Enemies
       const activeEnemies = ActorRenderer.render(this, state.enemies, this.enemySprites, masterConfigs, this.targetPositions, false);
@@ -572,6 +574,12 @@ class GameScene extends Phaser.Scene {
       this.cleanupSprites(this.enemySprites, activeEnemies);
       this.cleanupSprites(this.pickupSprites, activePickups);
     });
+
+    if (connection.state === HubConnectionState.Disconnected) {
+      connection.start()
+        .then(() => console.log("SignalR Connected safely after Scene Creation!"))
+        .catch((err: any) => console.error("SignalR Connection Error:", err));
+    }
 
     // Clean up external event listeners when the scene shuts down to prevent memory leaks
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {

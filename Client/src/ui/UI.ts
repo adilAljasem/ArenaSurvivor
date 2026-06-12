@@ -556,13 +556,21 @@ export class StatDisplay extends Phaser.GameObjects.Container {
 // =========================================================================
 export class InventoryDisplay extends Phaser.GameObjects.Container {
     private itemGrid: Phaser.GameObjects.Container;
+    private itemScrollable: Phaser.GameObjects.Container;
     private weaponGrid: Phaser.GameObjects.Container;
     private tooltip: Tooltip;
     private atlasConfigs: any = null;
+    private connection: HubConnection;
 
-    constructor(scene: Phaser.Scene, x: number, y: number, tooltip: Tooltip) {
+    private maxItemScroll: number = 0;
+    private itemMaskGraphics: Phaser.GameObjects.Graphics;
+
+    constructor(scene: Phaser.Scene, x: number, y: number, tooltip: Tooltip, connection: HubConnection) {
         super(scene, x, y);
+        this.setScrollFactor(0); // >>> FIX 1: Prevents the UI from moving with the map camera! <<<
+
         this.tooltip = tooltip;
+        this.connection = connection;
 
         this.itemGrid = scene.add.container(0, 0);
         const itemTitle = scene.add.text(0, -25, 'Items', {
@@ -570,7 +578,23 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
         });
         this.itemGrid.add(itemTitle);
 
-        this.weaponGrid = scene.add.container(320, 0);
+        this.itemScrollable = scene.add.container(0, 0);
+        this.itemGrid.add(this.itemScrollable);
+
+        // >>> THE BULLETPROOF MASK SETUP <<<
+        // 1. Create it in the scene (NOT in the container) so it never inherits weird scales
+        this.itemMaskGraphics = scene.add.graphics();
+        this.itemMaskGraphics.setScrollFactor(0); // Lock to screen
+        this.itemMaskGraphics.setVisible(false); // Hide the white box
+
+        // 2. Draw the rectangle EXACTLY ONCE at 0,0
+        this.itemMaskGraphics.fillStyle(0xffffff);
+        this.itemMaskGraphics.fillRect(0, 0, 395, 85);
+
+        // 3. Apply it
+        this.itemScrollable.setMask(this.itemMaskGraphics.createGeometryMask());
+
+        this.weaponGrid = scene.add.container(390, 0);
         const weaponTitle = scene.add.text(0, -25, 'Weapons', {
             fontFamily: UIHelpers.FONT, fontSize: '16px', color: '#a0abbc', fontStyle: 'bold', resolution: 3
         });
@@ -582,90 +606,158 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
 
     public updateLayout(availableWidth: number) {
         this.weaponGrid.setPosition(availableWidth - 180, -80);
+
+        if (this.itemMaskGraphics) {
+            // 1. Force the mask to match the exact scale of the UI container
+            this.itemMaskGraphics.setScale(this.scaleX, this.scaleY);
+
+            // 2. Position it, multiplying the offset by the scale so it always wraps perfectly
+            this.itemMaskGraphics.setPosition(
+                this.x - (10 * this.scaleX),
+                this.y - (10 * this.scaleY)
+            );
+        }
     }
 
-    public updateInventory(weapons: any[], items: any[], atlasConfigs: any) {
+    public updateInventory(weapons: any[], items: any[], maxItemSlots: number, atlasConfigs: any) {
         this.atlasConfigs = atlasConfigs;
-        this.itemGrid.removeAll(true);
+        this.itemScrollable.removeAll(true);
         this.weaponGrid.removeAll(true);
 
-        const titleStyle = {
-            fontFamily: UIHelpers.FONT, fontSize: '16px', color: '#a0abbc', fontStyle: 'bold', resolution: 3
-        } as const;
-        this.itemGrid.add(this.scene.add.text(0, -25, 'Items', titleStyle));
+        const titleStyle = { fontFamily: UIHelpers.FONT, fontSize: '16px', color: '#a0abbc', fontStyle: 'bold', resolution: 3 } as const;
         this.weaponGrid.add(this.scene.add.text(0, -25, 'Weapons', titleStyle));
 
+        // Calculate rows and scroll limits based on dynamic trait cap!
+        const totalItemSlots = Math.max(5, maxItemSlots, items?.length || 0);
+        const rows = Math.ceil(totalItemSlots / 5);
+        this.maxItemScroll = Math.max(0, (rows - 1) * 75);
+
+        if (this.itemScrollable.y < -this.maxItemScroll) this.itemScrollable.y = -this.maxItemScroll;
+        if (this.itemScrollable.y > 0) this.itemScrollable.y = 0;
+
+        let updateThumb = () => { };
+
         // ---- Item slots ----
-        for (let i = 0; i < 5; i++) {
-            const slotX = i * 75;
+        for (let i = 0; i < totalItemSlots; i++) {
+            const col = i % 5;
+            const row = Math.floor(i / 5);
+            const slotX = col * 75;
+            const slotY = row * 75;
+
+            const slotContainer = this.scene.add.container(slotX, slotY);
+            this.itemScrollable.add(slotContainer);
+
             const slotBg = this.scene.add.graphics();
             slotBg.fillStyle(0x161920, 1);
-            slotBg.fillRoundedRect(slotX, 0, 65, 65, 8);
+            slotBg.fillRoundedRect(0, 0, 65, 65, 8);
             slotBg.lineStyle(2, 0x3a4454, 1);
-            slotBg.strokeRoundedRect(slotX, 0, 65, 65, 8);
-            this.itemGrid.add(slotBg);
+            slotBg.strokeRoundedRect(0, 0, 65, 65, 8);
+            slotContainer.add(slotBg);
 
-            if (items?.[i]) {
-                const itemData = items[i];
+            const itemData = items?.find((x: any) => (x.slotIndex ?? x.SlotIndex) === i);
+
+            if (itemData) {
                 const config = atlasConfigs?.items?.[itemData.configId || itemData.ConfigId] ?? null;
-
                 const iLevel = itemData.level || itemData.Level || 1;
                 const iTier = config?.tier ?? config?.Tier ?? 1;
 
                 if (config) {
                     slotBg.lineStyle(2, UIHelpers.getTierColorHex(iTier), 1);
-                    slotBg.strokeRoundedRect(slotX, 0, 65, 65, 8);
+                    slotBg.strokeRoundedRect(0, 0, 65, 65, 8);
                 }
 
                 let icon: any;
                 const tex = config?.textureKey ?? config?.TextureKey;
                 if (tex && this.scene.textures.exists(tex)) {
-                    icon = this.scene.add.sprite(slotX + 32.5, 32.5, tex);
+                    icon = this.scene.add.sprite(32.5, 32.5, tex);
                     const frame = config.iconFrame ?? config.IconFrame;
                     if (frame !== undefined) icon.setFrame(frame);
                     icon.setScale(Math.min(50 / icon.width, 50 / icon.height));
                 } else {
-                    icon = this.scene.add.rectangle(slotX + 32.5, 32.5, 40, 40, 0x000000).setStrokeStyle(2, 0x00ff00);
+                    icon = this.scene.add.rectangle(32.5, 32.5, 40, 40, 0x000000).setStrokeStyle(2, 0x00ff00);
                 }
-                this.itemGrid.add(icon);
+                slotContainer.add(icon);
 
-                const hitbox = this.scene.add.rectangle(slotX + 32.5, 32.5, 65, 65, 0x000000, 0)
+                const hitbox = this.scene.add.rectangle(32.5, 32.5, 65, 65, 0x000000, 0)
                     .setInteractive({ useHandCursor: true })
                     .setScrollFactor(0);
+
+                hitbox.on('wheel', (p: any, dx: number, dy: number, dz: number, event: any) => {
+                    if (this.maxItemScroll > 0) {
+                        this.itemScrollable.y -= dy * 0.5;
+                        if (this.itemScrollable.y < -this.maxItemScroll) this.itemScrollable.y = -this.maxItemScroll;
+                        if (this.itemScrollable.y > 0) this.itemScrollable.y = 0;
+                        updateThumb();
+                        event.stopPropagation();
+                    }
+                });
 
                 if (config) {
                     hitbox.on('pointerover', (p: Phaser.Input.Pointer) => {
                         slotBg.lineStyle(2, 0xffffff, 1);
-                        slotBg.strokeRoundedRect(slotX, 0, 65, 65, 8);
-                        this.tooltip.show(
-                            config, p.x, p.y, iLevel, this.atlasConfigs,
-                            itemData.totalBaseStats ?? itemData.TotalBaseStats,
-                            itemData.rolledStats ?? itemData.RolledStats,
-                            itemData.itemSkills ?? itemData.ItemSkills
-                        );
+                        slotBg.strokeRoundedRect(0, 0, 65, 65, 8);
+                        this.tooltip.show(config, p.x, p.y, iLevel, this.atlasConfigs, itemData.totalBaseStats ?? itemData.TotalBaseStats, itemData.rolledStats ?? itemData.RolledStats, itemData.itemSkills ?? itemData.ItemSkills);
                     });
-
                     hitbox.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip.updatePosition(p.x, p.y));
-
                     hitbox.on('pointerout', () => {
                         slotBg.lineStyle(2, UIHelpers.getTierColorHex(iTier), 1);
-                        slotBg.strokeRoundedRect(slotX, 0, 65, 65, 8);
+                        slotBg.strokeRoundedRect(0, 0, 65, 65, 8);
                         this.tooltip.hide();
                     });
                 }
-                this.itemGrid.add(hitbox);
+                slotContainer.add(hitbox);
 
                 const iMax = config?.maxLevel ?? config?.MaxLevel ?? 5;
-                const lvlTxt = this.scene.add.text(slotX + 60, 60, `Lv.${iLevel}/${iMax}`, {
-                    fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#ffffff',
-                    stroke: '#000', strokeThickness: 3, resolution: 3
+                const lvlTxt = this.scene.add.text(60, 60, `Lv.${iLevel}/${iMax}`, {
+                    fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#ffffff', stroke: '#000', strokeThickness: 3, resolution: 3
                 }).setOrigin(1, 1);
-                this.itemGrid.add(lvlTxt);
+                slotContainer.add(lvlTxt);
+
+                // Recycle Button
+                const delBg = this.scene.add.circle(55, 10, 10, 0xd32f2f).setStrokeStyle(1, 0xffffff);
+                const delTxt = this.scene.add.text(55, 10, '🗑️', { fontSize: '10px' }).setOrigin(0.5);
+                const delHit = this.scene.add.circle(55, 10, 14, 0x000000, 0).setInteractive({ useHandCursor: true });
+                delHit.on('pointerdown', () => this.connection.invoke("RecycleGear", false, itemData.slotIndex ?? itemData.SlotIndex));
+                slotContainer.add([delBg, delTxt, delHit]);
+            } else {
+                // Empty slots must also support scrolling!
+                const hitbox = this.scene.add.rectangle(32.5, 32.5, 65, 65, 0x000000, 0).setInteractive().setScrollFactor(0);
+                hitbox.on('wheel', (p: any, dx: number, dy: number, dz: number, event: any) => {
+                    if (this.maxItemScroll > 0) {
+                        this.itemScrollable.y -= dy * 0.5;
+                        if (this.itemScrollable.y < -this.maxItemScroll) this.itemScrollable.y = -this.maxItemScroll;
+                        if (this.itemScrollable.y > 0) this.itemScrollable.y = 0;
+                        updateThumb();
+                        event.stopPropagation();
+                    }
+                });
+                slotContainer.add(hitbox);
             }
         }
 
-        // ---- Weapon slots ----
-        for (let i = 0; i < 4; i++) {
+        // Optional Vertical Scroll Indicator for Items
+        if (this.maxItemScroll > 0) {
+            const scrollBg = this.scene.add.graphics();
+            scrollBg.fillStyle(0x000000, 0.5);
+            scrollBg.fillRoundedRect(375, 0, 4, 65, 2);
+            this.itemGrid.add(scrollBg);
+
+            const scrollThumb = this.scene.add.graphics();
+            this.itemGrid.add(scrollThumb);
+
+            const thumbHeight = Math.max(15, 65 * (65 / (rows * 75)));
+            updateThumb = () => {
+                scrollThumb.clear();
+                scrollThumb.fillStyle(0x8892a0, 1);
+                const progress = Math.abs(this.itemScrollable.y) / this.maxItemScroll;
+                const thumbY = progress * (65 - thumbHeight);
+                scrollThumb.fillRoundedRect(375, thumbY, 4, thumbHeight, 2);
+            };
+            updateThumb();
+        }
+
+        // ---- Weapon slots (SHRUNK TO MAX 2) ----
+        for (let i = 0; i < 2; i++) {
             const col = i % 2;
             const row = Math.floor(i / 2);
             const slotX = col * 75;
@@ -702,23 +794,15 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                 this.weaponGrid.add(icon);
 
                 const hitbox = this.scene.add.rectangle(slotX + 32.5, slotY + 32.5, 65, 65, 0x000000, 0)
-                    .setInteractive({ useHandCursor: true })
-                    .setScrollFactor(0);
+                    .setInteractive({ useHandCursor: true }).setScrollFactor(0);
 
                 if (config) {
                     hitbox.on('pointerover', (p: Phaser.Input.Pointer) => {
                         slotBg.lineStyle(2, 0xffffff, 1);
                         slotBg.strokeRoundedRect(slotX, slotY, 65, 65, 8);
-                        this.tooltip.show(
-                            config, p.x, p.y, wLevel, atlasConfigs,
-                            weaponData.totalBaseStats ?? weaponData.TotalBaseStats,
-                            weaponData.rolledStats ?? weaponData.RolledStats,
-                            weaponData.weaponSkills ?? weaponData.WeaponSkills
-                        );
+                        this.tooltip.show(config, p.x, p.y, wLevel, atlasConfigs, weaponData.totalBaseStats ?? weaponData.TotalBaseStats, weaponData.rolledStats ?? weaponData.RolledStats, weaponData.weaponSkills ?? weaponData.WeaponSkills);
                     });
-
                     hitbox.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip.updatePosition(p.x, p.y));
-
                     hitbox.on('pointerout', () => {
                         slotBg.lineStyle(2, UIHelpers.getTierColorHex(wTier), 1);
                         slotBg.strokeRoundedRect(slotX, slotY, 65, 65, 8);
@@ -729,10 +813,16 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
 
                 const wMax = config?.maxLevel ?? config?.MaxLevel ?? 5;
                 const lvlTxt = this.scene.add.text(slotX + 60, slotY + 60, `Lv.${wLevel}/${wMax}`, {
-                    fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#ffffff',
-                    stroke: '#000', strokeThickness: 3, resolution: 3
+                    fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#ffffff', stroke: '#000', strokeThickness: 3, resolution: 3
                 }).setOrigin(1, 1);
                 this.weaponGrid.add(lvlTxt);
+
+                // Recycle Button (Weapons)
+                const delBg = this.scene.add.circle(slotX + 55, slotY + 10, 10, 0xd32f2f).setStrokeStyle(1, 0xffffff);
+                const delTxt = this.scene.add.text(slotX + 55, slotY + 10, '🗑️', { fontSize: '10px' }).setOrigin(0.5);
+                const delHit = this.scene.add.circle(slotX + 55, slotY + 10, 14, 0x000000, 0).setInteractive({ useHandCursor: true });
+                delHit.on('pointerdown', () => this.connection.invoke("RecycleGear", true, weaponData.slotIndex ?? weaponData.SlotIndex));
+                this.weaponGrid.add([delBg, delTxt, delHit]);
             }
         }
     }
@@ -809,8 +899,7 @@ export class ShopUI {
         this.statDisplay.setScrollFactor(0).setDepth(D + 1);
         this._elements.push(this.statDisplay as any);
 
-        this.inventoryDisplay = new InventoryDisplay(scene, 0, 0, this.tooltip);
-        this.inventoryDisplay.setScrollFactor(0).setDepth(D + 1);
+        this.inventoryDisplay = new InventoryDisplay(scene, 0, 0, this.tooltip, connection); //       this.inventoryDisplay.setScrollFactor(0).setDepth(D + 1);
         this._elements.push(this.inventoryDisplay as any);
 
         this.shopCardsContainer = scene.add.container(0, 0).setScrollFactor(0).setDepth(D + 1);
@@ -902,8 +991,7 @@ export class ShopUI {
 
         try {
             this.statDisplay.updateStats(uiData.stats, uiData.level || 1);
-            this.inventoryDisplay.updateInventory(uiData.weapons, uiData.ownedItems, atlasConfigs);
-
+            this.inventoryDisplay.updateInventory(uiData.weapons, uiData.ownedItems, uiData.maxItemSlots || 5, atlasConfigs);
 
             this.tooltip.hide();
             this.shopCardsContainer.removeAll(true);

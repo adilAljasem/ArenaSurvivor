@@ -22,4 +22,5 @@ public class GameState
     public GamePhase Phase { get; set; } = GamePhase.WaitingForPlayers;
     public int CurrentWave { get; set; } = 1;
     public float PhaseTimer { get; set; } = 0f;
+    public string CurrentDifficulty { get; set; } = "easy";
 }

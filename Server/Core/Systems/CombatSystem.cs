@@ -42,30 +42,68 @@ public static class CombatSystem
             foreach (var weapon in player.Weapons)
             {
                 weapon.CurrentCooldown -= dt;
+                if (weapon.CurrentCooldown > 0) continue;
 
-                if (weapon.CurrentCooldown <= 0 && (player.AimX != 0 || player.AimY != 0))
+                var config = configs.Weapons[weapon.ConfigId];
+
+                // >>> DYNAMIC OFFSET FIX: Match Client Exactly! <<<
+                float entityScale = 1.0f;
+                if (configs.Characters.TryGetValue(player.ConfigId, out var pCfg)) entityScale = pCfg.Scale;
+                float offset = (10f * entityScale) + 15f;
+
+                float spawnX = player.X;
+                float spawnY = player.Y;
+
+                if (weapon.SlotIndex == 0) spawnX += offset;
+                else if (weapon.SlotIndex == 1) spawnX -= offset;
+                else if (weapon.SlotIndex == 2) spawnY -= offset;
+                else if (weapon.SlotIndex == 3) spawnY += offset;
+
+                float dirX = 0;
+                float dirY = 0;
+                bool shouldFire = false;
+
+                // >>> NEW: AUTO-SHOT VS MANUAL LOGIC <<<
+                if (config.AutoShot)
                 {
-                    var config = configs.Weapons[weapon.ConfigId];
-                    weapon.CurrentCooldown = config.CooldownSeconds;
+                    float finalRange = config.Range + player.GetTotalStat("range", configs);
+                    float bestDistSq = finalRange * finalRange;
+                    EnemyEntity target = null;
 
-                    // >>> DYNAMIC OFFSET FIX: Match Client Exactly! <<<
-                    float entityScale = 1.0f;
-                    if (configs.Characters.TryGetValue(player.ConfigId, out var pCfg)) entityScale = pCfg.Scale;
-                    float offset = (10f * entityScale) + 15f;
+                    foreach (var enemy in state.Enemies.Values)
+                    {
+                        if (enemy.ActionState == "Dead" || enemy.Team == "Player") continue;
+                        float dx = enemy.X - spawnX;
+                        float dy = enemy.Y - spawnY;
+                        float distSq = dx * dx + dy * dy;
 
-                    float spawnX = player.X;
-                    float spawnY = player.Y;
+                        if (distSq <= bestDistSq)
+                        {
+                            bestDistSq = distSq;
+                            target = enemy;
+                        }
+                    }
 
-                    if (weapon.SlotIndex == 0) spawnX += offset;
-                    else if (weapon.SlotIndex == 1) spawnX -= offset;
-                    else if (weapon.SlotIndex == 2) spawnY -= offset;
-                    else if (weapon.SlotIndex == 3) spawnY += offset;
+                    if (target != null)
+                    {
+                        dirX = target.X - spawnX;
+                        dirY = target.Y - spawnY;
+                        shouldFire = true;
+                    }
+                }
+                else
+                {
+                    if (player.AimX != 0 || player.AimY != 0)
+                    {
+                        dirX = player.AimX - player.X;
+                        dirY = player.AimY - player.Y;
+                        shouldFire = true;
+                    }
+                }
 
-                    float dirX = player.AimX - player.X;
-                    float dirY = player.AimY - player.Y;
+                if (shouldFire)
+                {
                     float length = (float)Math.Sqrt(dirX * dirX + dirY * dirY);
-
-
                     if (length > 0)
                     {
                         float attackSpeedPct = player.GetTotalStat("attackSpeedPercent", configs);
@@ -648,6 +686,9 @@ public static class CombatSystem
         }
 
         // 2. Players vs Pickups
+        if (!configs.Difficulties.TryGetValue(state.CurrentDifficulty, out var currentDiff))
+            currentDiff = new DifficultyConfig();
+
         foreach (var player in state.Players.Values)
         {
             foreach (var pickup in state.Pickups.Values)
@@ -659,8 +700,12 @@ public static class CombatSystem
                 {
                     if (pickup.Type == PickupType.Gold)
                     {
-                        player.Gold += pickup.Value;
-                        player.GainXp(pickup.Value, configs);
+                        // >>> APPLY ECONOMY MULTIPLIERS <<<
+                        int finalGold = (int)Math.Max(1, pickup.Value * currentDiff.GoldMultiplier);
+                        int finalXp = (int)Math.Max(1, pickup.Value * currentDiff.XpMultiplier);
+
+                        player.Gold += finalGold;
+                        player.GainXp(finalXp, configs);
                         pickupsToRemove.Add(pickup.Id);
                     }
                 }

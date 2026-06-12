@@ -100,6 +100,7 @@
         "id": "nature_pulse",
         "name": "Nature Pulse",
         "textureKey": "skill_icons",
+        "showCastBar": true,
         "iconFrame": 9,
         "nextLevelId": "nature_pulse_2",
         "cooldownSeconds": 4.0,

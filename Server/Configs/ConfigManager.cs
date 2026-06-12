@@ -21,6 +21,7 @@ public class ConfigManager
     public Dictionary<string, SkillConfig> Skills { get; private set; } = new(); // <<< ADD THIS
     public Dictionary<string, MapConfig> Maps { get; private set; } = new(); // <<< ADD THIS
     public Dictionary<string, TraitConfig> Traits { get; private set; } = new(); // <<< ADD THIS
+    public Dictionary<string, DifficultyConfig> Difficulties { get; private set; } = new();
 
     public ConfigManager()
     {
@@ -98,6 +99,9 @@ public class ConfigManager
             var newTraits = File.Exists("Configs/Traits.json") ? JsonSerializer.Deserialize<Dictionary<string, TraitConfig>>(
                 File.ReadAllText("Configs/Traits.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
 
+            var newDifficulties = File.Exists("Configs/Difficulties.json") ? JsonSerializer.Deserialize<Dictionary<string, DifficultyConfig>>(
+            File.ReadAllText("Configs/Difficulties.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
+
             // 2. ATOMIC SWAP: Reassign everything at the exact same time!
             Enemies = newEnemies;
             Weapons = newWeapons;
@@ -110,6 +114,7 @@ public class ConfigManager
             LevelUpCards = newLevelUpCards;
             AllStats = newStats;
             Traits = newTraits;
+            Difficulties = newDifficulties;
 
             Console.WriteLine($"[CONFIG] Loaded successfully: {Enemies.Count} Enemies, {Weapons.Count} Weapons, {Projectiles.Count} Projectiles.");
         }

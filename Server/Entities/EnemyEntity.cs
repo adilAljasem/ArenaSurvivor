@@ -16,6 +16,11 @@ public class EnemyEntity : BaseActorEntity
     // Networked state and internal timer for animations
     public float DespawnTimer { get; set; } = 1.0f;
     public float AttackCooldown { get; set; } = 0f;
+    public float SkillWaitTimer { get; set; } = 0f;
+
+    public float WanderTargetX { get; set; } = -1f;
+    public float WanderTargetY { get; set; } = -1f;
+    public float WanderTimer { get; set; } = 0f;
 
     // Aim direction (toward current target) – sent to client for weapon rotation
     public float AimX { get; set; }
@@ -116,6 +121,7 @@ public class EnemyEntity : BaseActorEntity
         }
 
         CurrentHp = GetTotalStat("maxHp", configManager);
+        SkillWaitTimer = (float)(Random.Shared.NextDouble() * 10.0 + 5.0);
     }
 
     public override float GetTotalStat(string statName, ConfigManager configManager, GameState state = null)

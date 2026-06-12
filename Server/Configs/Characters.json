@@ -27,7 +27,7 @@
       "meleeDamage": 50,
       "rangedDamage": 50,
       "harvesting": 5,
-      "luck": 50
+      "luck": 5
     },
     "startingWeapons": [
     ],
@@ -37,7 +37,7 @@
     "startingSkills": [
     ],
     "dynamicModifiers": [],
-    "traits": []
+    "traits": ["trait_packrat"]
   },
   "char_chunky": {
     "id": "char_chunky",

@@ -28,9 +28,18 @@
     "statRollChance": 0.40,
     "maxRandomStats": 1,
     "allowedRandomStats": {
-      "meleeDamage": { "min": 1.0, "max": 3.0 },
-      "critChance": { "min": 0.01, "max": 0.03 },
-      "maxHp": { "min": 2.0, "max": 8.0 }
+      "meleeDamage": {
+        "min": 1.0,
+        "max": 3.0
+      },
+      "critChance": {
+        "min": 0.01,
+        "max": 0.03
+      },
+      "maxHp": {
+        "min": 2.0,
+        "max": 8.0
+      }
     },
     "skillRollChance": 0.10,
     "maxRandomSkills": 1,
@@ -41,7 +50,7 @@
   "dragon_fang": {
     "id": "dragon_fang",
     "name": "Dragon's Fang",
-    "itemFamily": "tooth_family",
+    "itemFamily": "dragon_fang",
     "tier": 2,
     "price": 65,
     "textureKey": "items_sheet",
@@ -72,10 +81,22 @@
     "statRollChance": 0.75,
     "maxRandomStats": 2,
     "allowedRandomStats": {
-      "meleeDamage": { "min": 4.0, "max": 10.0 },
-      "critChance": { "min": 0.03, "max": 0.07 },
-      "armor": { "min": 1.0, "max": 3.0 },
-      "maxHp": { "min": 10.0, "max": 20.0 }
+      "meleeDamage": {
+        "min": 4.0,
+        "max": 10.0
+      },
+      "critChance": {
+        "min": 0.03,
+        "max": 0.07
+      },
+      "armor": {
+        "min": 1.0,
+        "max": 3.0
+      },
+      "maxHp": {
+        "min": 10.0,
+        "max": 20.0
+      }
     },
     "skillRollChance": 0.25,
     "maxRandomSkills": 1,
@@ -87,7 +108,7 @@
   "magical_leaf": {
     "id": "magical_leaf",
     "name": "Grind's Leaf",
-    "itemFamily": "nature_family",
+    "itemFamily": "magical_leaf",
     "tier": 1,
     "price": 40,
     "textureKey": "items_sheet",
@@ -108,14 +129,67 @@
     "statRollChance": 0.35,
     "maxRandomStats": 1,
     "allowedRandomStats": {
-      "maxHp": { "min": 3.0, "max": 10.0 },
-      "hpRegen": { "min": 0.5, "max": 1.5 },
-      "dodge": { "min": 0.01, "max": 0.03 }
+      "maxHp": {
+        "min": 3.0,
+        "max": 10.0
+      },
+      "hpRegen": {
+        "min": 0.5,
+        "max": 1.5
+      },
+      "dodge": {
+        "min": 0.01,
+        "max": 0.03
+      }
     },
     "skillRollChance": 0.05,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
       "nature_pulse"
+    ]
+  },
+  "magical_leaf_t2": {
+    "id": "magical_leaf_t2",
+    "name": "Grind's Leaf",
+    "itemFamily": "magical_leaf",
+    "tier": 2,
+    "price": 80,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 1,
+    "traits": [],
+    "effectsAtWaveEnd": [
+      {
+        "statName": "maxHp",
+        "amount": 250
+      }
+    ],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "hpRegen": 50
+    },
+    "statRollChance": 0.35,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "maxHp": {
+        "min": 3.0,
+        "max": 10.0
+      },
+      "hpRegen": {
+        "min": 0.5,
+        "max": 1.5
+      },
+      "dodge": {
+        "min": 0.01,
+        "max": 0.03
+      }
+    },
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": [
+      "nature_pulse",
+      "rooted_power"
     ]
   },
   "world_tree_branch": {
@@ -157,10 +231,22 @@
     "statRollChance": 0.80,
     "maxRandomStats": 3,
     "allowedRandomStats": {
-      "maxHp": { "min": 15.0, "max": 40.0 },
-      "hpRegen": { "min": 2.0, "max": 6.0 },
-      "dodge": { "min": 0.03, "max": 0.08 },
-      "armor": { "min": 2.0, "max": 5.0 }
+      "maxHp": {
+        "min": 15.0,
+        "max": 40.0
+      },
+      "hpRegen": {
+        "min": 2.0,
+        "max": 6.0
+      },
+      "dodge": {
+        "min": 0.03,
+        "max": 0.08
+      },
+      "armor": {
+        "min": 2.0,
+        "max": 5.0
+      }
     },
     "skillRollChance": 0.40,
     "maxRandomSkills": 1,
@@ -200,9 +286,18 @@
     "statRollChance": 0.50,
     "maxRandomStats": 2,
     "allowedRandomStats": {
-      "meleeDamage": { "min": 1.0, "max": 4.0 },
-      "rangedDamage": { "min": 1.0, "max": 4.0 },
-      "critChance": { "min": 0.01, "max": 0.04 }
+      "meleeDamage": {
+        "min": 1.0,
+        "max": 4.0
+      },
+      "rangedDamage": {
+        "min": 1.0,
+        "max": 4.0
+      },
+      "critChance": {
+        "min": 0.01,
+        "max": 0.04
+      }
     },
     "skillRollChance": 0.15,
     "maxRandomSkills": 1,
@@ -253,10 +348,22 @@
     "statRollChance": 0.90,
     "maxRandomStats": 3,
     "allowedRandomStats": {
-      "damagePercent": { "min": 0.05, "max": 0.20 },
-      "critChance": { "min": 0.05, "max": 0.12 },
-      "lifeSteal": { "min": 0.01, "max": 0.04 },
-      "movementSpeed": { "min": 5.0, "max": 20.0 }
+      "damagePercent": {
+        "min": 0.05,
+        "max": 0.20
+      },
+      "critChance": {
+        "min": 0.05,
+        "max": 0.12
+      },
+      "lifeSteal": {
+        "min": 0.01,
+        "max": 0.04
+      },
+      "movementSpeed": {
+        "min": 5.0,
+        "max": 20.0
+      }
     },
     "skillRollChance": 0.50,
     "maxRandomSkills": 1,
@@ -284,9 +391,18 @@
     "statRollChance": 0.35,
     "maxRandomStats": 1,
     "allowedRandomStats": {
-      "magicDamage": { "min": 2.0, "max": 5.0 },
-      "engineering": { "min": 1.0, "max": 3.0 },
-      "attackSpeedPercent": { "min": 0.02, "max": 0.06 }
+      "magicDamage": {
+        "min": 2.0,
+        "max": 5.0
+      },
+      "engineering": {
+        "min": 1.0,
+        "max": 3.0
+      },
+      "attackSpeedPercent": {
+        "min": 0.02,
+        "max": 0.06
+      }
     },
     "skillRollChance": 0.10,
     "maxRandomSkills": 1,
@@ -327,10 +443,22 @@
     "statRollChance": 0.70,
     "maxRandomStats": 2,
     "allowedRandomStats": {
-      "magicDamage": { "min": 6.0, "max": 15.0 },
-      "engineering": { "min": 3.0, "max": 7.0 },
-      "attackSpeedPercent": { "min": 0.05, "max": 0.12 },
-      "projectileSpeedPercent": { "min": 0.05, "max": 0.15 }
+      "magicDamage": {
+        "min": 6.0,
+        "max": 15.0
+      },
+      "engineering": {
+        "min": 3.0,
+        "max": 7.0
+      },
+      "attackSpeedPercent": {
+        "min": 0.05,
+        "max": 0.12
+      },
+      "projectileSpeedPercent": {
+        "min": 0.05,
+        "max": 0.15
+      }
     },
     "skillRollChance": 0.30,
     "maxRandomSkills": 1,
@@ -359,10 +487,22 @@
     "statRollChance": 0.35,
     "maxRandomStats": 1,
     "allowedRandomStats": {
-      "movementSpeed": { "min": 5.0, "max": 15.0 },
-      "haste": { "min": 1.0, "max": 3.0 },
-      "attackSpeedPercent": { "min": 0.01, "max": 0.05 },
-      "dodge": { "min": 0.01, "max": 0.03 }
+      "movementSpeed": {
+        "min": 5.0,
+        "max": 15.0
+      },
+      "haste": {
+        "min": 1.0,
+        "max": 3.0
+      },
+      "attackSpeedPercent": {
+        "min": 0.01,
+        "max": 0.05
+      },
+      "dodge": {
+        "min": 0.01,
+        "max": 0.03
+      }
     },
     "skillRollChance": 0.05,
     "maxRandomSkills": 1,
@@ -402,10 +542,22 @@
     "statRollChance": 0.60,
     "maxRandomStats": 2,
     "allowedRandomStats": {
-      "movementSpeed": { "min": 15.0, "max": 35.0 },
-      "haste": { "min": 3.0, "max": 8.0 },
-      "attackSpeedPercent": { "min": 0.05, "max": 0.12 },
-      "dodge": { "min": 0.03, "max": 0.06 }
+      "movementSpeed": {
+        "min": 15.0,
+        "max": 35.0
+      },
+      "haste": {
+        "min": 3.0,
+        "max": 8.0
+      },
+      "attackSpeedPercent": {
+        "min": 0.05,
+        "max": 0.12
+      },
+      "dodge": {
+        "min": 0.03,
+        "max": 0.06
+      }
     },
     "skillRollChance": 0.25,
     "maxRandomSkills": 1,
@@ -434,9 +586,18 @@
     "statRollChance": 0.50,
     "maxRandomStats": 2,
     "allowedRandomStats": {
-      "luck": { "min": 2.0, "max": 8.0 },
-      "harvesting": { "min": 1.0, "max": 5.0 },
-      "xpGainPercent": { "min": 0.02, "max": 0.08 }
+      "luck": {
+        "min": 2.0,
+        "max": 8.0
+      },
+      "harvesting": {
+        "min": 1.0,
+        "max": 5.0
+      },
+      "xpGainPercent": {
+        "min": 0.02,
+        "max": 0.08
+      }
     },
     "skillRollChance": 0.0,
     "maxRandomSkills": 0,
@@ -467,9 +628,18 @@
     "statRollChance": 0.45,
     "maxRandomStats": 1,
     "allowedRandomStats": {
-      "lifeSteal": { "min": 0.005, "max": 0.02 },
-      "meleeDamage": { "min": 1.0, "max": 3.0 },
-      "hpRegen": { "min": 0.2, "max": 1.0 }
+      "lifeSteal": {
+        "min": 0.005,
+        "max": 0.02
+      },
+      "meleeDamage": {
+        "min": 1.0,
+        "max": 3.0
+      },
+      "hpRegen": {
+        "min": 0.2,
+        "max": 1.0
+      }
     },
     "skillRollChance": 0.0,
     "maxRandomSkills": 0,

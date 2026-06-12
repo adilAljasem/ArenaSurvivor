@@ -155,5 +155,24 @@
         "engineMechanics": {
             "enemySpawnRateMult": 0.25
         }
+    },
+    "trait_packrat": {
+        "Id": "trait_packrat",
+        "Name": "Pack Rat",
+        "Description": "Increases maximum item capacity by 5 slots.",
+        "EngineMechanics": {
+            "bonusItemSlots": 5
+        }
+    },
+    "trait_cursed_pockets": {
+        "Id": "trait_cursed_pockets",
+        "Name": "Cursed Pockets",
+        "Description": "Grants +50% Damage, but removes 2 item slots.",
+        "StatBonuses": {
+            "damagePercent": 0.50
+        },
+        "EngineMechanics": {
+            "bonusItemSlots": -2
+        }
     }
 }
