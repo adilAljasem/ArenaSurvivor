@@ -139,7 +139,7 @@
             15
         ],
         "chargeVfxFrameRate": 15,
-        "chargeVfxScale": 1.0,
+        "chargeVfxScale": 0.7,
         "cooldownSeconds": 10.0,
         "castTimeSeconds": 3.5,
         "triggerType": "Auto",

@@ -2,7 +2,7 @@ import * as Phaser from 'phaser';
 import { HubConnectionBuilder, HubConnectionState } from '@microsoft/signalr';
 import { ShopUI, SkillActionBar, Tooltip } from './ui/UI';
 import { EscMenu } from './ui/EscMenu';
-import { ActorRenderer, VfxRenderer, WorldRenderer, precalculateSpriteTops } from './RenderSystems';
+import { ActorRenderer, VfxRenderer, WorldRenderer } from './RenderSystems';
 import { AudioManager } from './AudioManager';
 import pako from 'pako';
 
@@ -83,7 +83,6 @@ class GameScene extends Phaser.Scene {
   private previousPhase: string = "WaitingForPlayers";
   private manuallyClosedShop: boolean = false;
 
-  private hasScannedSprites: boolean = false;
 
   // Spacebar loot pickup
   private spaceKey!: Phaser.Input.Keyboard.Key;
@@ -130,6 +129,10 @@ class GameScene extends Phaser.Scene {
     this.load.spritesheet('characters_sheet1', 'assets/Characters/char1.png', { frameWidth: 32, frameHeight: 32 });
     this.load.spritesheet('ammo_sheet2', '/assets/Weapons/ammo2.png', { frameWidth: 240, frameHeight: 218 });
     this.load.spritesheet('goblinCavebat_sheet', '/assets/Enemies/goblin-cavbat.png', { frameWidth: 400, frameHeight: 268 });
+    this.load.spritesheet('spike_enemy', '/assets/Enemies/spike enemy.png', { frameWidth: 47, frameHeight: 38 });
+    this.load.spritesheet('spring_enemy', '/assets/Enemies/spring enemy.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('effects2', '/assets/Effects/effect2.png', { frameWidth: 64, frameHeight: 96 });
+    this.load.spritesheet('icons1', '/assets/Effects/icons1.png', { frameWidth: 32, frameHeight: 32 });
 
     this.load.spritesheet('skill_icons', '/assets/Skills/skillsicon.png', { frameWidth: 312, frameHeight: 307 });
     this.load.spritesheet('Enemies1_sheet', '/assets/Enemies/mosquito-fly devil - fly fortest.png', { frameWidth: 64, frameHeight: 64 });
@@ -184,7 +187,7 @@ class GameScene extends Phaser.Scene {
           } else {
             this.add.grid(this.mapWidth / 2, this.mapHeight / 2, this.mapWidth, this.mapHeight, 64, 64, 0x1a1a1a, 1, 0x333333, 1).setDepth(-2);
           }
-          
+
           const border = this.add.graphics();
           border.lineStyle(16, 0xff0000, 1);
           border.strokeRect(10, 10, this.mapWidth - 20, this.mapHeight - 20);
@@ -200,6 +203,7 @@ class GameScene extends Phaser.Scene {
       masterConfigs = payload;
       console.log("Handshake received. Configs loaded.");
       initConfigs();
+      setupChatUI(this, connection);
     });
 
     if (this.input.keyboard) {
@@ -621,11 +625,6 @@ class GameScene extends Phaser.Scene {
       connection.invoke("TryPickupLoot", this.nearbyLootId).catch((err: any) => console.error(err));
     }
 
-    if (masterConfigs.enemies && !this.hasScannedSprites) {
-      precalculateSpriteTops(this, masterConfigs);
-      this.hasScannedSprites = true;
-      console.log("Sprites scanned successfully!");
-    }
 
     // >>> FIX: Hybrid Physics (Linear vs Orbital) <<<
     this.projectileSprites.forEach((sprite) => {
@@ -823,6 +822,196 @@ class GameScene extends Phaser.Scene {
       });
     });
   }
+}
+
+// =========================================================
+// CHAT & COMMAND UI OVERLAY
+// =========================================================
+export function setupChatUI(scene: Phaser.Scene, connection: any) {
+  // Define available commands for the auto-complete feature
+  const availableCommands = [
+    { cmd: '/setwave', desc: '/setwave <number>' },
+    { cmd: '/skipphase', desc: '/skipphase' },
+    { cmd: '/spawnenemy', desc: '/spawnenemy <id> [count]' },
+    { cmd: '/heal', desc: '/heal' },
+    { cmd: '/givegold', desc: '/givegold <amount>' },
+    { cmd: '/givexp', desc: '/givexp <amount>' },
+    { cmd: '/killall', desc: '/killall' },
+    { cmd: '/giveweapon', desc: '/giveweapon <configId>' }
+  ];
+
+  // 1. Inject HTML & CSS into the document
+  const chatHTML = `
+    <style>
+      #chat-wrapper { position: absolute; bottom: 20px; left: 20px; width: 350px; z-index: 10000; font-family: 'Segoe UI', sans-serif; pointer-events: none; }
+      #chat-history { max-height: 200px; overflow-y: hidden; display: flex; flex-direction: column; justify-content: flex-end; margin-bottom: 5px; }
+      .chat-msg { background: rgba(0,0,0,0.6); color: white; padding: 4px 8px; border-radius: 4px; margin-top: 2px; text-shadow: 1px 1px 1px black; width: fit-content; font-size: 14px; }
+      .sys-msg { color: #00ffff; font-style: italic; }
+      #chat-input-container { position: relative; display: none; pointer-events: auto; }
+      #chat-input { width: 100%; padding: 10px; background: rgba(0,0,0,0.8); color: white; border: 1px solid #555; border-radius: 4px; outline: none; font-size: 14px; box-sizing: border-box; }
+      #chat-suggestions { position: absolute; bottom: 100%; left: 0; width: 100%; background: rgba(0,0,0,0.9); border: 1px solid #555; border-bottom: none; border-radius: 4px 4px 0 0; color: white; display: none; flex-direction: column; }
+      .suggestion-item { padding: 8px; cursor: pointer; border-bottom: 1px solid #333; font-size: 13px; }
+      .suggestion-item:hover, .suggestion-item.active { background: #333; color: #00ff00; }
+    </style>
+    <div id="chat-wrapper">
+      <div id="chat-history"></div>
+      <div id="chat-input-container">
+        <div id="chat-suggestions"></div>
+        <input type="text" id="chat-input" placeholder="Type a message or /command..." autocomplete="off" />
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', chatHTML);
+
+  const historyBox = document.getElementById('chat-history')!;
+  const inputContainer = document.getElementById('chat-input-container')!;
+  const inputEl = document.getElementById('chat-input') as HTMLInputElement;
+  const suggestionsBox = document.getElementById('chat-suggestions')!;
+
+  let isChatActive = false;
+  let suggestionIndex = -1;
+  let currentMatches: any[] = [];
+
+  // 2. Logic: Adding messages to the screen
+  const addMessage = (sender: string, text: string) => {
+    const isSystem = sender === "System";
+    const msgDiv = document.createElement('div');
+    msgDiv.className = `chat-msg ${isSystem ? 'sys-msg' : ''}`;
+    msgDiv.innerText = isSystem ? text : `[${sender}]: ${text}`;
+    historyBox.appendChild(msgDiv);
+
+    if (historyBox.children.length > 10) historyBox.firstChild?.remove();
+
+    // Auto-fade out messages after 5 seconds if chat is closed
+    if (!isChatActive) {
+      setTimeout(() => { if (!isChatActive) msgDiv.style.opacity = '0.3'; }, 5000);
+    }
+  };
+
+  // 3. Listen for incoming server messages
+  connection.on("ReceiveChatMessage", (sender: string, msg: string) => {
+    addMessage(sender, msg);
+  });
+
+  // 4. Draw Autocomplete Suggestions
+  const drawSuggestions = () => {
+    suggestionsBox.innerHTML = '';
+    if (currentMatches.length > 0) {
+      suggestionsBox.style.display = 'flex';
+      currentMatches.forEach((m, idx) => {
+        const item = document.createElement('div');
+        // Add the 'active' class if this is the currently highlighted suggestion
+        item.className = 'suggestion-item' + (idx === suggestionIndex ? ' active' : '');
+        item.innerText = m.desc;
+
+        // Mouse click selection
+        item.onclick = () => {
+          inputEl.value = m.cmd + ' ';
+          inputEl.focus();
+          suggestionsBox.style.display = 'none';
+          suggestionIndex = -1;
+          currentMatches = [];
+        };
+        suggestionsBox.appendChild(item);
+      });
+    } else {
+      suggestionsBox.style.display = 'none';
+    }
+  };
+
+  // 5. Input text changed
+  inputEl.addEventListener('input', () => {
+    const val = inputEl.value.toLowerCase();
+    suggestionIndex = -1; // Reset selection when typing
+
+    if (val.startsWith('/')) {
+      currentMatches = availableCommands.filter(c => c.cmd.startsWith(val));
+    } else {
+      currentMatches = [];
+    }
+    drawSuggestions();
+  });
+
+  // 6. DOM Keyboard Handler (Arrows & Enter inside the input box)
+  inputEl.addEventListener('keydown', (e) => {
+    // Stop Phaser from hearing anything we type in here
+    e.stopPropagation();
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault(); // Stop cursor from jumping around
+      if (currentMatches.length > 0) {
+        suggestionIndex = (suggestionIndex + 1) % currentMatches.length;
+        drawSuggestions();
+      }
+    }
+    else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (currentMatches.length > 0) {
+        suggestionIndex = (suggestionIndex - 1 + currentMatches.length) % currentMatches.length;
+        drawSuggestions();
+      }
+    }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+
+      // IF a suggestion is highlighted, Enter selects it!
+      if (suggestionIndex >= 0 && currentMatches.length > 0) {
+        inputEl.value = currentMatches[suggestionIndex].cmd + ' ';
+        suggestionIndex = -1;
+        currentMatches = [];
+        drawSuggestions();
+        return; // Stop here so they can type the rest of the command
+      }
+
+      // OTHERWISE, send the message to the server
+      const text = inputEl.value.trim();
+      if (text.length > 0) {
+        connection.invoke("SendChatMessage", text).catch((err: any) => console.error(err));
+      }
+
+      // Close the UI
+      inputEl.value = '';
+      inputEl.blur();
+      inputContainer.style.display = 'none';
+      suggestionsBox.style.display = 'none';
+      isChatActive = false;
+      suggestionIndex = -1;
+      currentMatches = [];
+      Array.from(historyBox.children).forEach((child: any) => child.style.opacity = '0.3');
+
+      // Wait a tiny fraction of a second before giving the keyboard back to Phaser 
+      // so Phaser doesn't instantly re-open the chat
+      setTimeout(() => {
+        scene.input.keyboard!.enabled = true;
+      }, 50);
+    }
+    else if (e.key === 'Escape') {
+      // Bonus: Pressing Escape closes the chat cleanly
+      e.preventDefault();
+      inputEl.value = '';
+      inputEl.blur();
+      inputContainer.style.display = 'none';
+      suggestionsBox.style.display = 'none';
+      isChatActive = false;
+      Array.from(historyBox.children).forEach((child: any) => child.style.opacity = '0.3');
+      setTimeout(() => { scene.input.keyboard!.enabled = true; }, 50);
+    }
+  });
+
+  // 7. Phaser Global 'Enter' key interceptor (ONLY OPENS THE CHAT)
+  scene.input.keyboard?.on('keydown-ENTER', () => {
+    if (!isChatActive) {
+      isChatActive = true;
+      inputContainer.style.display = 'block';
+      inputEl.focus();
+
+      // Light up history
+      Array.from(historyBox.children).forEach((child: any) => child.style.opacity = '1.0');
+
+      // CRITICAL: Disable Phaser keyboard so it completely ignores WASD and Enter
+      scene.input.keyboard!.enabled = false;
+    }
+  });
 }
 
 const config: Phaser.Types.Core.GameConfig = {

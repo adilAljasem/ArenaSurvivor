@@ -40,7 +40,13 @@ export class ActorRenderer {
       const uiWidth = isPlayer ? 32 : (isBoss ? 80 : 32);
       const isFriendly = isPlayer || (actor.team || actor.Team) === 'Player';
       const hpColor = isFriendly ? 0x00ff00 : 0xff0000;
-      const weaponOffset = isPlayer ? (10 * scale) + 15 : (40 * scale) + 30;
+
+      // Read the custom offset from the server's handshake config
+      const explicitOffset = config?.weaponOffset ?? config?.WeaponOffset;
+      const weaponOffset = explicitOffset !== undefined && explicitOffset !== null
+        ? (explicitOffset * scale)
+        : (isPlayer ? (10 * scale) + 15 : (40 * scale) + 30);
+
 
       // 2. CREATE CONTAINER
       if (!sprites.has(safeId)) {
@@ -100,14 +106,26 @@ export class ActorRenderer {
       const body = container.getData('bodySprite') as Phaser.GameObjects.Sprite;
 
       let topY = -16;
-      if (config?.calculatedTopOffset !== undefined) {
-        topY = (config.calculatedTopOffset * scale) - 12;
+      let bottomY = 16;
+      let realHeight = 32;
+
+      // 1. Check if you manually defined the height in the JSON!
+      const explicitVisualHeight = config?.visualHeight ?? config?.VisualHeight;
+
+      if (explicitVisualHeight !== undefined && explicitVisualHeight !== null) {
+        // Use the manual JSON height
+        const halfHeight = (explicitVisualHeight * scale) / 2;
+        topY = -halfHeight - 20; // Health bar sits 20px above their head
+        bottomY = halfHeight + 10; // Cast bar sits 10px below their feet
+        realHeight = explicitVisualHeight * scale;
       } else {
+        // 2. Fallback if you haven't updated the JSON for this monster yet
         const bodyHalfHeight = (body && body.displayHeight) ? body.displayHeight / 2 : 16;
-        topY = -bodyHalfHeight - 12;
+        topY = -bodyHalfHeight - 20;
+        bottomY = bodyHalfHeight + 10;
+        realHeight = bodyHalfHeight * 2;
       }
 
-      const bottomY = (body && body.displayHeight) ? body.displayHeight / (isPlayer ? 2 : 3) : 16;
 
       const hpBg = container.getData('hpBg') as Phaser.GameObjects.Rectangle;
       const hpFill = container.getData('hpFill') as Phaser.GameObjects.Rectangle;
@@ -441,7 +459,7 @@ export class ActorRenderer {
         }
         container.setData('prevHp', currentHp);
 
-        applyVisualFX(scene, container, body as Phaser.GameObjects.Sprite, actor, configs, topY);
+        applyVisualFX(scene, container, body as Phaser.GameObjects.Sprite, actor, configs, topY, bottomY, realHeight);
       }
     });
 
@@ -547,25 +565,47 @@ export class WorldRenderer {
       // ====================================================================
       if (!isDodge && !isBlock && !isHeal) {
 
+        // >>> THE FIX: CHECK IF THE HIT TARGET IS FRIENDLY <<<
+        let isFriendlyHit = false;
+
+        // 1. Check if hit is near a player
+        const playerList = state.players || state.Players || [];
+        playerList.forEach((p: any) => {
+          const px = p.x ?? p.X;
+          const py = p.y ?? p.Y;
+          if ((px - startX) * (px - startX) + (py - startY) * (py - startY) < 1600) isFriendlyHit = true;
+        });
+
+        // 2. Check if hit is near a friendly summon
+        const enemyList = state.enemies || state.Enemies || [];
+        enemyList.forEach((e: any) => {
+          const team = e.team ?? e.Team ?? "Enemy";
+          if (team !== "Enemy") {
+            const ex = e.x ?? e.X;
+            const ey = e.y ?? e.Y;
+            if ((ex - startX) * (ex - startX) + (ey - startY) * (ey - startY) < 1600) isFriendlyHit = true;
+          }
+        });
+
+
         // 1. GENTLE CAMERA BUMP (CRITS ONLY)
-        // Removed all normal-hit shaking. Crits now produce a micro-bump (40ms).
         if (isCrit && Math.random() < 0.5) {
           const cam = scene.cameras.main;
-
-          // Only trigger if the camera isn't already tweening from a previous hit
           if (!scene.tweens.isTweening(cam)) {
             scene.tweens.add({
               targets: cam,
-              zoom: 1.002, // Zoom in by just 1.5%
-              rotation: (Math.random() - 0.5) * 0.005, // Microscopic random tilt
-              duration: 50, // Fast punch in
-              yoyo: true,   // Automatically reverse back to normal
-              ease: 'Sine.easeInOut' // Smooth curve, no jagged snapping
+              zoom: 1.002,
+              rotation: (Math.random() - 0.5) * 0.005,
+              duration: 50,
+              yoyo: true,
+              ease: 'Sine.easeInOut'
             });
           }
         }
-        // 2. CHUNKY BROTATO PARTICLES
-        if (Math.random() < 0.35 || isCrit) {
+
+        // 2. CHUNKY BROTATO PARTICLES 
+        // >>> We now skip this entirely if isFriendlyHit is true! <<<
+        if (!isFriendlyHit && (Math.random() < 0.35 || isCrit)) {
           let hitColor = 0xff0000; // Default Red
           let closestDistSq = 999999;
 
@@ -587,24 +627,22 @@ export class WorldRenderer {
 
           const numParticles = isCrit ? 8 : 4;
           for (let i = 0; i < numParticles; i++) {
-            // MASSIVE SIZE INCREASE: 20 to 32 pixels wide
             const pSize = Phaser.Math.Between(20, 32);
             const p = scene.add.rectangle(startX, startY, pSize, pSize, hitColor).setDepth(19);
 
-            // Add a solid black border to make the chunky particles pop against the map
             p.setStrokeStyle(2, 0x000000, 1);
 
             const angle = Math.random() * Math.PI * 2;
-            const speed = Math.random() * 120 + 60; // Faster burst outward
+            const speed = Math.random() * 120 + 60;
 
             scene.tweens.add({
               targets: p,
               x: startX + Math.cos(angle) * speed,
               y: startY + Math.sin(angle) * speed,
               scale: 0,
-              alpha: 1, // Kept at full opacity so they stay visible while shrinking
+              alpha: 1,
               duration: Math.random() * 300 + 200,
-              ease: 'Cubic.easeOut', // Snappier popping animation
+              ease: 'Cubic.easeOut',
               onComplete: () => p.destroy()
             });
           }
@@ -706,7 +744,16 @@ export class WorldRenderer {
   }
 }
 
-export function applyVisualFX(scene: Phaser.Scene, container: Phaser.GameObjects.Container, mainSprite: Phaser.GameObjects.Sprite, entity: any, masterConfigs: any, topY: number = -40) {
+export function applyVisualFX(
+  scene: Phaser.Scene,
+  container: Phaser.GameObjects.Container,
+  mainSprite: Phaser.GameObjects.Sprite,
+  entity: any,
+  masterConfigs: any,
+  topY: number,
+  bottomY: number = 20,
+  realHeight: number = 32 // <--- New parameter!
+) {
   const currentFxState = `${entity.actionState}_${entity.currentCastingSkillId || ''}_${(entity.activeEffects || []).join(',')}`;
   const isFlashing = scene.time.now < (container.getData('flashTimer') || 0);
 
@@ -714,142 +761,95 @@ export function applyVisualFX(scene: Phaser.Scene, container: Phaser.GameObjects
   container.setData('lastFxState', currentFxState);
   container.setData('wasFlashing', isFlashing);
 
-  container.list.filter(c => c.name === 'overhead_fx').forEach(c => c.destroy());
+  container.list.filter(c => c.name === 'overhead_fx' || c.name === 'status_fx').forEach(c => c.destroy());
 
   if (isFlashing) mainSprite.setTintFill(0xffffff);
   else mainSprite.clearTint();
 
-  let yOffset = topY - 12;
-
-  const renderConfig = (config: any, isSkill: boolean) => {
-    const tex = isSkill ? (config.chargeVfxTextureKey || config.ChargeVfxTextureKey || config.textureKey || config.TextureKey) : (config.textureKey || config.TextureKey);
-    const animArray = isSkill ? (config.chargeVfxAnimFrames || config.ChargeVfxAnimFrames || config.animSkill || config.AnimSkill) : (config.animEffect || config.AnimEffect);
-    const colorTint = config.colorTint || config.ColorTint;
-    const frameRate = isSkill ? (config.chargeVfxFrameRate || config.ChargeVfxFrameRate || config.animFrameRate || config.AnimFrameRate || 15) : (config.animEffectFrameRate || config.AnimEffectFrameRate || 15);
-    const vfxScale = isSkill ? (config.chargeVfxScale || config.ChargeVfxScale || 1.0) : (config.scale || config.Scale || 1.0);
-    const isRepeated = config.isRepeated ?? config.IsRepeated ?? true;
-
-    // 2. Play the Charge Animation Overhead
-    if (animArray && animArray.length === 2 && tex) {
-      const fxSprite = scene.add.sprite(0, yOffset, tex).setName('overhead_fx');
-      fxSprite.setScale(vfxScale);
-      container.add(fxSprite);
-
-      const animKey = `${config.id || config.Id}_${isSkill ? 'charge' : 'anim'}`;
-      if (!scene.anims.exists(animKey)) {
-        scene.anims.create({
-          key: animKey,
-          frames: scene.anims.generateFrameNumbers(tex, { start: animArray[0], end: animArray[1] }),
-          frameRate: frameRate,
-          repeat: isRepeated ? -1 : 0
-        });
-      }
-      fxSprite.play(animKey);
-      yOffset -= (24 * vfxScale);
-    }
-    // >>> THE FIX: Add !isSkill to prevent the character from turning red while casting! <<<
-    else if (colorTint && !isFlashing && !isSkill) {
-      const tintValue = typeof colorTint === 'string' ? parseInt(colorTint.replace(/^#|^0x/i, ''), 16) : colorTint;
-      mainSprite.setTint(tintValue);
-    }
-    // 4. Static Icon 
-    else if (!isSkill) {
-      const iconFrame = config.iconFrame ?? config.IconFrame;
-      if (iconFrame !== undefined && tex) {
-        const fxSprite = scene.add.sprite(0, yOffset, tex, iconFrame).setName('overhead_fx');
-        container.add(fxSprite);
-        yOffset -= 24;
-      }
-    }
-  };
-
-  // Render Charging Overhead
+  // =========================================================
+  // 1. OVERHEAD: SKILL CHARGING ANIMATIONS
+  // =========================================================
   if (entity.actionState === 'Casting' && entity.currentCastingSkillId) {
     const skillConfig = (masterConfigs.skills || masterConfigs.Skills)?.[entity.currentCastingSkillId] ?? null;
-    if (skillConfig) renderConfig(skillConfig, true);
+    if (skillConfig) {
+      const tex = skillConfig.chargeVfxTextureKey || skillConfig.ChargeVfxTextureKey || skillConfig.textureKey || skillConfig.TextureKey;
+      const animArray = skillConfig.chargeVfxAnimFrames || skillConfig.ChargeVfxAnimFrames || skillConfig.animSkill || skillConfig.AnimSkill;
+      const frameRate = skillConfig.chargeVfxFrameRate || skillConfig.ChargeVfxFrameRate || skillConfig.animFrameRate || skillConfig.AnimFrameRate || 15;
+      const isRepeated = skillConfig.isRepeated ?? skillConfig.IsRepeated ?? true;
+
+      // >>> TRUE HEIGHT SCALING <<<
+      // A standard character is roughly 32 visible pixels tall.
+      // We calculate how many times bigger the TRUE pixel height is.
+      const visualProportion = realHeight / 32.0;
+
+      // Dampen it: It grows with the boss, but never goes above 2.5x size
+      const dampedScale = Math.min(2.5, Math.max(0.5, 1.0 + (visualProportion - 1.0) * 0.4));
+      const baseVfxScale = skillConfig.chargeVfxScale || skillConfig.ChargeVfxScale || 1.0;
+      const finalVfxScale = baseVfxScale * dampedScale;
+
+      if (animArray && animArray.length === 2 && tex) {
+        // Float height dynamically scales too, keeping it above the health bar
+        const floatHeight = topY - (40 * finalVfxScale); // Pushed further up into the sky
+        const fxSprite = scene.add.sprite(0, floatHeight, tex).setName('overhead_fx');
+        fxSprite.setScale(finalVfxScale);
+        container.add(fxSprite);
+
+        const animKey = `${skillConfig.id || skillConfig.Id}_charge`;
+        if (!scene.anims.exists(animKey)) {
+          scene.anims.create({
+            key: animKey,
+            frames: scene.anims.generateFrameNumbers(tex, { start: animArray[0], end: animArray[1] }),
+            frameRate: frameRate,
+            repeat: isRepeated ? -1 : 0
+          });
+        }
+        fxSprite.play(animKey);
+      }
+    }
   }
 
+  // =========================================================
+  // 2. STATUS BAR (MINI ICONS WITH GLOW)
+  // =========================================================
   if (entity.activeEffects && entity.activeEffects.length > 0) {
+    const iconSize = 20;
+    const spacing = 6;
+
+    const totalWidth = (entity.activeEffects.length * iconSize) + ((entity.activeEffects.length - 1) * spacing);
+    let currentX = -(totalWidth / 2) + (iconSize / 2);
+
+    // Because topY is now pushed -32 pixels up, topY + 16 places the icons 
+    // exactly underneath the health bar, totally clear of the sprite's head!
+    const effectY = topY - 14; // Negative pushes it up, sitting neatly on top of the health bar
     entity.activeEffects.forEach((effectId: string) => {
       const effectConfig = (masterConfigs.effects || masterConfigs.Effects)?.[effectId] ?? null;
-      if (effectConfig) renderConfig(effectConfig, false);
+      if (!effectConfig) return;
+
+      const tex = effectConfig.textureKey || effectConfig.TextureKey;
+      const frame = effectConfig.iconFrame ?? effectConfig.IconFrame ?? 0;
+      const colorTint = effectConfig.colorTint || effectConfig.ColorTint;
+      const isBuff = effectConfig.isBuff ?? effectConfig.IsBuff ?? false;
+
+      if (tex) {
+        const iconSprite = scene.add.sprite(currentX, effectY, tex, frame).setName('status_fx');
+        iconSprite.setDisplaySize(iconSize, iconSize);
+
+        const glowColor = isBuff ? 0x00ff00 : 0xff0000;
+        iconSprite.postFX.addGlow(glowColor, 2, 0, false, 0.1, 4);
+
+        container.add(iconSprite);
+        currentX += (iconSize + spacing);
+      }
+
+      if (colorTint && !isFlashing) {
+        const tintValue = typeof colorTint === 'string' ? parseInt(colorTint.replace(/^#|^0x/i, ''), 16) : colorTint;
+        mainSprite.setTint(tintValue);
+      }
     });
   }
 }
 
-export function precalculateSpriteTops(scene: Phaser.Scene, masterConfigs: any) {
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return;
 
-  const processConfigs = (configGroup: any) => {
-    if (!configGroup) return;
-
-    for (const key in configGroup) {
-      const config = configGroup[key];
-      if (!config.textureKey || !scene.textures.exists(config.textureKey)) continue;
-      if (config.calculatedTopOffset !== undefined) continue;
-
-      const texture = scene.textures.get(config.textureKey);
-      const frame = texture.get(config.iconFrame || 0);
-
-      canvas.width = frame.cutWidth;
-      canvas.height = frame.cutHeight;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      const sourceImage = texture.getSourceImage() as HTMLImageElement | HTMLCanvasElement;
-      ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 0, 0, frame.cutWidth, frame.cutHeight);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imageData.data;
-
-      let topY = 0;
-      let foundTop = false;
-
-      // >>> NEW: Variables to track average color
-      let rSum = 0, gSum = 0, bSum = 0, pixelCount = 0;
-
-      for (let y = 0; y < canvas.height; y++) {
-        for (let x = 0; x < canvas.width; x++) {
-          const idx = (y * canvas.width + x) * 4;
-          const r = data[idx];
-          const g = data[idx + 1];
-          const b = data[idx + 2];
-          const alpha = data[idx + 3];
-
-          // If the pixel is visible
-          if (alpha > 10) {
-            if (!foundTop) {
-              topY = y;
-              foundTop = true;
-            }
-
-            // Add the pixel's color to our average pool
-            rSum += r;
-            gSum += g;
-            bSum += b;
-            pixelCount++;
-          }
-        }
-      }
-
-      const centerY = frame.cutHeight / 2;
-      config.calculatedTopOffset = topY - centerY;
-
-      // >>> NEW: Calculate the average color of the sprite and save it as a hex number!
-      if (pixelCount > 0) {
-        const avgR = Math.round(rSum / pixelCount);
-        const avgG = Math.round(gSum / pixelCount);
-        const avgB = Math.round(bSum / pixelCount);
-        config.calculatedBloodColor = (avgR << 16) | (avgG << 8) | avgB;
-      } else {
-        config.calculatedBloodColor = 0xff0000; // Fallback red just in case
-      }
-    }
-  };
-
-  processConfigs(masterConfigs.characters);
-  processConfigs(masterConfigs.enemies);
-}
 
 export class VfxRenderer {
   static renderAoeEvents(scene: Phaser.Scene, aoeEvents: any[], configs: any) {

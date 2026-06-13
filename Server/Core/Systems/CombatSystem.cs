@@ -46,10 +46,14 @@ public static class CombatSystem
 
                 var config = configs.Weapons[weapon.ConfigId];
 
-                // >>> DYNAMIC OFFSET FIX: Match Client Exactly! <<<
                 float entityScale = 1.0f;
-                if (configs.Characters.TryGetValue(player.ConfigId, out var pCfg)) entityScale = pCfg.Scale;
-                float offset = (10f * entityScale) + 15f;
+                float offset = 25f; // Fallback
+                if (configs.Characters.TryGetValue(player.ConfigId, out var pCfg))
+                {
+                    entityScale = pCfg.Scale;
+                    // Use the custom JSON offset if it exists, otherwise use the old default math
+                    offset = pCfg.WeaponOffset.HasValue ? (pCfg.WeaponOffset.Value * entityScale) : ((10f * entityScale) + 15f);
+                }
 
                 float spawnX = player.X;
                 float spawnY = player.Y;
@@ -193,8 +197,13 @@ public static class CombatSystem
                     weapon.CurrentCooldown = wCfgS.CooldownSeconds / Math.Max(0.1f, (1f + attackSpeedPct));
 
                     float entityScale = 1.0f;
-                    if (configs.Enemies.TryGetValue(enemy.ConfigId, out var eCfg)) entityScale = eCfg.Scale;
-                    float offset = (40f * entityScale) + 30f;
+                    float offset = 70f; // Fallback
+                    if (configs.Enemies.TryGetValue(enemy.ConfigId, out var eCfg))
+                    {
+                        entityScale = eCfg.Scale;
+                        // Use the custom JSON offset if it exists, otherwise use the old default math
+                        offset = eCfg.WeaponOffset.HasValue ? (eCfg.WeaponOffset.Value * entityScale) : ((40f * entityScale) + 30f);
+                    }
                     float spawnX = enemy.X;
                     float spawnY = enemy.Y;
 
@@ -290,8 +299,14 @@ public static class CombatSystem
                 weapon.CurrentCooldown = weaponConfig.CooldownSeconds / Math.Max(0.1f, (1f + attackSpeedPct));
 
                 float entityScale = 1.0f;
-                if (configs.Enemies.TryGetValue(enemy.ConfigId, out var eCfg)) entityScale = eCfg.Scale;
-                float offset = (40f * entityScale) + 30f;
+                float offset = 70f; // Fallback
+                if (configs.Enemies.TryGetValue(enemy.ConfigId, out var eCfg))
+                {
+                    entityScale = eCfg.Scale;
+                    // Use the custom JSON offset if it exists, otherwise use the old default math
+                    offset = eCfg.WeaponOffset.HasValue ? (eCfg.WeaponOffset.Value * entityScale) : ((40f * entityScale) + 30f);
+                }
+                
 
                 float spawnX = enemy.X;
                 float spawnY = enemy.Y;

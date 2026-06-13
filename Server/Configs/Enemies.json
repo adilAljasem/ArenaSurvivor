@@ -1,45 +1,47 @@
 {
-  "goblin_basic": {
-    "id": "goblin_basic",
-    "name": "Goblin Scrapper",
+  "spring_enemy": {
+    "id": "spring_enemy",
+    "name": "Spring Enemy",
+    "WeaponOffset": 30.0,
+    "AttackRadius": 600,
     "tier": 1,
     "isBoss": false,
-    "minWave": 20,
-    "maxWave": 15,
+    "minWave": 1,
+    "maxWave": 200,
     "spawnWeight": 100,
-    "textureKey": "goblinCavebat_sheet",
-    "scale": 0.5,
+    "textureKey": "spring_enemy",
+    "VisualHeight": 20.0,
+    "scale": 2.5,
     "iconFrame": 1,
     "animIdle": [
-      1,
-      1
+      6,
+      19
     ],
     "animIdleFrameRate": 20,
     "animMove": [
-      18,
-      23
+      28,
+      33
     ],
-    "animMoveFrameRate": 5,
+    "animMoveFrameRate": 8,
     "animAttack": [
-      12,
-      16
+      20,
+      27
     ],
     "animAttackFrameRate": 15,
     "animDeath": [
-      17,
-      22
+      0,
+      5
     ],
     "animDeathFrameRate": 15,
     "attackDuration": 0.5,
     "baseStats": {
-      "maxHp": 30,
+      "maxHp": 3000,
       "movementSpeed": 90,
       "meleeDamage": 5,
       "magicDefense": 5,
       "armor": 2
     },
     "startingWeapons": [
-      "pistol"
     ],
     "startingItems": [
       "ugly_tooth"
@@ -140,35 +142,36 @@
     },
     "dynamicModifiers": []
   },
-  "ironenemy": {
-    "id": "ironenemy",
-    "name": "Iron Enemy",
+  "spike": {
+    "id": "spike",
+    "name": "Spike",
     "tier": 2,
+    "defaultFacingRight": false,
     "isBoss": false,
     "minWave": 20,
     "maxWave": 999,
     "spawnWeight": 60,
-    "textureKey": "ironenemy",
-    "scale": 1.0,
+    "textureKey": "spike_enemy",
+    "scale": 1.5,
     "iconFrame": 5,
     "animIdle": [
-      0,
-      0
+      11,
+      20
     ],
     "animIdleFrameRate": 20,
     "animMove": [
-      0,
-      5
+      21,
+      42
     ],
     "animMoveFrameRate": 5,
     "animAttack": [
-      5,
-      11
+      0,
+      4
     ],
     "animAttackFrameRate": 10,
     "animDeath": [
-      17,
-      23
+      5,
+      10
     ],
     "animDeathFrameRate": 15,
     "attackDuration": 0.8,
@@ -186,7 +189,7 @@
     "tier": 1,
     "movesRandomly": true,
     "isBoss": false,
-    "minWave": 1,
+    "minWave": 20,
     "maxWave": 35,
     "spawnWeight": 70,
     "textureKey": "mushroomEnemy",
@@ -220,9 +223,7 @@
       "lifeSteal": 0.10,
       "armor": 500
     },
-    "startingSkills": [
-    
-    ],
+    "startingSkills": [],
     "dynamicModifiers": []
   },
   "troll_runt": {

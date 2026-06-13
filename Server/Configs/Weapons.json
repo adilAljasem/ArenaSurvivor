@@ -29,7 +29,7 @@
       "rangedDamage": 0.5
     },
     "applyEffectsOnHit": [
-      "poison_dot"
+      "burning"
     ],
     "grantedSkills": [],
     "statRollChance": 0.50,

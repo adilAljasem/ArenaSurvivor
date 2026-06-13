@@ -27,7 +27,9 @@
       "meleeDamage": 50,
       "rangedDamage": 50,
       "harvesting": 5,
-      "luck": 5
+      "luck": 5,
+      "armor": 5,
+      "magicDefense": 5
     },
     "startingWeapons": [
     ],

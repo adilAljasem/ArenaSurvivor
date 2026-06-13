@@ -40,6 +40,9 @@
   "burning": {
     "id": "burning",
     "name": "On Fire",
+    "textureKey": "icons1",
+    "iconFrame": 0,
+    "scale": 2.5,
     "isBuff": false,
     "duration": 4.0,
     "tickRate": 0.5,

@@ -142,6 +142,23 @@ public class GameHub : Hub
         await Clients.Caller.SendAsync("UpdatePlayerUI", uiData);
     }
 
+    public async Task SendChatMessage(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return;
+
+        if (message.StartsWith("/"))
+        {
+            // It's a command! Route it to our clean dispatcher.
+            await Server.Commands.CommandDispatcher.ExecuteAsync(message, _gameState, _configManager, Context.ConnectionId, Clients.Caller);
+        }
+        else
+        {
+            // It's a normal chat message! 
+            // Broadcast it to everyone. In the future, you can swap "Player" with their real username.
+            await Clients.All.SendAsync("ReceiveChatMessage", "Player", message);
+        }
+    }
+
     public async Task BuyItem(string configId)
     {
         if (!_gameState.Players.TryGetValue(Context.ConnectionId, out var player)) return;

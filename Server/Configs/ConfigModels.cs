@@ -82,6 +82,8 @@ public class CharacterConfig
     public int IconFrame { get; set; }
     public bool DefaultFacingRight { get; set; } = true;
     public float Scale { get; set; } = 1.0f; // <<< ADD THIS
+    public float? WeaponOffset { get; set; }
+    public float? VisualHeight { get; set; }
 
     public int[]? AnimIdle { get; set; }
     public int AnimIdleFrameRate { get; set; } = 10;
@@ -117,6 +119,8 @@ public class EnemyConfig
     public int MaxWave { get; set; } = 999;
     public int SpawnWeight { get; set; } = 50;
     public List<int> SpawnOnWaves { get; set; } = new();
+    public float? WeaponOffset { get; set; }
+    public float? VisualHeight { get; set; }
 
     // --- Visuals & Animations ---
     public string TextureKey { get; set; } = string.Empty;
@@ -268,11 +272,9 @@ public class EffectConfig
     public bool IsBuff { get; set; }
     // --- Visuals ---
     public string TextureKey { get; set; } = string.Empty;
-    public int? IconFrame { get; set; } // Added IconFrame!
-    public int[]? AnimEffect { get; set; }
-    public int AnimEffectFrameRate { get; set; } = 15;
-    public bool IsRepeated { get; set; } = true; // Added IsRepeated!
+    public int? IconFrame { get; set; } 
     public string ColorTint { get; set; } = string.Empty;
+    public float Scale { get; set; } = 0.5f;
 
     // --- Timers & Damage ---
     public float Duration { get; set; }
