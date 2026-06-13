@@ -34,6 +34,10 @@ public static class CommandDispatcher
         _commands["givexp"] = new GiveXpCommand();
         _commands["killall"] = new KillAllCommand();
         _commands["giveweapon"] = new GiveWeaponCommand();
+
+        _commands["addtime"] = new AddTimeCommand();
+        _commands["removetime"] = new RemoveTimeCommand();
+        _commands["toggleshop"] = new ToggleShopCommand();
     }
 
     public static async Task ExecuteAsync(string input, GameState state, ConfigManager configs, string playerId, IClientProxy caller)
@@ -241,5 +245,60 @@ public class GiveWeaponCommand : ICheatCommand
                 await caller.SendAsync("ReceiveChatMessage", "System", $"Weapon ID '{wId}' not found!");
             }
         }
+    }
+}
+
+public class AddTimeCommand : ICheatCommand
+{
+    public string Description => "Adds seconds to the current phase. Usage: /addtime <seconds>";
+
+    public async Task ExecuteAsync(string[] args, GameState state, ConfigManager configs, string playerId, IClientProxy caller)
+    {
+        if (args.Length == 0 || !float.TryParse(args[0], out float seconds))
+        {
+            await caller.SendAsync("ReceiveChatMessage", "System", "Usage: /addtime <seconds>");
+            return;
+        }
+
+        state.PhaseTimer += seconds;
+        await caller.SendAsync("ReceiveChatMessage", "System", $"Added {seconds} seconds! Timer is now {Math.Round(state.PhaseTimer, 1)}s.");
+    }
+}
+
+public class RemoveTimeCommand : ICheatCommand
+{
+    public string Description => "Removes seconds from the current phase. Usage: /removetime <seconds>";
+
+    public async Task ExecuteAsync(string[] args, GameState state, ConfigManager configs, string playerId, IClientProxy caller)
+    {
+        if (args.Length == 0 || !float.TryParse(args[0], out float seconds))
+        {
+            await caller.SendAsync("ReceiveChatMessage", "System", "Usage: /removetime <seconds>");
+            return;
+        }
+
+        // Clamp to 0 so we don't break the game logic with negative time
+        state.PhaseTimer = Math.Max(0, state.PhaseTimer - seconds);
+        await caller.SendAsync("ReceiveChatMessage", "System", $"Removed {seconds} seconds! Timer is now {Math.Round(state.PhaseTimer, 1)}s.");
+    }
+}
+
+public class ToggleShopCommand : ICheatCommand
+{
+    public string Description => "Toggles the shop phase permanently on/off. Usage: /toggleshop";
+
+    public async Task ExecuteAsync(string[] args, GameState state, ConfigManager configs, string playerId, IClientProxy caller)
+    {
+        state.SkipShopPhase = !state.SkipShopPhase;
+        
+        string status = state.SkipShopPhase ? "DISABLED (Skipping directly to combat)" : "ENABLED (Normal 30s shop phase)";
+        
+        // Bonus: If they type it while already IN the shop, skip it immediately!
+        if (state.SkipShopPhase && state.Phase == GamePhase.ShopPhase)
+        {
+            state.PhaseTimer = 0; 
+        }
+
+        await caller.SendAsync("ReceiveChatMessage", "System", $"Shop Phase is now {status}!");
     }
 }

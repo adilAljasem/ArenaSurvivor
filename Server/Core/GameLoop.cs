@@ -255,6 +255,11 @@ public class GameLoop : BackgroundService
             };
             await _hubContext.Clients.Client(player.ConnectionId).SendAsync("UpdatePlayerUI", uiData);
         }
+        if (_gameState.SkipShopPhase)
+        {
+            // Instantly start the next wave, bypassing the 30-second shop timer!
+            StartNextWave();
+        }
     }
 
     private void StartNextWave()

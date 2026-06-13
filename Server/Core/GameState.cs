@@ -23,4 +23,5 @@ public class GameState
     public int CurrentWave { get; set; } = 1;
     public float PhaseTimer { get; set; } = 0f;
     public string CurrentDifficulty { get; set; } = "easy";
+    public bool SkipShopPhase { get; set; } = false;
 }

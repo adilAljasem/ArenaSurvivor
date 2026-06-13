@@ -837,7 +837,10 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
     { cmd: '/givegold', desc: '/givegold <amount>' },
     { cmd: '/givexp', desc: '/givexp <amount>' },
     { cmd: '/killall', desc: '/killall' },
-    { cmd: '/giveweapon', desc: '/giveweapon <configId>' }
+    { cmd: '/giveweapon', desc: '/giveweapon <configId>' },
+    { cmd: '/addtime', desc: '/addtime <seconds>' },
+    { cmd: '/removetime', desc: '/removetime <seconds>' },
+    { cmd: '/toggleshop', desc: '/toggleshop' }
   ];
 
   // 1. Inject HTML & CSS into the document
