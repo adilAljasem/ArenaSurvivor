@@ -835,7 +835,9 @@ export function applyVisualFX(
         iconSprite.setDisplaySize(iconSize, iconSize);
 
         const glowColor = isBuff ? 0x00ff00 : 0xff0000;
-        iconSprite.postFX.addGlow(glowColor, 2, 0, false, 0.1, 4);
+
+        // Add the ? right after preFX
+        iconSprite.preFX?.addGlow(glowColor, 2, 0, false, 0.1, 4);
 
         container.add(iconSprite);
         currentX += (iconSize + spacing);

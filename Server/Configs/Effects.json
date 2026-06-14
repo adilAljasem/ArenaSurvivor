@@ -2,12 +2,13 @@
   "poison_dot": {
     "id": "poison_dot",
     "name": "Poisoned",
+    "textureKey": "icons1",
+    "iconFrame": 1,
     "isBuff": false,
     "duration": 5.0,
     "tickRate": 1.0,
     "tickDamage": 5.0,
     "statModifiers": {},
-    "textureKey": "effects_sheet",
     "colorTint": "0x00ff00"
   },
   "adrenaline": {
@@ -41,8 +42,7 @@
     "id": "burning",
     "name": "On Fire",
     "textureKey": "icons1",
-    "iconFrame": 0,
-    "scale": 2.5,
+    "iconFrame": 288,
     "isBuff": false,
     "duration": 4.0,
     "tickRate": 0.5,

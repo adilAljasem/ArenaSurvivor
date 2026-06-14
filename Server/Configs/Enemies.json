@@ -3,7 +3,7 @@
     "id": "spring_enemy",
     "name": "Spring Enemy",
     "WeaponOffset": 30.0,
-    "AttackRadius": 600,
+    "AttackRadius": 50,
     "tier": 1,
     "isBoss": false,
     "minWave": 1,

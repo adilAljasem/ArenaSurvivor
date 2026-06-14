@@ -4,6 +4,7 @@
     "name": "Well Rounded",
     "textureKey": "characters_sheet1",
     "iconFrame": 0,
+    "VisualHeight": 15.0,
     "scale": 2.0,
     "defaultFacingRight": true,
     "animIdle": [
@@ -31,15 +32,15 @@
       "armor": 5,
       "magicDefense": 5
     },
-    "startingWeapons": [
-    ],
+    "startingWeapons": [],
     "startingItems": [
       "ugly_tooth"
     ],
-    "startingSkills": [
-    ],
+    "startingSkills": [],
     "dynamicModifiers": [],
-    "traits": ["trait_packrat"]
+    "traits": [
+      "trait_packrat"
+    ]
   },
   "char_chunky": {
     "id": "char_chunky",
