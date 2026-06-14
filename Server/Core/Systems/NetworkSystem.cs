@@ -15,13 +15,99 @@ using System.Threading.Tasks;
 
 namespace Server.Core.Systems;
 
-public static class NetworkSystem
+public class NetworkSystem : IGameSystem
 {
-    private static ConcurrentDictionary<string, HashSet<string>> _clientKnownEnemies = new();
-    private static ConcurrentDictionary<string, HashSet<string>> _clientKnownPickups = new();
+    private EventBus _eventBus = null!;
+    private readonly IHubContext<GameHub> _hubContext;
 
-    // >>> THE BANDWIDTH FIX: Delta Compressed Projectiles! <<<
-    private static ConcurrentDictionary<string, HashSet<string>> _clientKnownProjectiles = new();
+    private readonly List<DamageEventDto> _damageEvents = new();
+    private readonly List<AoeEventDto> _aoeEvents = new();
+    private readonly List<BeamEventDto> _beamEvents = new();
+
+    private readonly ConcurrentDictionary<string, HashSet<string>> _clientKnownEnemies = new();
+    private readonly ConcurrentDictionary<string, HashSet<string>> _clientKnownPickups = new();
+    private readonly ConcurrentDictionary<string, HashSet<string>> _clientKnownProjectiles = new();
+
+    public NetworkSystem(IHubContext<GameHub> hubContext)
+    {
+        _hubContext = hubContext;
+    }
+
+    public void Initialize(EventBus eventBus, ConfigManager configs)
+    {
+        _eventBus = eventBus;
+
+        _eventBus.Subscribe<DamageAppliedEvent>(ev =>
+        {
+            _damageEvents.Add(new DamageEventDto
+            {
+                X = ev.Target.X,
+                Y = ev.Target.Y,
+                Amount = ev.Amount,
+                IsCritical = ev.IsCritical,
+                IsDodge = ev.IsDodge,
+                IsBlock = ev.IsBlock
+            });
+        });
+
+        _eventBus.Subscribe<AoeVisualEvent>(ev => _aoeEvents.Add(ev.Dto));
+        _eventBus.Subscribe<BeamVisualEvent>(ev => _beamEvents.Add(ev.Dto));
+    }
+
+    public void Update(float dt, GameState state) { }
+
+    public async Task BroadcastFrameAsync(GameState gameState, ConfigManager configManager, List<ProjectileEntity> tickNewProjectiles, List<string> tickDestroyedProjectiles, CancellationToken stoppingToken)
+    {
+        if (gameState.Players.IsEmpty) return;
+
+        var globalFlatState = FlattenGlobalState(gameState, configManager, _damageEvents, _aoeEvents, _beamEvents);
+
+        float mapW = 4000f, mapH = 4000f;
+        if (configManager.Maps != null && configManager.Maps.TryGetValue("map_forest", out var currentMap))
+        {
+            mapW = currentMap.Width; mapH = currentMap.Height;
+        }
+
+        foreach (var player in gameState.Players.Values)
+        {
+            var visibleState = CullForViewport(player, mapW, mapH, globalFlatState);
+
+            var enemyDeltas = ProcessEnemyDeltas(player.ConnectionId, visibleState.Enemies);
+            var pickupDeltas = ProcessPickupDeltas(player.ConnectionId, visibleState.Pickups);
+            var projectileDeltas = ProcessProjectileDeltas(player.ConnectionId, visibleState.Projectiles);
+
+            var payload = new
+            {
+                p = visibleState.Players,
+                e = enemyDeltas.Full.Count > 0 ? enemyDeltas.Full : null,
+                me = enemyDeltas.Mini.Count > 0 ? enemyDeltas.Mini : null,
+                de = enemyDeltas.Destroyed.Count > 0 ? enemyDeltas.Destroyed : null,
+
+                nb = projectileDeltas.Full.Count > 0 ? projectileDeltas.Full : null,
+                db = projectileDeltas.Destroyed.Count > 0 ? projectileDeltas.Destroyed : null,
+
+                pk = pickupDeltas.Full.Count > 0 ? pickupDeltas.Full : null,
+                dpk = pickupDeltas.Destroyed.Count > 0 ? pickupDeltas.Destroyed : null,
+
+                dmg = visibleState.Damage.Count > 0 ? visibleState.Damage : null,
+                aoe = visibleState.Aoe.Count > 0 ? visibleState.Aoe : null,
+                bm = visibleState.Beams.Count > 0 ? visibleState.Beams : null,
+
+                ph = (byte)gameState.Phase,
+                w = gameState.CurrentWave,
+                tr = Math.Max(0, (int)gameState.PhaseTimer),
+            };
+
+            byte[] compressedBytes = CompressPayload(payload);
+            await _hubContext.Clients.Client(player.ConnectionId).SendAsync("UpdateStateCompressed", compressedBytes, cancellationToken: stoppingToken);
+        }
+
+        PerformCleanup(gameState);
+
+        _damageEvents.Clear();
+        _aoeEvents.Clear();
+        _beamEvents.Clear();
+    }
 
     private static byte GetStateId(string state) => state switch
     {
@@ -45,77 +131,11 @@ public static class NetworkSystem
 
     private static class EnemyIdx
     {
-        public const int Id = 0;
-        public const int ConfigId = 1;
-        public const int X = 2;
-        public const int Y = 3;
-        public const int CurrentHp = 4;
-        public const int MaxHp = 5;
-        public const int AimX = 6;
-        public const int AimY = 7;
-        public const int StateId = 8;
-        public const int CastingSkillId = 9;
-        public const int CastTimer = 10;
-        public const int MaxCastTimer = 11;
-        public const int ActiveEffects = 12;
-        public const int Weapons = 13;
-        public const int FiredWeapons = 14;
-        public const int Team = 15;
-    }
-
-    public static async Task BroadcastStateAsync(
-            IHubContext<GameHub> hubContext, GameState gameState, ConfigManager configManager,
-            List<DamageEventDto> tickDamageEvents, List<AoeEventDto> tickAoeEvents, List<BeamEventDto> tickBeamEvents,
-            List<ProjectileEntity> tickNewProjectiles, List<string> tickDestroyedProjectiles,
-            CancellationToken stoppingToken)
-    {
-        if (gameState.Players.IsEmpty) return;
-
-        var globalFlatState = FlattenGlobalState(gameState, configManager, tickDamageEvents, tickAoeEvents, tickBeamEvents);
-        float mapW = 4000f;
-        float mapH = 4000f;
-        if (configManager.Maps != null && configManager.Maps.TryGetValue("map_forest", out var currentMap))
-        {
-            mapW = currentMap.Width;
-            mapH = currentMap.Height;
-        }
-
-        foreach (var player in gameState.Players.Values)
-        {
-            var visibleState = CullForViewport(player, mapW, mapH, globalFlatState);
-
-            var enemyDeltas = ProcessEnemyDeltas(player.ConnectionId, visibleState.Enemies);
-            var pickupDeltas = ProcessPickupDeltas(player.ConnectionId, visibleState.Pickups);
-
-            // >>> THE BANDWIDTH FIX: ONLY SEND BULLETS THE CLIENT DOESN'T KNOW ABOUT! <<<
-            var projectileDeltas = ProcessProjectileDeltas(player.ConnectionId, visibleState.Projectiles);
-
-            var payload = new
-            {
-                p = visibleState.Players,
-                e = enemyDeltas.Full.Count > 0 ? enemyDeltas.Full : null,
-                me = enemyDeltas.Mini.Count > 0 ? enemyDeltas.Mini : null,
-                de = enemyDeltas.Destroyed.Count > 0 ? enemyDeltas.Destroyed : null,
-
-                // Projectiles only take up bandwidth exactly ONCE when they appear on screen!
-                nb = projectileDeltas.Full.Count > 0 ? projectileDeltas.Full : null,
-                db = projectileDeltas.Destroyed.Count > 0 ? projectileDeltas.Destroyed : null,
-
-                pk = pickupDeltas.Full.Count > 0 ? pickupDeltas.Full : null,
-                dpk = pickupDeltas.Destroyed.Count > 0 ? pickupDeltas.Destroyed : null,
-                dmg = visibleState.Damage.Count > 0 ? visibleState.Damage : null,
-                aoe = visibleState.Aoe.Count > 0 ? visibleState.Aoe : null,
-                bm = visibleState.Beams.Count > 0 ? visibleState.Beams : null,
-                ph = (byte)gameState.Phase,
-                w = gameState.CurrentWave,
-                tr = Math.Max(0, (int)gameState.PhaseTimer),
-            };
-
-            byte[] compressedBytes = CompressPayload(payload);
-            await hubContext.Clients.Client(player.ConnectionId).SendAsync("UpdateStateCompressed", compressedBytes, cancellationToken: stoppingToken);
-        }
-
-        PerformCleanup(gameState);
+        public const int Id = 0; public const int ConfigId = 1; public const int X = 2; public const int Y = 3;
+        public const int CurrentHp = 4; public const int MaxHp = 5; public const int AimX = 6; public const int AimY = 7;
+        public const int StateId = 8; public const int CastingSkillId = 9; public const int CastTimer = 10;
+        public const int MaxCastTimer = 11; public const int ActiveEffects = 12; public const int Weapons = 13;
+        public const int FiredWeapons = 14; public const int Team = 15;
     }
 
     private static FlatState FlattenGlobalState(GameState gameState, ConfigManager configManager, List<DamageEventDto> dmgEvents, List<AoeEventDto> aoeEvents, List<BeamEventDto> beamEvents)
@@ -124,7 +144,7 @@ public static class NetworkSystem
         {
             Players = gameState.Players.Values.Select(p => new object[] {
                 p.ConnectionId, (int)p.X, (int)p.Y, (int)p.AimX, (int)p.AimY,
-                (int)p.CurrentHp, (int)p.GetTotalStat("maxHp", configManager), p.Gold, GetStateId(p.ActionState),
+                (int)p.CurrentHp, (int)p.CurrentMaxHp, p.Gold, GetStateId(p.ActionState),
                 p.CurrentCastingSkillId, Math.Round(p.CurrentCastTimer, 1), Math.Round(p.MaxCastTimer, 1),
                 p.Weapons.Select(w => new object[] {
                     w.ConfigId, w.SlotIndex, w.Level, w.RolledStats ?? new Dictionary<string, float>(),
@@ -133,11 +153,12 @@ public static class NetworkSystem
                 }).ToList(),
                 p.FiredWeaponsThisTick.ToList(),
                 p.ActiveEffects.Select(e => e.ConfigId).ToList(),
-                p.SynergizedSkills.Select(s => new object[] { s.ConfigId, Math.Round(Math.Max(0, s.CurrentCooldown), 1) }).ToList()
+                p.SynergizedSkills.Select(s => new object[] { s.ConfigId, Math.Round(Math.Max(0, s.CurrentCooldown), 1) }).ToList(),
+                p.PendingStatDiff.Count > 0 ? (object)p.PendingStatDiff : null
             }).ToList(),
 
             Enemies = gameState.Enemies.Values.Select(e => new object[] {
-                e.Id, e.ConfigId, (int)e.X, (int)e.Y, (int)e.CurrentHp, (int)e.GetTotalStat("maxHp", configManager),
+                e.Id, e.ConfigId, (int)e.X, (int)e.Y, (int)e.CurrentHp, (int)e.CurrentMaxHp,
                 (int)e.AimX, (int)e.AimY,
                 GetStateId(e.ActionState), e.CurrentCastingSkillId, Math.Round(e.CurrentCastTimer, 1), Math.Round(e.MaxCastTimer, 1),
                 e.ActiveEffects.Select(a => a.ConfigId).ToList(),
@@ -146,7 +167,6 @@ public static class NetworkSystem
                 e.Team
             }).ToList(),
 
-            // Read from ALL Projectiles so they pop up smoothly when an enemy walks onto your screen!
             Projectiles = gameState.Projectiles.Values.Select(proj => proj.MovementBehavior == "Orbital"
                             ? new object[] { proj.Id, proj.ConfigId, (int)proj.X, (int)proj.Y, proj.OrbitSpeed, 0f, 1, proj.OwnerId, (int)proj.OrbitRadius, proj.OrbitAngleOffset }
                             : new object[] { proj.Id, proj.ConfigId, (int)proj.X, (int)proj.Y, (int)proj.VelX, (int)proj.VelY }
@@ -192,18 +212,12 @@ public static class NetworkSystem
             Pickups = globalState.Pickups.Where(pk => (int)pk[1] >= minX && (int)pk[1] <= maxX && (int)pk[2] >= minY && (int)pk[2] <= maxY).ToList(),
             Damage = globalState.Damage.Where(d => (int)d[0] >= minX && (int)d[0] <= maxX && (int)d[1] >= minY && (int)d[1] <= maxY).ToList(),
             Aoe = globalState.Aoe.Where(a => (int)a[0] >= minX && (int)a[0] <= maxX && (int)a[1] >= minY && (int)a[1] <= maxY).ToList(),
-
-            // FIX 3: Orbitals (Length > 6) bypass culling so they always spawn on the client together!
-            Projectiles = globalState.Projectiles.Where(b =>
-                (b.Length > 6 && (int)b[6] == 1) ||
-                ((int)b[2] >= minX && (int)b[2] <= maxX && (int)b[3] >= minY && (int)b[3] <= maxY)
-                    ).ToList(),
-
+            Projectiles = globalState.Projectiles.Where(b => (b.Length > 6 && (int)b[6] == 1) || ((int)b[2] >= minX && (int)b[2] <= maxX && (int)b[3] >= minY && (int)b[3] <= maxY)).ToList(),
             Beams = globalState.Beams.Where(b => ((int)b[0] >= minX && (int)b[0] <= maxX && (int)b[1] >= minY && (int)b[1] <= maxY) || ((int)b[2] >= minX && (int)b[2] <= maxX && (int)b[3] >= minY && (int)b[3] <= maxY)).ToList()
         };
     }
 
-    private static (List<object[]> Full, List<object[]> Mini, List<string> Destroyed) ProcessEnemyDeltas(string connectionId, List<object[]> visibleEnemies)
+    private (List<object[]> Full, List<object[]> Mini, List<string> Destroyed) ProcessEnemyDeltas(string connectionId, List<object[]> visibleEnemies)
     {
         var knownEnemies = _clientKnownEnemies.GetOrAdd(connectionId, _ => new HashSet<string>());
         var visibleEnemyIds = visibleEnemies.Select(e => (string)e[EnemyIdx.Id]).ToHashSet();
@@ -218,14 +232,14 @@ public static class NetworkSystem
         var miniEnemies = visibleEnemies
                           .Where(e => existingEnemyIds.Contains((string)e[EnemyIdx.Id]))
                           .Select(e => new object[] {
-                        e[EnemyIdx.Id], e[EnemyIdx.X], e[EnemyIdx.Y], e[EnemyIdx.CurrentHp], e[EnemyIdx.AimX], e[EnemyIdx.AimY], e[EnemyIdx.StateId],
+                        e[EnemyIdx.Id], e[EnemyIdx.X], e[EnemyIdx.Y], e[EnemyIdx.CurrentHp],e[EnemyIdx.MaxHp], e[EnemyIdx.AimX], e[EnemyIdx.AimY], e[EnemyIdx.StateId],
                         e[EnemyIdx.CastingSkillId], e[EnemyIdx.CastTimer], e[EnemyIdx.MaxCastTimer], e[EnemyIdx.ActiveEffects], e[EnemyIdx.FiredWeapons]
                           }).ToList();
 
         return (fullEnemies, miniEnemies, destroyedEnemyIds);
     }
 
-    private static (List<object[]> Full, List<string> Destroyed) ProcessPickupDeltas(string connectionId, List<object[]> visiblePickups)
+    private (List<object[]> Full, List<string> Destroyed) ProcessPickupDeltas(string connectionId, List<object[]> visiblePickups)
     {
         var knownPickups = _clientKnownPickups.GetOrAdd(connectionId, _ => new HashSet<string>());
         var visiblePickupIds = visiblePickups.Select(pk => (string)pk[0]).ToHashSet();
@@ -239,8 +253,7 @@ public static class NetworkSystem
         return (fullPickups, destroyedPickupIds);
     }
 
-    // Deltas the projectiles so they are only sent exactly ONCE when they appear on your screen!
-    private static (List<object[]> Full, List<string> Destroyed) ProcessProjectileDeltas(string connectionId, List<object[]> visibleProjectiles)
+    private (List<object[]> Full, List<string> Destroyed) ProcessProjectileDeltas(string connectionId, List<object[]> visibleProjectiles)
     {
         var knownProjectiles = _clientKnownProjectiles.GetOrAdd(connectionId, _ => new HashSet<string>());
         var visibleProjectileIds = visibleProjectiles.Select(p => (string)p[0]).ToHashSet();
@@ -266,9 +279,13 @@ public static class NetworkSystem
         return ms.ToArray();
     }
 
-    private static void PerformCleanup(GameState gameState)
+    private void PerformCleanup(GameState gameState)
     {
-        foreach (var p in gameState.Players.Values) p.FiredWeaponsThisTick.Clear();
+        foreach (var p in gameState.Players.Values)
+        {
+            p.FiredWeaponsThisTick.Clear();
+            p.PendingStatDiff.Clear();
+        }
         foreach (var e in gameState.Enemies.Values) e.FiredWeaponsThisTick.Clear();
 
         var disconnected = _clientKnownEnemies.Keys.Except(gameState.Players.Keys).ToList();

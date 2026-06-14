@@ -28,6 +28,7 @@ interface ServerPlayer {
   aimX: number; aimY: number; firedWeapons: number[]; activeEffects: string[];
   currentCastingSkillId: string; currentCastTimer: number; maxCastTimer: number;
   synergizedSkills: { configId: string, currentCooldown: number }[];
+  statDiff?: Record<string, number>; // <<< ADD THIS LINE
 }
 interface ServerEnemy {
   id: string; configId: string; x: number; y: number; velX?: number;
@@ -58,6 +59,12 @@ export interface GameStatePayload {
 }
 
 let masterConfigs: any = {};
+
+// >>> NEW: The Event-Driven UI Listener <<<
+// We export this globally so any HTML UI component can read the latest stats
+(window as any).playerCachedStats = {};
+
+
 
 
 // --- PHASER SCENE ---
@@ -206,6 +213,8 @@ class GameScene extends Phaser.Scene {
       setupChatUI(this, connection);
     });
 
+
+
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();
       this.wasd = this.input.keyboard.addKeys('W,A,S,D');
@@ -312,8 +321,12 @@ class GameScene extends Phaser.Scene {
       this.data.set('showHealthNumbers', !currentState);
     });
     connection.on("UpdatePlayerUI", (uiData: any) => {
-      this.data.set('latestPlayerStats', uiData.stats); // <<< SAVE STATS HERE
-      if (this.shopUIModule) this.shopUIModule.updateUIData(uiData, masterConfigs);
+      // Save the level so the stat display knows what level you are
+      this.data.set('playerLevel', uiData.level || 1);
+
+      if (this.shopUIModule) {
+        this.shopUIModule.updateUIData(uiData, masterConfigs);
+      }
     });
 
     connection.on("UpdateStateCompressed", (compressedBase64: string) => {
@@ -443,16 +456,18 @@ class GameScene extends Phaser.Scene {
       rawState.me?.forEach((m: any[]) => {
         const cached = this.enemyCache.get(m[0]);
         if (cached) {
-          cached.x = m[1]; cached.y = m[2]; cached.currentHp = m[3];
-          cached.aimX = m[4]; cached.aimY = m[5];
-          cached.actionState = StateMap[m[6]];
-
-          // >>> FIX: Update the cache with Casts and Effects! <<<
-          cached.currentCastingSkillId = m[7];
-          cached.currentCastTimer = m[8];
-          cached.maxCastTimer = m[9];
-          cached.activeEffects = m[10] || [];
-          cached.firedWeapons = m[11] || [];
+          cached.x = m[1];
+          cached.y = m[2];
+          cached.currentHp = m[3];
+          cached.maxHp = m[4]; // <<< FIX 2: READ MAX HP HERE!
+          cached.aimX = m[5];
+          cached.aimY = m[6];
+          cached.actionState = StateMap[m[7]];
+          cached.currentCastingSkillId = m[8];
+          cached.currentCastTimer = m[9];
+          cached.maxCastTimer = m[10];
+          cached.activeEffects = m[11] || [];
+          cached.firedWeapons = m[12] || [];
         }
       });
 
@@ -466,26 +481,19 @@ class GameScene extends Phaser.Scene {
           connectionId: p[0], x: p[1], y: p[2], aimX: p[3], aimY: p[4],
           currentHp: p[5], maxHp: p[6], gold: p[7], actionState: StateMap[p[8]],
           currentCastingSkillId: p[9], currentCastTimer: p[10], maxCastTimer: p[11],
-          // >>> THE FIX: Read the Level, RolledStats, and WeaponSkills from the network! <<<
-          // >>> THE FIX: Parse the new TotalBaseStats from the server payload (w[5])! <<<
           weapons: p[12]?.map((w: any[]) => ({
-            configId: w[0],
-            slotIndex: w[1],
-            level: w[2],
-            rolledStats: w[3] || {},
-            weaponSkills: w[4] || [],
-            totalBaseStats: w[5] || {}
+            configId: w[0], slotIndex: w[1], level: w[2], rolledStats: w[3] || {},
+            weaponSkills: w[4] || [], totalBaseStats: w[5] || {}
           })) || [],
-
           firedWeapons: p[13] || [],
           activeEffects: p[14] || [],
           synergizedSkills: p[15]?.map((s: any[]) => ({
-            configId: s[0],
-            currentCooldown: s[1]
+            configId: s[0], currentCooldown: s[1]
           })) || [],
-          currentShop: [],
-          stats: {},
-          ownedItems: {}
+
+          statDiff: p[16], // <<< ADD THIS LINE (Reads the new diff from NetworkSystem!)
+
+          currentShop: [], stats: {}, ownedItems: {}
         })) || [],
 
         enemies: Array.from(this.enemyCache.values()),
@@ -513,8 +521,38 @@ class GameScene extends Phaser.Scene {
       const myPlayer = state.players.find(p => p.connectionId === connection.connectionId);
       if (myPlayer) {
         this.goldUIText.setText(`💰 ${myPlayer.gold}`);
-        const pStats = this.data.get('latestPlayerStats') || {}; // <<< GET STATS
-        this.skillActionBar.updateSkills(myPlayer.synergizedSkills, masterConfigs, pStats); // <<< PASS STATS
+
+        // >>> NEW: If the server sent a stat diff this frame, merge it and update the UI! <<<
+        if (myPlayer.statDiff) {
+          // 1. Get the local cache (or start fresh)
+          let currentStats = this.data.get('latestPlayerStats') || {};
+
+          // 2. Merge only the changed values natively
+          Object.assign(currentStats, myPlayer.statDiff);
+          this.data.set('latestPlayerStats', currentStats);
+
+          // 3. Update the Phaser Canvas UI instantly
+          if (this.shopUIModule) {
+            const currentLevel = this.data.get('playerLevel') || 1;
+            this.shopUIModule.updateJustStats(currentStats, currentLevel);
+          }
+
+          // 4. Update the HTML DOM UI
+          const speedEl = document.getElementById('ui-stat-speed');
+          if (speedEl) speedEl.innerText = Math.floor(currentStats["movementSpeed"] || 0).toString();
+
+          const hpEl = document.getElementById('ui-stat-maxhp');
+          if (hpEl) hpEl.innerText = Math.floor(currentStats["maxHp"] || 0).toString();
+
+          const dmgEl = document.getElementById('ui-stat-damage');
+          if (dmgEl) {
+            const totalDmg = (currentStats["meleeDamage"] || 0) + (currentStats["magicDamage"] || 0);
+            dmgEl.innerText = Math.floor(totalDmg).toString();
+          }
+        }
+
+        const pStats = this.data.get('latestPlayerStats') || {};
+        this.skillActionBar.updateSkills(myPlayer.synergizedSkills, masterConfigs, pStats);
       }
       // Detect the nearest gear loot within pickup radius and manage the ground tooltip
       const PICKUP_RADIUS_SQ = 50 * 50;
@@ -686,18 +724,37 @@ class GameScene extends Phaser.Scene {
 
     this.debugGraphics.clear();
     if (this.isDebugMode) {
-      this.playerSprites.forEach((sprite) => { this.debugGraphics.lineStyle(2, 0x00ffff); this.debugGraphics.strokeCircle(sprite.x, sprite.y, 15); });
+      this.playerSprites.forEach((sprite) => {
+        this.debugGraphics.lineStyle(2, 0x00ffff);
+        this.debugGraphics.strokeCircle(sprite.x, sprite.y, 15);
+      });
+
       this.enemySprites.forEach((sprite) => {
         const configId = sprite.getData('configId');
         const config = masterConfigs.enemies ? (masterConfigs.enemies[configId] || masterConfigs.Enemies?.[configId]) : null;
-        this.debugGraphics.lineStyle(2, 0xff0000); this.debugGraphics.strokeCircle(sprite.x, sprite.y, config ? (config.hitRadius || config.HitRadius || 15) : 15);
+
+        // Exact manual control from JSON
+        const hitR = config ? (config.hitRadius ?? config.HitRadius ?? 15) : 15;
+
+        this.debugGraphics.lineStyle(2, 0xff0000);
+        this.debugGraphics.strokeCircle(sprite.x, sprite.y, hitR);
       });
+
       this.projectileSprites.forEach((sprite) => {
         const configId = (sprite as any).getData('configId');
         const config = masterConfigs.projectiles ? (masterConfigs.projectiles[configId] || masterConfigs.Projectiles?.[configId]) : null;
-        this.debugGraphics.lineStyle(2, 0x00ff00); this.debugGraphics.strokeCircle(sprite.x, sprite.y, config ? (config.hitRadius || config.HitRadius || 10) : 10);
+
+        // Exact manual control from JSON (using ?? so 0 is allowed)
+        const hitR = config ? (config.hitRadius ?? config.HitRadius ?? 10) : 10;
+
+        this.debugGraphics.lineStyle(2, 0x00ff00);
+        this.debugGraphics.strokeCircle(sprite.x, sprite.y, hitR);
       });
-      this.pickupSprites.forEach((sprite) => { this.debugGraphics.lineStyle(2, 0xffff00); this.debugGraphics.strokeCircle(sprite.x, sprite.y, 15); });
+
+      this.pickupSprites.forEach((sprite) => {
+        this.debugGraphics.lineStyle(2, 0xffff00);
+        this.debugGraphics.strokeCircle(sprite.x, sprite.y, 15);
+      });
     }
   }
 

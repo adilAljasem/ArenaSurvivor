@@ -1,75 +1,91 @@
 using Server.Configs;
-using Server.DTOs;
 using Server.Entities;
-using System.Collections.Generic;
 
 namespace Server.Core.Systems;
 
-public static class EffectSystem
+public class EffectSystem : IGameSystem
 {
-    public static void Process(float dt, GameState state, ConfigManager configs, List<DamageEventDto> damageEvents, List<AoeEventDto> aoeEvents, List<BeamEventDto> beamEvents)
+    private EventBus _eventBus = null!;
+    private ConfigManager _configs = null!;
+
+    public void Initialize(EventBus eventBus, ConfigManager configs)
     {
-        foreach (var player in state.Players.Values)
+        _eventBus = eventBus;
+        _configs = configs;
+        _eventBus.Subscribe<ApplyEffectEvent>(OnApplyEffect);
+    }
+
+    public void Update(float dt, GameState state)
+    {
+        foreach (var player in state.Players.Values) ProcessEffectsForEntity(dt, player, state);
+        foreach (var enemy in state.Enemies.Values) ProcessEffectsForEntity(dt, enemy, state);
+    }
+
+    private void OnApplyEffect(ApplyEffectEvent ev)
+    {
+        if (_configs.Effects.TryGetValue(ev.EffectConfigId, out var effectConfig))
         {
-            for (int i = player.ActiveEffects.Count - 1; i >= 0; i--)
-            {
-                var effect = player.ActiveEffects[i];
-                if (!configs.Effects.TryGetValue(effect.ConfigId, out var config)) continue;
-
-                effect.TimeRemaining -= dt;
-                effect.TimeSinceLastTick += dt;
-
-                if (config.TickRate > 0 && effect.TimeSinceLastTick >= config.TickRate)
-                {
-                    effect.TimeSinceLastTick -= config.TickRate;
-                    player.CurrentHp -= config.TickDamage;
-                    
-                    if (!string.IsNullOrEmpty(config.TickSkillId) && configs.Skills.TryGetValue(config.TickSkillId, out var tickSkill))
-                    {
-                        SkillSystem.ExecuteSkill(tickSkill, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                    }
-                }
-
-                if (effect.TimeRemaining <= 0) player.ActiveEffects.RemoveAt(i);
-            }
+            var existing = ev.Target.ActiveEffects.FirstOrDefault(e => e.ConfigId == ev.EffectConfigId);
+            if (existing != null) existing.TimeRemaining = effectConfig.Duration;
+            else ev.Target.ActiveEffects.Add(new ActiveEffect { ConfigId = ev.EffectConfigId, TimeRemaining = effectConfig.Duration });
         }
+    }
 
-        foreach (var enemy in state.Enemies.Values)
+    private void ProcessEffectsForEntity(float dt, BaseActorEntity entity, GameState state)
+    {
+        if (entity.ActionState == "Dead")
         {
-            for (int i = enemy.ActiveEffects.Count - 1; i >= 0; i--)
+            if (entity.ActiveEffects.Count > 0)
             {
-                var effect = enemy.ActiveEffects[i];
-                if (!configs.Effects.TryGetValue(effect.ConfigId, out var config)) continue;
+                entity.ActiveEffects.Clear();
+                entity.StatsNeedRecalculation = true;
+            }
+            return;
+        }
+        
+        for (int i = entity.ActiveEffects.Count - 1; i >= 0; i--)
+        {
+            var effect = entity.ActiveEffects[i];
+            if (!_configs.Effects.TryGetValue(effect.ConfigId, out var config)) continue;
 
-                effect.TimeRemaining -= dt;
-                effect.TimeSinceLastTick += dt;
+            effect.TimeRemaining -= dt;
+            effect.TimeSinceLastTick += dt;
 
-                if (config.TickRate > 0 && effect.TimeSinceLastTick >= config.TickRate)
+            if (config.TickRate > 0 && effect.TimeSinceLastTick >= config.TickRate)
+            {
+                effect.TimeSinceLastTick -= config.TickRate;
+
+                _eventBus.Publish(new DamageAppliedEvent
                 {
-                    effect.TimeSinceLastTick -= config.TickRate;
-                    enemy.CurrentHp -= config.TickDamage;
+                    Target = entity,
+                    State = state,
+                    Amount = config.TickDamage,
+                    IsCritical = false,
+                    IsBlock = false,
+                    IsDodge = false
+                });
 
-                    if (!string.IsNullOrEmpty(config.TickSkillId) && configs.Skills.TryGetValue(config.TickSkillId, out var tickSkill))
+                if (!string.IsNullOrEmpty(config.TickSkillId) && _configs.Skills.TryGetValue(config.TickSkillId, out var tickSkill))
+                {
+                    string casterId = entity is PlayerEntity p ? p.ConnectionId : ((EnemyEntity)entity).Id;
+
+                    // >>> THE FIX: Publish to the EventBus instead of calling SkillSystem directly! <<<
+                    _eventBus.Publish(new RequestSkillCastEvent
                     {
-                        SkillSystem.ExecuteSkill(tickSkill, enemy.Id, enemy.X, enemy.Y, enemy.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                    }
-
-                    damageEvents.Add(new DamageEventDto { X = enemy.X, Y = enemy.Y, Amount = config.TickDamage });
-
-                    if (enemy.CurrentHp <= 0 && enemy.ActionState != "Dead")
-                    {
-                        enemy.ActionState = "Dead";
-                        var gold = new PickupEntity { X = enemy.X, Y = enemy.Y, Value = 1 };
-                        state.Pickups.TryAdd(gold.Id, gold);
-
-                        if (configs.Enemies.TryGetValue(enemy.ConfigId, out var eCfg))
-                        {
-                            SkillSystem.FireOnDeathSkills(enemy.Id, enemy.X, enemy.Y, enemy.Team, eCfg.OnDeathSkills, state, configs, damageEvents, aoeEvents, beamEvents);
-                        }
-                    }
+                        Skill = tickSkill,
+                        CasterId = casterId,
+                        StartX = entity.X,
+                        StartY = entity.Y,
+                        Team = entity.Team,
+                        State = state
+                    });
                 }
+            }
 
-                if (effect.TimeRemaining <= 0) enemy.ActiveEffects.RemoveAt(i);
+            if (effect.TimeRemaining <= 0)
+            {
+                entity.ActiveEffects.RemoveAt(i);
+                entity.StatsNeedRecalculation = true; // <<< THE FIX
             }
         }
     }

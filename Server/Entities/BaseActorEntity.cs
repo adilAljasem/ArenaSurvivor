@@ -1,5 +1,6 @@
 using Server.Core;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace Server.Entities;
 
@@ -15,8 +16,21 @@ public abstract class BaseActorEntity
 
     public float CurrentSweepAngle { get; set; } = 0f;
 
-    // --- Health ---
-    public float CurrentHp { get; set; }
+
+    // >>> THE FIX: Changing HP instantly flags the entity as Dirty! <<<
+    private float _currentHp;
+    public float CurrentHp
+    {
+        get => _currentHp;
+        set
+        {
+            if (_currentHp != value)
+            {
+                _currentHp = value;
+                StatsNeedRecalculation = true;
+            }
+        }
+    }
 
     // --- Stats ---
     public StatDictionary Stats { get; set; } = new();
@@ -39,5 +53,17 @@ public abstract class BaseActorEntity
     public float MaxCastTimer { get; set; }
     public Dictionary<string, float> DynamicSkillTimers { get; set; } = new();
 
-    public abstract float GetTotalStat(string statName, Configs.ConfigManager configManager, GameState state = null);
+    // >>> THE NEW ECS STAT CACHE <<<
+    [JsonIgnore]
+    public Dictionary<string, float> CachedStats { get; set; } = new();
+    [JsonIgnore]
+    public bool StatsNeedRecalculation { get; set; } = true;
+    public float CurrentMaxHp { get; set; }
+
+    // Instantly returns O(1) without doing any math!
+    public float GetTotalStat(string statName, Configs.ConfigManager configManager = null, GameState state = null)
+    {
+        return CachedStats.GetValueOrDefault(statName, 0f);
+    }
 }
+

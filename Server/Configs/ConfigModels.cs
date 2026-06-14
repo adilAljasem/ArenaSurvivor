@@ -76,6 +76,7 @@ public class CharacterConfig
     // --- Identity ---
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+    public float HitRadius { get; set; } = 15f;
 
     // --- Visuals & Animations ---
     public string TextureKey { get; set; } = string.Empty;
@@ -272,7 +273,7 @@ public class EffectConfig
     public bool IsBuff { get; set; }
     // --- Visuals ---
     public string TextureKey { get; set; } = string.Empty;
-    public int? IconFrame { get; set; } 
+    public int? IconFrame { get; set; }
     public string ColorTint { get; set; } = string.Empty;
     public float Scale { get; set; } = 0.5f;
 

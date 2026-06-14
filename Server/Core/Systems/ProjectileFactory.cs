@@ -55,7 +55,7 @@ public static class ProjectileFactory
                 VelY = projConfig.MovementBehavior == "Orbital" ? 0 : (float)Math.Sin(currentAngle) * finalSpeed,
                 OrbitSpeed = projConfig.MovementBehavior == "Orbital" ? projConfig.OrbitSpeed : 0f,
                 PhysicalDamage = physicalDamage,
-                MagicDamage = magicDamage,     
+                MagicDamage = magicDamage,
                 LifeStealChance = lifeStealChance,
                 HitRadius = projConfig.HitRadius,
                 PierceCount = projConfig.PierceCount,

@@ -76,7 +76,9 @@
     "statBonuses": {
       "meleeDamage": 10,
       "maxHp": 15,
-      "movementSpeed": -5
+      "movementSpeed": -5,
+      "armor":25,
+      "magicDefense": 10
     },
     "statRollChance": 0.75,
     "maxRandomStats": 2,

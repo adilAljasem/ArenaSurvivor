@@ -918,6 +918,12 @@ export class ShopUI {
 
     get visible(): boolean { return this._visible; }
 
+    public updateJustStats(statsPayload: any, level: number) {
+        if (this.statDisplay) {
+            this.statDisplay.updateStats(statsPayload, level);
+        }
+    }
+
     public setVisible(value: boolean): this {
         this._visible = value;
         if (!value && this.tooltip) this.tooltip.hide();

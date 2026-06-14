@@ -225,10 +225,18 @@ public class GameHub : Hub
                 // If it's a new item, safely apply any permanent traits it grants
                 if (success && itemConfig.Traits != null)
                 {
+                    bool gainedNewTrait = false;
                     foreach (var trait in itemConfig.Traits)
                     {
-                        if (!player.Traits.Contains(trait)) player.Traits.Add(trait);
+                        if (!player.Traits.Contains(trait))
+                        {
+                            player.Traits.Add(trait);
+                            gainedNewTrait = true;
+                        }
                     }
+
+                    // >>> THE ECS FIX: If they got a new trait, their stats are dirty! <<<
+                    if (gainedNewTrait) player.StatsNeedRecalculation = true;
                 }
             }
 
@@ -256,6 +264,7 @@ public class GameHub : Hub
 
                 // Apply the stat bonus
                 player.Stats.AddModifier(card.StatName, card.Amount, 0);
+                player.StatsNeedRecalculation = true;
 
                 player.PendingLevelUps--;
                 player.CurrentLevelUpChoices.Clear();
@@ -415,22 +424,20 @@ public class GameHub : Hub
                 if (i != null && _configManager.Items.TryGetValue(i.ConfigId, out var iCfg)) basePrice = iCfg.Price;
             }
 
-            if (basePrice > 0)
+            // >>> THE FIX: Changed to >= 0 so 0-cost starter gear can be recycled! <<<
+            if (basePrice >= 0)
             {
-                // Calculate payout/penalty: 10% of base price * Difficulty Multiplier
                 int payout = (int)Math.Floor(basePrice * 0.10f * currentDiff.RecycleValueMultiplier);
 
-                // If payout is negative (Hard Mode), check if they have enough gold to afford the disposal fee
                 if (payout < 0 && player.Gold < Math.Abs(payout)) return;
 
-                player.Gold += payout;
+                player.Gold += Math.Max(0, payout); // Don't subtract gold on accident
 
                 if (isWeapon) player.RemoveWeapon(slotIndex, _configManager);
                 else player.RemoveItem(slotIndex, _configManager);
             }
         }
 
-        // Push the updated inventory instantly
         await SendPlayerUI(player);
     }
 

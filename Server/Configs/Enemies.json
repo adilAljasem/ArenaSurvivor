@@ -233,7 +233,7 @@
     "isBoss": false,
     "minWave": 20,
     "maxWave": 999,
-    "spawnWeight": 25,
+    "spawnWeight": 250,
     "textureKey": "enemies_sheet1",
     "scale": 0.2,
     "iconFrame": 4,

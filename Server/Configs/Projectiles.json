@@ -122,7 +122,7 @@
         "iconFrame": 26,
         "scale": 1.5,
         "baseSpeed": 3.0,
-        "hitRadius": 25,
+        "hitRadius": 15,
         "pierceCount": 999,
         "movementBehavior": "Orbital",
         "orbitRadius": 220,

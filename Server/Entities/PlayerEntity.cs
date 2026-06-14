@@ -14,16 +14,30 @@ public class PlayerEntity : BaseActorEntity
     public int Level { get; set; } = 1;
     public float CurrentXp { get; set; }
     public int PendingLevelUps { get; set; }
+    public Dictionary<string, float> PendingStatDiff { get; } = new();
     public List<Configs.LevelUpCardConfig> CurrentLevelUpChoices { get; set; } = new();
 
     // The formula for how much XP you need to reach the next level
     public float GetXpRequirement() => 5 + (Level * 3);
 
-    // Physics & Inputs
-    public float InputX { get; set; }
-    public float InputY { get; set; }
+    // >>> THE FIX: Changing movement flags the entity as Dirty for "IsStandingStill" traits <<<
+    private float _inputX;
+    public float InputX
+    {
+        get => _inputX;
+        set { if (_inputX != value) { _inputX = value; StatsNeedRecalculation = true; } }
+    }
+
+    private float _inputY;
+    public float InputY
+    {
+        get => _inputY;
+        set { if (_inputY != value) { _inputY = value; StatsNeedRecalculation = true; } }
+    }
+
     public float AimX { get; set; }
     public float AimY { get; set; }
+
     public List<int> FiredWeaponsThisTick { get; set; } = new();
 
     // Economy & Shop
@@ -179,6 +193,8 @@ public class PlayerEntity : BaseActorEntity
                 CurrentChannelTimer = channelTimer
             });
         }
+        // >>> NEW: Merging/Removing gear dirties the stats <<<
+        StatsNeedRecalculation = true;
     }
 
     /// <summary>
@@ -211,155 +227,9 @@ public class PlayerEntity : BaseActorEntity
         return totalValue;
     }
 
-    /// <summary>
-    /// DRY Helper to evaluate Dynamic Modifiers from any source (Traits, Items, or Character Config)
-    /// </summary>
-    private float EvaluateDynamicModifiers(IEnumerable<DynamicModifier> modifiers, string statName, ConfigManager configManager, float itemLevel = 1f, GameState state = null)
-    {
-        float flatBonus = 0f;
-        if (modifiers == null) return flatBonus;
 
-        foreach (var mod in modifiers.Where(m => m.TargetStat == statName))
-        {
-            // Architect Safety: Prevent DivideByZero exceptions if you accidentally set ConditionThreshold to 0 in JSON
-            float safeThreshold = Math.Max(0.01f, mod.ConditionThreshold);
 
-            switch (mod.ConditionType)
-            {
-                case "MissingHealthPercent":
-                    // 1. Get safe Max HP
-                    float maxHp = Math.Max(1f, Stats.GetFinalStat("maxHp"));
 
-                    // 2. THE FIX: Clamp HP between 0 and MaxHP. 
-                    // Prevents negative HP from granting >100% missing health, and prevents over-healing from breaking the math.
-                    float safeCurrentHp = Math.Clamp(CurrentHp, 0f, maxHp);
-
-                    // 3. Calculate safe percentage (guaranteed to be exactly between 0.0f and 1.0f)
-                    float missingHpPercent = 1f - (safeCurrentHp / maxHp);
-
-                    // 4. Calculate integer stacks
-                    int chunksHp = (int)Math.Floor(missingHpPercent / safeThreshold);
-
-                    flatBonus += (mod.Amount * chunksHp * itemLevel);
-                    break;
-
-                case "PerXStat":
-                    if (!string.IsNullOrEmpty(mod.ConditionStat))
-                    {
-                        // Recursive lookup to get the source stat
-                        float sourceStatValue = GetTotalStat(mod.ConditionStat, configManager);
-
-                        // Architect Safety: Clamp to 0 so negative stats (like negative armor) 
-                        // don't accidentally reverse the formula and penalize the player.
-                        float safeSourceStat = Math.Max(0f, sourceStatValue);
-
-                        int chunksStat = (int)Math.Floor(safeSourceStat / safeThreshold);
-                        flatBonus += (mod.Amount * chunksStat * itemLevel);
-                    }
-                    break;
-
-                case "IsStandingStill":
-                    if (this.InputX == 0 && this.InputY == 0)
-                        flatBonus += (mod.Amount * itemLevel);
-                    break;
-
-                case "PerItemOwned":
-                    flatBonus += (this.OwnedItems.Count * mod.Amount * itemLevel);
-                    break;
-
-                case "PerEnemyAlive":
-                    if (state != null)
-                    {
-                        // High Performance: We avoid allocating a new list, just lazily counting alive enemies
-                        int activeEnemies = state.Enemies.Count(e => e.Value.ActionState != "Dead");
-                        flatBonus += (activeEnemies * mod.Amount * itemLevel);
-                    }
-                    break;
-            }
-        }
-        return flatBonus;
-    }
-
-    // Calculates dynamic stats, passive item buffs, trait multipliers, and weapon buffs on the fly
-    public override float GetTotalStat(string statName, ConfigManager configManager, GameState state = null)
-    {
-        float baseStat = Stats.GetFinalStat(statName);
-        float dynamicFlat = 0f;
-        float traitMultiplier = 1f;
-
-        // --- 1. ITEMS ---
-        foreach (var item in OwnedItems)
-        {
-            if (item.TotalBaseStats != null && item.TotalBaseStats.TryGetValue(statName, out float iBase))
-                dynamicFlat += iBase;
-
-            if (item.RolledStats != null && item.RolledStats.TryGetValue(statName, out float iRoll))
-                dynamicFlat += iRoll;
-
-            if (configManager.Items.TryGetValue(item.ConfigId, out var itemConfig))
-            {
-                dynamicFlat += EvaluateDynamicModifiers(itemConfig.DynamicModifiers, statName, configManager, item.Level, state);
-            }
-        }
-
-        // --- 2. WEAPONS ---
-        foreach (var weapon in Weapons)
-        {
-            if (weapon.TotalBaseStats != null && weapon.TotalBaseStats.TryGetValue(statName, out float wBase))
-                dynamicFlat += wBase;
-
-            if (weapon.RolledStats != null && weapon.RolledStats.TryGetValue(statName, out var wRoll))
-                dynamicFlat += wRoll;
-        }
-
-        // --- 3. ACTIVE EFFECTS (Buffs & Debuffs) ---
-        foreach (var effect in ActiveEffects)
-        {
-            if (configManager.Effects.TryGetValue(effect.ConfigId, out var effectConfig))
-            {
-                if (effectConfig.StatModifiers != null && effectConfig.StatModifiers.TryGetValue(statName, out float amount))
-                {
-                    dynamicFlat += amount;
-                }
-            }
-        }
-
-        // --- 4. CHARACTER BASE MODIFIERS ---
-        if (configManager.Characters.TryGetValue(ConfigId, out var charConfig))
-        {
-            dynamicFlat += EvaluateDynamicModifiers(charConfig.DynamicModifiers, statName, configManager, 1f, state);
-        }
-
-        // --- 5. TRAITS (Bonuses, Modifiers, and Multipliers) ---
-        var activeTraits = GetActiveTraits(configManager);
-        foreach (var traitId in activeTraits)
-        {
-            if (configManager.Traits != null && configManager.Traits.TryGetValue(traitId, out var traitCfg))
-            {
-                // A. Flat Bonuses
-                if (traitCfg.StatBonuses != null && traitCfg.StatBonuses.TryGetValue(statName, out var bonus))
-                    dynamicFlat += bonus;
-
-                // B. Multipliers (e.g., CannotHeal = 0.0 multiplier on hpRegen)
-                if (traitCfg.StatMultipliers != null && traitCfg.StatMultipliers.TryGetValue(statName, out var mult))
-                    traitMultiplier *= mult;
-
-                // C. Trait-specific Dynamic Modifiers
-                dynamicFlat += EvaluateDynamicModifiers(traitCfg.DynamicModifiers, statName, configManager, 1f, state);
-            }
-        }
-
-        float finalValue = (baseStat + dynamicFlat) * traitMultiplier;
-
-        // >>> SERVER-SIDE HARD CAPS <<<
-        // Ensure UI and Game Logic always see a max of 1.0 (100%)
-        if (statName == "critChance" || statName == "projectileBlockChance")
-        {
-            finalValue = Math.Min(1.0f, finalValue);
-        }
-
-        return finalValue;
-    }
 
     public void GainXp(float amount, Configs.ConfigManager configManager)
     {
@@ -506,7 +376,7 @@ public class PlayerEntity : BaseActorEntity
                 if (!configs.Items.TryGetValue(i.ConfigId, out var existCfg)) return false;
                 return (!string.IsNullOrEmpty(incomingCfg.ItemFamily) && existCfg.ItemFamily == incomingCfg.ItemFamily) || i.ConfigId == incomingItem.ConfigId;
             });
-            
+
             if (alreadyOwns) return false; // REJECT!
         }
 

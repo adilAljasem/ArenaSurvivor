@@ -7,495 +7,63 @@ using System.Linq;
 
 namespace Server.Core.Systems;
 
-public static class SkillSystem
+public class SkillSystem : IGameSystem
 {
-    public static void Process(float dt, GameState state, ConfigManager configs,
-            List<DamageEventDto> damageEvents, List<AoeEventDto> aoeEvents, List<BeamEventDto> beamEvents)
+    private EventBus _eventBus = null!;
+    private ConfigManager _configs = null!;
+
+    public List<AoeEventDto> TickAoeEvents { get; } = new();
+    public List<BeamEventDto> TickBeamEvents { get; } = new();
+
+    public void Initialize(EventBus eventBus, ConfigManager configs)
     {
-        // =====================================================================
-        // 1. PROCESS ENEMY SKILLS
-        // =====================================================================
-        foreach (var enemy in state.Enemies.Values)
-        {
-            if (enemy.ActionState == "Dead") continue;
+        _eventBus = eventBus;
+        _configs = configs;
+        _eventBus.Subscribe<AoeVisualEvent>(ev => TickAoeEvents.Add(ev.Dto));
+        _eventBus.Subscribe<BeamVisualEvent>(ev => TickBeamEvents.Add(ev.Dto));
 
-            if (enemy.SkillWaitTimer > 0)
-            {
-                enemy.SkillWaitTimer -= dt;
-                continue; // Skip all casting and cooldown logic until the timer finishes
-            }
-
-            bool isCasting = false;
-            // >>> THE HASTE FIX: Calculate Haste Multiplier for Enemy <<<
-            float hasteMult = (100f + Math.Max(0f, enemy.GetTotalStat("haste", configs))) / 100f; // For Enemy
-
-            // >>> 1. TICK BACKGROUND TIMERS CONCURRENTLY <<<
-            foreach (var skill in enemy.Skills)
-            {
-                if (!configs.Skills.TryGetValue(skill.ConfigId, out var config)) continue;
-
-                // Phase C: Cooldown
-                if (skill.CurrentCooldown > 0) skill.CurrentCooldown -= dt;
-
-                // >>> THE FIX: Tick Cast Timers for Independent Skills in the background <<<
-                if (config.IsIndependent && skill.CurrentCastTimer > 0)
-                {
-                    skill.CurrentCastTimer -= dt;
-                    if (skill.CurrentCastTimer <= 0)
-                    {
-                        if (config.ChannelDurationSeconds > 0)
-                        {
-                            // LASER FIX: Do NOT divide channel duration by haste!
-                            skill.CurrentChannelTimer = config.ChannelDurationSeconds;
-                            if (!config.IsRepeated) ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                        }
-                        else
-                        {
-                            ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                            skill.CurrentCooldown = config.CooldownSeconds / hasteMult; // < APPLY HASTE TO COOLDOWN
-                        }
-                    }
-                }
-
-                // Phase B: Duration/Channeling (DOES NOT lock the queue, NO cast bar!)
-                if (skill.CurrentChannelTimer > 0)
-                {
-                    skill.CurrentChannelTimer -= dt;
-                    if (config.IsRepeated) ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-
-                    // Start cooldown the exact moment the duration ends!
-                    if (skill.CurrentChannelTimer <= 0)
-                    {
-                        skill.CurrentCooldown = config.CooldownSeconds / hasteMult; // < APPLY HASTE TO COOLDOWN
-                    }
-                }
-            }
-
-            // >>> 2. PROCESS ACTIVE CASTING (Wind-up ONLY) <<<
-            // Ignore Independent skills so they don't hijack the main casting bar!
-            var activeCast = enemy.Skills.FirstOrDefault(s =>
-                s.CurrentCastTimer > 0 &&
-                (!configs.Skills.TryGetValue(s.ConfigId, out var c) || !c.IsIndependent));
-
-            if (activeCast != null && configs.Skills.TryGetValue(activeCast.ConfigId, out var activeConfig))
-            {
-                isCasting = true;
-                enemy.CurrentCastingSkillId = activeCast.ConfigId;
-                enemy.CurrentCastTimer = activeCast.CurrentCastTimer;
-                enemy.MaxCastTimer = activeConfig.CastTimeSeconds / hasteMult; // < APPLY HASTE TO UI BAR
-
-                activeCast.CurrentCastTimer -= dt;
-
-                if (activeCast.CurrentCastTimer <= 0)
-                {
-                    if (activeConfig.ChannelDurationSeconds > 0)
-                    {
-                        // LASER FIX: Do NOT divide channel duration by haste!
-                        activeCast.CurrentChannelTimer = activeConfig.ChannelDurationSeconds;
-                        if (!activeConfig.IsRepeated) ExecuteSkill(activeConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                    }
-                    else
-                    {
-                        ExecuteSkill(activeConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                        activeCast.CurrentCooldown = activeConfig.CooldownSeconds / hasteMult; // < APPLY HASTE
-                    }
-                }
-            }
-
-            if (isCasting)
-            {
-                enemy.ActionState = "Casting";
-            }
-            else
-            {
-                // Only revert to Idle if we were the one who set it to Casting!
-                if (enemy.ActionState == "Casting") enemy.ActionState = "Idle";
-
-                enemy.CurrentCastingSkillId = string.Empty;
-                enemy.CurrentCastTimer = 0f;
-                enemy.MaxCastTimer = 0f;
-            }
-
-
-            // >>> 2.5 TRIGGER INDEPENDENT SKILLS <<<
-            foreach (var skill in enemy.Skills)
-            {
-                if (configs.Skills.TryGetValue(skill.ConfigId, out var config) && config.IsIndependent)
-                {
-                    if (skill.CurrentCooldown <= 0 && skill.CurrentCastTimer <= 0 && skill.CurrentChannelTimer <= 0)
-                    {
-                        if (config.CastTimeSeconds > 0) skill.CurrentCastTimer = config.CastTimeSeconds / hasteMult; // < APPLY HASTE
-                        else
-                        {
-                            if (config.ChannelDurationSeconds > 0)
-                            {
-                                // LASER FIX
-                                skill.CurrentChannelTimer = config.ChannelDurationSeconds;
-                                if (!config.IsRepeated) ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                            }
-                            else
-                            {
-                                ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                                skill.CurrentCooldown = config.CooldownSeconds / hasteMult; // < APPLY HASTE
-                            }
-                        }
-                    }
-                }
-            }
-
-            // >>> 3. ROUND-ROBIN QUEUE <<<
-            if (!isCasting && enemy.Skills.Count > 0)
-            {
-                for (int i = 0; i < enemy.Skills.Count; i++)
-                {
-                    int checkIndex = (enemy.CurrentSkillIndex + i) % enemy.Skills.Count;
-                    var skill = enemy.Skills[checkIndex];
-
-                    if (configs.Skills.TryGetValue(skill.ConfigId, out var config))
-                    {
-                        // >>> THE FIX: Skip independent skills so they don't consume a queue turn! <<<
-                        if (config.IsIndependent) continue;
-
-                        if (config.TriggerType == SkillTriggerType.Auto)
-                        {
-                            if (config.CastTimeSeconds <= 0 && config.CooldownSeconds <= 0 && config.ChannelDurationSeconds <= 0)
-                            {
-                                ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                                continue;
-                            }
-
-                            // MUST be completely idle: No Cooldown, Not Casting, and NOT IN DURATION!
-                            if (skill.CurrentCooldown <= 0 && skill.CurrentCastTimer <= 0 && skill.CurrentChannelTimer <= 0)
-                            {
-                                if (config.CastTimeSeconds > 0)
-                                {
-                                    skill.CurrentCastTimer = config.CastTimeSeconds / hasteMult; // < APPLY HASTE
-                                }
-                                else
-                                {
-                                    if (config.ChannelDurationSeconds > 0)
-                                    {
-                                        // LASER FIX
-                                        skill.CurrentChannelTimer = config.ChannelDurationSeconds;
-                                        if (!config.IsRepeated) ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                                    }
-                                    else
-                                    {
-                                        ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                                        skill.CurrentCooldown = config.CooldownSeconds / hasteMult; // < APPLY HASTE
-                                    }
-                                }
-                                enemy.CurrentSkillIndex = (checkIndex + 1) % enemy.Skills.Count;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // >>> 4. DYNAMIC SKILLS <<<
-            if (configs.Enemies.TryGetValue(enemy.ConfigId, out var eConfig) && eConfig.DynamicSkills != null)
-            {
-                foreach (var trigger in eConfig.DynamicSkills)
-                {
-                    if (!enemy.DynamicSkillTimers.ContainsKey(trigger.SkillId)) enemy.DynamicSkillTimers[trigger.SkillId] = 0;
-                    if (enemy.DynamicSkillTimers[trigger.SkillId] > 0) enemy.DynamicSkillTimers[trigger.SkillId] -= dt;
-
-                    if (trigger.ConditionType == "MissingHealthPercent" && enemy.DynamicSkillTimers[trigger.SkillId] <= 0)
-                    {
-                        float hpPct = enemy.CurrentHp / enemy.GetTotalStat("maxHp", configs);
-                        if (hpPct <= trigger.ConditionThreshold && configs.Skills.TryGetValue(trigger.SkillId, out var skillConfig))
-                        {
-                            var activeSkill = enemy.Skills.FirstOrDefault(s => s.ConfigId == trigger.SkillId);
-                            if (activeSkill != null && (activeSkill.CurrentCastTimer > 0 || activeSkill.CurrentChannelTimer > 0)) continue;
-
-                            float castTime = trigger.OverrideCastTime ?? skillConfig.CastTimeSeconds;
-                            if (activeSkill == null) { activeSkill = new ActiveSkill { ConfigId = trigger.SkillId }; enemy.Skills.Add(activeSkill); }
-
-                            enemy.DynamicSkillTimers[trigger.SkillId] = trigger.Cooldown;
-
-                            if (castTime <= 0)
-                            {
-                                if (skillConfig.ChannelDurationSeconds > 0)
-                                {
-                                    // LASER FIX
-                                    activeSkill.CurrentChannelTimer = skillConfig.ChannelDurationSeconds;
-                                    if (!skillConfig.IsRepeated) ExecuteSkill(skillConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                                }
-                                else
-                                {
-                                    ExecuteSkill(skillConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                                    activeSkill.CurrentCooldown = skillConfig.CooldownSeconds / hasteMult; // < APPLY HASTE
-                                }
-                            }
-                            else
-                            {
-                                activeSkill.CurrentCastTimer = castTime / hasteMult; // < APPLY HASTE
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // =====================================================================
-        // 2. PROCESS PLAYER SKILLS
-        // =====================================================================
-        foreach (var player in state.Players.Values)
-        {
-            if (player.ActionState == "Dead") continue;
-
-            bool isCasting = false;
-            // >>> THE HASTE FIX: Calculate Haste Multiplier for Player <<<
-            float hasteMult = (100f + Math.Max(0f, player.GetTotalStat("haste", configs))) / 100f; // For Player
-            // >>> 1. TICK BACKGROUND TIMERS CONCURRENTLY <<<
-            foreach (var skill in player.SynergizedSkills)
-            {
-                if (!configs.Skills.TryGetValue(skill.ConfigId, out var config)) continue;
-
-                if (skill.CurrentCooldown > 0) skill.CurrentCooldown -= dt;
-
-                // >>> THE FIX: Tick Cast Timers for Independent Skills in the background <<<
-                if (config.IsIndependent && skill.CurrentCastTimer > 0)
-                {
-                    skill.CurrentCastTimer -= dt;
-                    if (skill.CurrentCastTimer <= 0)
-                    {
-                        if (config.ChannelDurationSeconds > 0)
-                        {
-                            // LASER FIX
-                            skill.CurrentChannelTimer = config.ChannelDurationSeconds;
-                            if (!config.IsRepeated) ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                        }
-                        else
-                        {
-                            ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                            skill.CurrentCooldown = config.CooldownSeconds / hasteMult; // < APPLY HASTE
-                        }
-                    }
-                }
-
-                if (skill.CurrentChannelTimer > 0)
-                {
-                    skill.CurrentChannelTimer -= dt;
-                    if (config.IsRepeated) ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-
-                    if (skill.CurrentChannelTimer <= 0)
-                    {
-                        skill.CurrentCooldown = config.CooldownSeconds / hasteMult; // < APPLY HASTE
-                    }
-                }
-            }
-
-            // >>> 2. PROCESS ACTIVE CASTING (Wind-up ONLY) <<<
-            // Ignore Independent skills so they don't hijack the main casting bar!
-            var activeCast = player.SynergizedSkills.FirstOrDefault(s =>
-                s.CurrentCastTimer > 0 &&
-                (!configs.Skills.TryGetValue(s.ConfigId, out var c) || !c.IsIndependent));
-
-            if (activeCast != null && configs.Skills.TryGetValue(activeCast.ConfigId, out var activeConfig))
-            {
-                isCasting = true;
-                player.CurrentCastingSkillId = activeCast.ConfigId;
-                player.CurrentCastTimer = activeCast.CurrentCastTimer;
-                player.MaxCastTimer = activeConfig.CastTimeSeconds / hasteMult; // < APPLY HASTE TO UI BAR
-
-                activeCast.CurrentCastTimer -= dt;
-
-                if (activeCast.CurrentCastTimer <= 0)
-                {
-                    if (activeConfig.ChannelDurationSeconds > 0)
-                    {
-                        // LASER FIX
-                        activeCast.CurrentChannelTimer = activeConfig.ChannelDurationSeconds;
-                        if (!activeConfig.IsRepeated) ExecuteSkill(activeConfig, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                    }
-                    else
-                    {
-                        ExecuteSkill(activeConfig, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                        activeCast.CurrentCooldown = activeConfig.CooldownSeconds / hasteMult; // < APPLY HASTE
-                    }
-                }
-            }
-
-            if (isCasting)
-            {
-                player.ActionState = "Casting";
-            }
-            else
-            {
-                // Only revert to Idle if we were the one who set it to Casting!
-                if (player.ActionState == "Casting") player.ActionState = "Idle";
-
-                player.CurrentCastingSkillId = string.Empty;
-                player.CurrentCastTimer = 0f;
-                player.MaxCastTimer = 0f;
-            }
-
-            // >>> 2.5 TRIGGER INDEPENDENT SKILLS <<<
-            foreach (var skill in player.SynergizedSkills)
-            {
-                if (configs.Skills.TryGetValue(skill.ConfigId, out var config) && config.IsIndependent)
-                {
-                    // >>> THE CEASEFIRE FIX: Don't waste auto-skills in the shop! <<<
-                    if (config.TriggerType == SkillTriggerType.Auto && state.Phase != GamePhase.WaveActive) continue;
-
-                    if (skill.CurrentCooldown <= 0 && skill.CurrentCastTimer <= 0 && skill.CurrentChannelTimer <= 0)
-                    {
-                        if (config.CastTimeSeconds > 0) skill.CurrentCastTimer = config.CastTimeSeconds / hasteMult; // < APPLY HASTE
-                        else
-                        {
-                            if (config.ChannelDurationSeconds > 0)
-                            {
-                                // LASER FIX
-                                skill.CurrentChannelTimer = config.ChannelDurationSeconds;
-                                if (!config.IsRepeated) ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                            }
-                            else
-                            {
-                                ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                                skill.CurrentCooldown = config.CooldownSeconds / hasteMult; // < APPLY HASTE
-                            }
-                        }
-                    }
-                }
-            }
-
-            // >>> 3. ROUND-ROBIN QUEUE <<<
-            if (!isCasting && player.SynergizedSkills.Count > 0)
-            {
-                for (int i = 0; i < player.SynergizedSkills.Count; i++)
-                {
-                    int checkIndex = (player.CurrentSkillIndex + i) % player.SynergizedSkills.Count;
-                    var skill = player.SynergizedSkills[checkIndex];
-
-                    if (configs.Skills.TryGetValue(skill.ConfigId, out var config))
-                    {
-                        // >>> THE FIX: Skip independent skills so they don't consume a queue turn! <<<
-                        if (config.IsIndependent) continue;
-
-                        if (config.TriggerType == SkillTriggerType.Auto)
-                        {
-                            // >>> THE CEASEFIRE FIX: Don't waste auto-skills in the shop! <<<
-                            if (state.Phase != GamePhase.WaveActive) continue;
-                            if (config.CastTimeSeconds <= 0 && config.CooldownSeconds <= 0 && config.ChannelDurationSeconds <= 0)
-                            {
-                                ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                                continue;
-                            }
-
-                            // MUST be completely idle: No Cooldown, Not Casting, and NOT IN DURATION!
-                            if (skill.CurrentCooldown <= 0 && skill.CurrentCastTimer <= 0 && skill.CurrentChannelTimer <= 0)
-                            {
-                                if (config.CastTimeSeconds > 0)
-                                {
-                                    skill.CurrentCastTimer = config.CastTimeSeconds / hasteMult; // < APPLY HASTE
-                                }
-                                else
-                                {
-                                    if (config.ChannelDurationSeconds > 0)
-                                    {
-                                        // LASER FIX
-                                        skill.CurrentChannelTimer = config.ChannelDurationSeconds;
-                                        if (!config.IsRepeated) ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                                    }
-                                    else
-                                    {
-                                        ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                                        skill.CurrentCooldown = config.CooldownSeconds / hasteMult; // < APPLY HASTE
-                                    }
-                                }
-                                player.CurrentSkillIndex = (checkIndex + 1) % player.SynergizedSkills.Count;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // >>> 4. DYNAMIC SKILLS <<<
-            if (configs.Characters.TryGetValue(player.ConfigId, out var pConfig) && pConfig.DynamicSkills != null)
-            {
-                foreach (var trigger in pConfig.DynamicSkills)
-                {
-                    if (!player.DynamicSkillTimers.ContainsKey(trigger.SkillId)) player.DynamicSkillTimers[trigger.SkillId] = 0;
-                    if (player.DynamicSkillTimers[trigger.SkillId] > 0) player.DynamicSkillTimers[trigger.SkillId] -= dt;
-
-                    if (trigger.ConditionType == "MissingHealthPercent" && player.DynamicSkillTimers[trigger.SkillId] <= 0)
-                    {
-                        float hpPct = player.CurrentHp / player.GetTotalStat("maxHp", configs);
-                        if (hpPct <= trigger.ConditionThreshold && configs.Skills.TryGetValue(trigger.SkillId, out var skillConfig))
-                        {
-                            var activeSkill = player.SynergizedSkills.FirstOrDefault(s => s.ConfigId == trigger.SkillId);
-                            if (activeSkill != null && (activeSkill.CurrentCastTimer > 0 || activeSkill.CurrentChannelTimer > 0)) continue;
-
-                            float castTime = trigger.OverrideCastTime ?? skillConfig.CastTimeSeconds;
-                            if (activeSkill == null) { activeSkill = new ActiveSkill { ConfigId = trigger.SkillId }; player.SynergizedSkills.Add(activeSkill); }
-
-                            player.DynamicSkillTimers[trigger.SkillId] = trigger.Cooldown;
-
-                            if (castTime <= 0)
-                            {
-                                if (skillConfig.ChannelDurationSeconds > 0)
-                                {
-                                    // LASER FIX
-                                    activeSkill.CurrentChannelTimer = skillConfig.ChannelDurationSeconds;
-                                    if (!skillConfig.IsRepeated) ExecuteSkill(skillConfig, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                                }
-                                else
-                                {
-                                    ExecuteSkill(skillConfig, player.ConnectionId, player.X, player.Y, player.Team, damageEvents, aoeEvents, beamEvents, state, configs);
-                                    activeSkill.CurrentCooldown = skillConfig.CooldownSeconds / hasteMult; // < APPLY HASTE
-                                }
-                            }
-                            else
-                            {
-                                activeSkill.CurrentCastTimer = castTime / hasteMult; // < APPLY HASTE
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        // >>> NEW: TRUE EDA SUBSCRIPTIONS <<<
+        _eventBus.Subscribe<RequestSkillCastEvent>(OnRequestSkillCast);
+        _eventBus.Subscribe<TriggerDeathSkillsEvent>(OnTriggerDeathSkills);
+        _eventBus.Subscribe<ResetPlayerSkillsEvent>(OnResetPlayerSkills);
     }
-    public static void ExecuteSkill(SkillConfig config, string casterId, float startX, float startY, string team,
-        List<DamageEventDto> damageEvents, List<AoeEventDto> aoeEvents, List<BeamEventDto> beamEvents, GameState state, ConfigManager configs, ProjectileEntity sourceProjectile = null)
+
+    private void OnRequestSkillCast(RequestSkillCastEvent ev)
     {
-        // >>> THE FIX: CALCULATE UNIVERSAL SPELL DAMAGE ONCE <<<
-        BaseActorEntity caster = state.Players.ContainsKey(casterId) ? state.Players[casterId] :
+        var config = ev.Skill;
+        string casterId = ev.CasterId;
+        float startX = ev.StartX;
+        float startY = ev.StartY;
+        string team = ev.Team;
+        var state = ev.State;
+        var sourceProjectile = ev.SourceProjectile;
+
+        BaseActorEntity? caster = state.Players.ContainsKey(casterId) ? state.Players[casterId] :
                                  (state.Enemies.ContainsKey(casterId) ? state.Enemies[casterId] : null);
 
         float finalSpellDamage = config.BaseDamage;
         if (caster != null && Math.Abs(finalSpellDamage) > 0)
         {
-            float magicBonus = caster.GetTotalStat("magicDamage", configs);
-            float damagePercent = caster.GetTotalStat("damagePercent", configs);
-
-            // Apply a 50% ratio to the magic stat so spells don't out-scale weapons instantly!
+            float magicBonus = caster.GetTotalStat("magicDamage", _configs);
+            float damagePercent = caster.GetTotalStat("damagePercent", _configs);
             finalSpellDamage = (finalSpellDamage + (magicBonus * 0.5f)) * (1f + damagePercent);
         }
 
         // --- ACTION: SELF BUFF ---
         if (config.ActionType == SkillActionType.SelfBuff)
         {
-
             if (caster != null && config.ApplyEffects != null)
             {
                 foreach (var effectId in config.ApplyEffects)
                 {
-                    if (configs.Effects.TryGetValue(effectId, out var effectConfig))
-                    {
-                        var existing = caster.ActiveEffects.FirstOrDefault(e => e.ConfigId == effectId);
-                        if (existing != null) existing.TimeRemaining = effectConfig.Duration;
-                        else caster.ActiveEffects.Add(new ActiveEffect { ConfigId = effectId, TimeRemaining = effectConfig.Duration });
-                    }
+                    _eventBus.Publish(new ApplyEffectEvent { Target = caster, EffectConfigId = effectId });
                 }
             }
             return;
         }
 
         // --- ACTION: PROJECTILE ---
-        if (config.ActionType == SkillActionType.Projectile && configs.Projectiles.TryGetValue(config.ProjectileId, out var projConfig))
+        if (config.ActionType == SkillActionType.Projectile && _configs.Projectiles.TryGetValue(config.ProjectileId, out var projConfig))
         {
             float targetX = startX + 1;
             float targetY = startY;
@@ -545,7 +113,6 @@ public static class SkillSystem
 
             if (length > 0)
             {
-                // >>> FIX 1: EXPLICITLY DELETE OLD ORBITALS SO THEY NEVER OVERLAP! <<<
                 if (projConfig.MovementBehavior == "Orbital")
                 {
                     var toRemove = new List<string>();
@@ -554,25 +121,13 @@ public static class SkillSystem
                         if (oldProj.OwnerId == casterId && oldProj.ConfigId == projConfig.Id && oldProj.MovementBehavior == "Orbital")
                             toRemove.Add(oldProj.Id);
                     }
-                    // Forcing deletion instantly removes them from physics and triggers Network System destruction
                     foreach (var id in toRemove) state.Projectiles.TryRemove(id, out _);
                 }
 
-
-
                 int pCount = Math.Max(1, config.ProjectileCount);
-
-                // >>> THE FIX: Bulletproof Lifespan Fallback Chain <<<
-                // 1. Calculate default physics lifespan (Range / Speed)
                 float computedLifespan = projConfig.BaseSpeed > 0 ? (config.Range / Math.Max(1f, projConfig.BaseSpeed)) : 0.15f;
-
-                // 2. If the skill is a channeling skill (like Orbitals), default to the channel duration!
                 if (config.ChannelDurationSeconds > 0) computedLifespan = config.ChannelDurationSeconds;
-
-                // 3. If the Projectile JSON explicitly sets a strict lifespan (like the drone), override it!
                 if (projConfig.Lifespan > 0) computedLifespan = projConfig.Lifespan;
-
-                // 4. If the Skill JSON explicitly sets a lifespan override, this is the highest priority!
                 if (config.Lifespan > 0) computedLifespan = config.Lifespan;
 
                 var newBullets = ProjectileFactory.Create(
@@ -590,7 +145,8 @@ public static class SkillSystem
                     }
                 }
 
-                foreach (var b in newBullets) state.Projectiles.TryAdd(b.Id, b);
+                _eventBus.Publish(new SpawnProjectileEvent { Projectiles = newBullets, State = state });
+
             }
         }
 
@@ -600,7 +156,6 @@ public static class SkillSystem
             float baseAngle = 0f;
             bool hasValidTarget = true;
 
-            // >>> THE FIX 1: Find all hostile targets (including friendly summons!) <<<
             IEnumerable<BaseActorEntity> hostileTargets;
             if (team == "Player")
             {
@@ -614,7 +169,7 @@ public static class SkillSystem
 
             if (config.TargetType == SkillTargetType.ClosestEnemy || config.TargetType == SkillTargetType.ClosestPlayer)
             {
-                BaseActorEntity closest = null;
+                BaseActorEntity? closest = null;
                 float closestDistSq = float.MaxValue;
 
                 foreach (var t in hostileTargets)
@@ -629,23 +184,18 @@ public static class SkillSystem
             }
             else if (config.TargetType == SkillTargetType.AimDirection)
             {
-
                 if (caster is PlayerEntity p && (p.AimX != 0 || p.AimY != 0)) baseAngle = (float)Math.Atan2(p.AimY - startY, p.AimX - startX);
                 else if (caster != null) baseAngle = 0;
             }
             else if (config.TargetType == SkillTargetType.Sweep)
             {
-                // >>> THE DRONE FIX <<<
                 if (sourceProjectile != null)
                 {
-                    // If a drone fired this, it uses its own independent angle
                     sourceProjectile.SweepAngle += config.SweepAngleSpeed;
                     baseAngle = sourceProjectile.SweepAngle;
                 }
                 else
                 {
-                    // If a player/enemy fired this, use their angle
-
                     if (caster != null) { caster.CurrentSweepAngle += config.SweepAngleSpeed; baseAngle = caster.CurrentSweepAngle; }
                 }
             }
@@ -661,11 +211,11 @@ public static class SkillSystem
             float endX = startX + (dirX * config.Range);
             float endY = startY + (dirY * config.Range);
 
-            beamEvents.Add(new BeamEventDto { StartX = startX, StartY = startY, TargetX = endX, TargetY = endY, Width = config.BeamWidth, ColorTint = config.ColorTint });
+            // >>> EDA: PUBLISH BEAM VISUAL EVENT <<<
+            _eventBus.Publish(new BeamVisualEvent { Dto = new BeamEventDto { StartX = startX, StartY = startY, TargetX = endX, TargetY = endY, Width = config.BeamWidth, ColorTint = config.ColorTint } });
 
             float hitThresholdSq = (config.BeamWidth / 2) * (config.BeamWidth / 2);
 
-            // >>> THE FIX 2: Apply damage to all hostile targets (including summons!) <<<
             foreach (var target in hostileTargets)
             {
                 if (target.ActionState == "Dead") continue;
@@ -683,21 +233,19 @@ public static class SkillSystem
 
                 if (distSqToSegment <= (effectiveRadius * effectiveRadius))
                 {
-                    target.CurrentHp -= finalSpellDamage;
-                    damageEvents.Add(new DamageEventDto { X = target.X, Y = target.Y, Amount = finalSpellDamage });
+                    // >>> THE FIX: Spells are treated as 100% Magic Damage for mitigation <<<
+                    float mitigatedDamage = CombatSystem.CalculateMitigatedDamage(0f, finalSpellDamage, target, _configs);
 
-                    if (target.CurrentHp <= 0 && target.ActionState != "Dead")
+                    _eventBus.Publish(new DamageAppliedEvent
                     {
-                        target.ActionState = "Dead";
-                        if (target is EnemyEntity enemyTarget)
-                        {
-                            var gold = new PickupEntity { X = target.X, Y = target.Y, Value = 1 };
-                            state.Pickups.TryAdd(gold.Id, gold);
-
-                            if (configs.Enemies.TryGetValue(enemyTarget.ConfigId, out var eCfg))
-                                FireOnDeathSkills(enemyTarget.Id, enemyTarget.X, enemyTarget.Y, enemyTarget.Team, eCfg.OnDeathSkills, state, configs, damageEvents, aoeEvents, beamEvents);
-                        }
-                    }
+                        Target = target,
+                        AttackerId = casterId,
+                        State = state,
+                        Amount = mitigatedDamage,
+                        IsCritical = false,
+                        IsBlock = false,
+                        IsDodge = false
+                    });
                 }
             }
         }
@@ -705,10 +253,10 @@ public static class SkillSystem
         // --- ACTION: SUMMON ---
         if (config.ActionType == SkillActionType.Summon)
         {
-            if (configs.Enemies.TryGetValue(config.SummonConfigId, out var summonConfig))
+            if (_configs.Enemies.TryGetValue(config.SummonConfigId, out var summonConfig))
             {
-                float mapW = configs.Maps != null && configs.Maps.TryGetValue("map_forest", out var currentMap) ? currentMap.Width : 4000f;
-                float mapH = configs.Maps != null && configs.Maps.TryGetValue("map_forest", out var currentMapH) ? currentMapH.Height : 4000f;
+                float mapW = _configs.Maps != null && _configs.Maps.TryGetValue("map_forest", out var currentMap) ? currentMap.Width : 4000f;
+                float mapH = _configs.Maps != null && _configs.Maps.TryGetValue("map_forest", out var currentMapH) ? currentMapH.Height : 4000f;
 
                 for (int i = 0; i < config.SummonCount; i++)
                 {
@@ -718,8 +266,8 @@ public static class SkillSystem
                     float spawnY = Math.Clamp(startY + (float)Math.Sin(angle) * dist, 35, mapH - 35);
 
                     var newSummon = new EnemyEntity();
-                    newSummon.Initialize(summonConfig, spawnX, spawnY, configs);
-                    newSummon.CurrentHp = newSummon.GetTotalStat("maxHp", configs);
+                    newSummon.Initialize(summonConfig, spawnX, spawnY, _configs);
+                    newSummon.CurrentHp = newSummon.GetTotalStat("maxHp", _configs);
                     newSummon.Team = team;
 
                     state.Enemies.TryAdd(newSummon.Id, newSummon);
@@ -732,22 +280,21 @@ public static class SkillSystem
         if (config.ActionType == SkillActionType.AoE)
         {
             bool isHeal = config.BaseDamage < 0;
+            // Negative damage handles healing, otherwise we calculate armor mitigation treating it as magic damage
             float actualDamage = isHeal ? -Math.Abs(finalSpellDamage) : finalSpellDamage;
-            aoeEvents.Add(new AoeEventDto { X = startX, Y = startY, Radius = config.Radius, IsFriendly = string.IsNullOrEmpty(team) || team == "Player", ConfigId = config.Id });
+
+            // >>> EDA: PUBLISH AOE VISUAL EVENT <<<
+            _eventBus.Publish(new AoeVisualEvent { Dto = new AoeEventDto { X = startX, Y = startY, Radius = config.Radius, IsFriendly = string.IsNullOrEmpty(team) || team == "Player", ConfigId = config.Id } });
+
             float radiusSq = config.Radius * config.Radius;
 
-            void ApplyAoeEffects(List<ActiveEffect> targetEffects)
+            void ApplyAoeEffects(BaseActorEntity target)
             {
                 if (config.ApplyEffects != null)
                 {
                     foreach (var effectId in config.ApplyEffects)
                     {
-                        if (configs.Effects.TryGetValue(effectId, out var effectConfig))
-                        {
-                            var existing = targetEffects.FirstOrDefault(e => e.ConfigId == effectId);
-                            if (existing != null) existing.TimeRemaining = effectConfig.Duration;
-                            else targetEffects.Add(new ActiveEffect { ConfigId = effectId, TimeRemaining = effectConfig.Duration });
-                        }
+                        _eventBus.Publish(new ApplyEffectEvent { Target = target, EffectConfigId = effectId });
                     }
                 }
             }
@@ -765,19 +312,9 @@ public static class SkillSystem
                         float distSq = (enemy.X - startX) * (enemy.X - startX) + (enemy.Y - startY) * (enemy.Y - startY);
                         if (distSq <= radiusSq)
                         {
-                            enemy.CurrentHp -= actualDamage;
-                            damageEvents.Add(new DamageEventDto { X = enemy.X, Y = enemy.Y, Amount = actualDamage });
-                            ApplyAoeEffects(enemy.ActiveEffects);
-
-                            if (enemy.CurrentHp <= 0 && enemy.ActionState != "Dead")
-                            {
-                                enemy.ActionState = "Dead";
-                                var gold = new PickupEntity { X = enemy.X, Y = enemy.Y, Value = 1 };
-                                state.Pickups.TryAdd(gold.Id, gold);
-
-                                if (configs.Enemies.TryGetValue(enemy.ConfigId, out var eCfg))
-                                    FireOnDeathSkills(enemy.Id, enemy.X, enemy.Y, enemy.Team, eCfg.OnDeathSkills, state, configs, damageEvents, aoeEvents, beamEvents);
-                            }
+                            float mitigatedAoeDmg = CombatSystem.CalculateMitigatedDamage(0f, actualDamage, enemy, _configs);
+                            _eventBus.Publish(new DamageAppliedEvent { Target = enemy, AttackerId = casterId, State = state, Amount = mitigatedAoeDmg, IsCritical = false, IsBlock = false, IsDodge = false });
+                            ApplyAoeEffects(enemy);
                         }
                     }
                 }
@@ -788,9 +325,8 @@ public static class SkillSystem
                         float distSq = (ally.X - startX) * (ally.X - startX) + (ally.Y - startY) * (ally.Y - startY);
                         if (distSq <= radiusSq)
                         {
-                            float healAmount = Math.Min(Math.Abs(actualDamage), ally.GetTotalStat("maxHp", configs) - ally.CurrentHp);
-                            if (healAmount > 0) { ally.CurrentHp += healAmount; damageEvents.Add(new DamageEventDto { X = ally.X, Y = ally.Y, Amount = -healAmount }); }
-                            ApplyAoeEffects(ally.ActiveEffects);
+                            _eventBus.Publish(new DamageAppliedEvent { Target = ally, AttackerId = casterId, State = state, Amount = actualDamage, IsCritical = false, IsBlock = false, IsDodge = false });
+                            ApplyAoeEffects(ally);
                         }
                     }
                     foreach (var summon in state.Enemies.Values)
@@ -799,9 +335,8 @@ public static class SkillSystem
                         float distSq = (summon.X - startX) * (summon.X - startX) + (summon.Y - startY) * (summon.Y - startY);
                         if (distSq <= radiusSq)
                         {
-                            float healAmount = Math.Min(Math.Abs(actualDamage), summon.GetTotalStat("maxHp", configs) - summon.CurrentHp);
-                            if (healAmount > 0) { summon.CurrentHp += healAmount; damageEvents.Add(new DamageEventDto { X = summon.X, Y = summon.Y, Amount = -healAmount }); }
-                            ApplyAoeEffects(summon.ActiveEffects);
+                            _eventBus.Publish(new DamageAppliedEvent { Target = summon, AttackerId = casterId, State = state, Amount = actualDamage, IsCritical = false, IsBlock = false, IsDodge = false });
+                            ApplyAoeEffects(summon);
                         }
                     }
                 }
@@ -815,9 +350,9 @@ public static class SkillSystem
                         float distSq = (player.X - startX) * (player.X - startX) + (player.Y - startY) * (player.Y - startY);
                         if (distSq <= radiusSq)
                         {
-                            player.CurrentHp -= actualDamage;
-                            damageEvents.Add(new DamageEventDto { X = player.X, Y = player.Y, Amount = actualDamage });
-                            ApplyAoeEffects(player.ActiveEffects);
+                            float mitigatedAoeDmg = CombatSystem.CalculateMitigatedDamage(0f, actualDamage, player, _configs);
+                            _eventBus.Publish(new DamageAppliedEvent { Target = player, AttackerId = casterId, State = state, Amount = mitigatedAoeDmg, IsCritical = false, IsBlock = false, IsDodge = false });
+                            ApplyAoeEffects(player);
                         }
                     }
                     foreach (var summon in state.Enemies.Values)
@@ -826,16 +361,9 @@ public static class SkillSystem
                         float distSq = (summon.X - startX) * (summon.X - startX) + (summon.Y - startY) * (summon.Y - startY);
                         if (distSq <= radiusSq)
                         {
-                            summon.CurrentHp -= actualDamage;
-                            damageEvents.Add(new DamageEventDto { X = summon.X, Y = summon.Y, Amount = actualDamage });
-                            ApplyAoeEffects(summon.ActiveEffects);
-
-                            if (summon.CurrentHp <= 0 && summon.ActionState != "Dead")
-                            {
-                                summon.ActionState = "Dead";
-                                if (configs.Enemies.TryGetValue(summon.ConfigId, out var eCfg))
-                                    FireOnDeathSkills(summon.Id, summon.X, summon.Y, summon.Team, eCfg.OnDeathSkills, state, configs, damageEvents, aoeEvents, beamEvents);
-                            }
+                            float mitigatedAoeDmg = CombatSystem.CalculateMitigatedDamage(0f, actualDamage, summon, _configs);
+                            _eventBus.Publish(new DamageAppliedEvent { Target = summon, AttackerId = casterId, State = state, Amount = mitigatedAoeDmg, IsCritical = false, IsBlock = false, IsDodge = false });
+                            ApplyAoeEffects(summon);
                         }
                     }
                 }
@@ -847,9 +375,8 @@ public static class SkillSystem
                         float distSq = (ally.X - startX) * (ally.X - startX) + (ally.Y - startY) * (ally.Y - startY);
                         if (distSq <= radiusSq)
                         {
-                            float healAmount = Math.Min(Math.Abs(actualDamage), ally.GetTotalStat("maxHp", configs) - ally.CurrentHp);
-                            if (healAmount > 0) { ally.CurrentHp += healAmount; damageEvents.Add(new DamageEventDto { X = ally.X, Y = ally.Y, Amount = -healAmount }); }
-                            ApplyAoeEffects(ally.ActiveEffects);
+                            _eventBus.Publish(new DamageAppliedEvent { Target = ally, AttackerId = casterId, State = state, Amount = actualDamage, IsCritical = false, IsBlock = false, IsDodge = false });
+                            ApplyAoeEffects(ally);
                         }
                     }
                 }
@@ -857,37 +384,310 @@ public static class SkillSystem
         }
     }
 
-    public static void FireOnDeathSkills(string entityId, float x, float y, string team, List<string> onDeathSkills, GameState state, ConfigManager configs, List<DamageEventDto> damageEvents, List<AoeEventDto> aoeEvents, List<BeamEventDto> beamEvents)
+    private void OnTriggerDeathSkills(TriggerDeathSkillsEvent ev)
     {
-        if (onDeathSkills == null) return;
-        foreach (var skillId in onDeathSkills)
+        if (ev.Skills == null) return;
+        foreach (var skillId in ev.Skills)
         {
-            if (configs.Skills.TryGetValue(skillId, out var skillConfig))
-                ExecuteSkill(skillConfig, entityId, x, y, team, damageEvents, aoeEvents, beamEvents, state, configs);
+            if (_configs.Skills.TryGetValue(skillId, out var skillConfig))
+            {
+                _eventBus.Publish(new RequestSkillCastEvent
+                {
+                    Skill = skillConfig,
+                    CasterId = ev.EntityId,
+                    StartX = ev.X,
+                    StartY = ev.Y,
+                    Team = ev.Team,
+                    State = ev.State
+                });
+            }
         }
     }
 
-    // Add this right before the final closing brace of SkillSystem
-    public static void ResetAllPlayerSkills(GameState state)
+    // 3. Change public static ResetAllPlayerSkills to this private handler:
+    private void OnResetPlayerSkills(ResetPlayerSkillsEvent ev)
     {
-        foreach (var player in state.Players.Values)
+        foreach (var player in ev.State.Players.Values)
         {
-            // 1. Force the player out of the Casting animation state
             player.ActionState = "Idle";
             player.CurrentCastingSkillId = string.Empty;
             player.CurrentCastTimer = 0f;
             player.MaxCastTimer = 0f;
-
-            // 2. Clear out dynamic emergency triggers (like low HP skills)
             player.DynamicSkillTimers.Clear();
+            foreach (var skill in player.SynergizedSkills) { skill.CurrentCastTimer = 0f; skill.CurrentChannelTimer = 0f; skill.CurrentCooldown = 0f; }
+        }
+    }
 
-            // 3. Reset all active channels and cooldowns so they are fresh for the next wave
-            foreach (var skill in player.SynergizedSkills)
+    public void Update(float dt, GameState state)
+    {
+        TickAoeEvents.Clear();
+        TickBeamEvents.Clear();
+        ProcessEnemySkills(dt, state);
+        ProcessPlayerSkills(dt, state);
+    }
+
+    private void ProcessEnemySkills(float dt, GameState state)
+    {
+        foreach (var enemy in state.Enemies.Values)
+        {
+            if (enemy.ActionState == "Dead") continue;
+            if (enemy.SkillWaitTimer > 0) { enemy.SkillWaitTimer -= dt; continue; }
+
+            bool isCasting = false;
+            float hasteMult = (100f + Math.Max(0f, enemy.GetTotalStat("haste", _configs))) / 100f;
+
+            foreach (var skill in enemy.Skills)
             {
-                skill.CurrentCastTimer = 0f;
-                skill.CurrentChannelTimer = 0f;
-                skill.CurrentCooldown = 0f;
+                if (!_configs.Skills.TryGetValue(skill.ConfigId, out var config)) continue;
+                if (skill.CurrentCooldown > 0) skill.CurrentCooldown -= dt;
+
+                if (config.IsIndependent && skill.CurrentCastTimer > 0)
+                {
+                    skill.CurrentCastTimer -= dt;
+                    if (skill.CurrentCastTimer <= 0)
+                    {
+                        if (config.ChannelDurationSeconds > 0) { skill.CurrentChannelTimer = config.ChannelDurationSeconds; if (!config.IsRepeated) ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus); }
+                        else { ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus); skill.CurrentCooldown = config.CooldownSeconds / hasteMult; }
+                    }
+                }
+
+                if (skill.CurrentChannelTimer > 0)
+                {
+                    skill.CurrentChannelTimer -= dt;
+                    if (config.IsRepeated) ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus);
+                    if (skill.CurrentChannelTimer <= 0) skill.CurrentCooldown = config.CooldownSeconds / hasteMult;
+                }
+            }
+
+            var activeCast = enemy.Skills.FirstOrDefault(s => s.CurrentCastTimer > 0 && (!_configs.Skills.TryGetValue(s.ConfigId, out var c) || !c.IsIndependent));
+            if (activeCast != null && _configs.Skills.TryGetValue(activeCast.ConfigId, out var activeConfig))
+            {
+                isCasting = true;
+                enemy.CurrentCastingSkillId = activeCast.ConfigId;
+                enemy.CurrentCastTimer = activeCast.CurrentCastTimer;
+                enemy.MaxCastTimer = activeConfig.CastTimeSeconds / hasteMult;
+
+                activeCast.CurrentCastTimer -= dt;
+                if (activeCast.CurrentCastTimer <= 0)
+                {
+                    if (activeConfig.ChannelDurationSeconds > 0) { activeCast.CurrentChannelTimer = activeConfig.ChannelDurationSeconds; if (!activeConfig.IsRepeated) ExecuteSkill(activeConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus); }
+                    else { ExecuteSkill(activeConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus); activeCast.CurrentCooldown = activeConfig.CooldownSeconds / hasteMult; }
+                }
+            }
+
+            if (isCasting) enemy.ActionState = "Casting";
+            else { if (enemy.ActionState == "Casting") enemy.ActionState = "Idle"; enemy.CurrentCastingSkillId = string.Empty; enemy.CurrentCastTimer = 0f; enemy.MaxCastTimer = 0f; }
+
+            foreach (var skill in enemy.Skills)
+            {
+                if (_configs.Skills.TryGetValue(skill.ConfigId, out var config) && config.IsIndependent)
+                {
+                    if (skill.CurrentCooldown <= 0 && skill.CurrentCastTimer <= 0 && skill.CurrentChannelTimer <= 0)
+                    {
+                        if (config.CastTimeSeconds > 0) skill.CurrentCastTimer = config.CastTimeSeconds / hasteMult;
+                        else
+                        {
+                            if (config.ChannelDurationSeconds > 0) { skill.CurrentChannelTimer = config.ChannelDurationSeconds; if (!config.IsRepeated) ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus); }
+                            else { ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus); skill.CurrentCooldown = config.CooldownSeconds / hasteMult; }
+                        }
+                    }
+                }
+            }
+
+            if (!isCasting && enemy.Skills.Count > 0)
+            {
+                for (int i = 0; i < enemy.Skills.Count; i++)
+                {
+                    int checkIndex = (enemy.CurrentSkillIndex + i) % enemy.Skills.Count;
+                    var skill = enemy.Skills[checkIndex];
+                    if (_configs.Skills.TryGetValue(skill.ConfigId, out var config) && !config.IsIndependent && config.TriggerType == SkillTriggerType.Auto)
+                    {
+                        if (config.CastTimeSeconds <= 0 && config.CooldownSeconds <= 0 && config.ChannelDurationSeconds <= 0) { ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus); continue; }
+                        if (skill.CurrentCooldown <= 0 && skill.CurrentCastTimer <= 0 && skill.CurrentChannelTimer <= 0)
+                        {
+                            if (config.CastTimeSeconds > 0) skill.CurrentCastTimer = config.CastTimeSeconds / hasteMult;
+                            else
+                            {
+                                if (config.ChannelDurationSeconds > 0) { skill.CurrentChannelTimer = config.ChannelDurationSeconds; if (!config.IsRepeated) ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus); }
+                                else { ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus); skill.CurrentCooldown = config.CooldownSeconds / hasteMult; }
+                            }
+                            enemy.CurrentSkillIndex = (checkIndex + 1) % enemy.Skills.Count;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (_configs.Enemies.TryGetValue(enemy.ConfigId, out var eConfig) && eConfig.DynamicSkills != null)
+            {
+                foreach (var trigger in eConfig.DynamicSkills)
+                {
+                    if (!enemy.DynamicSkillTimers.ContainsKey(trigger.SkillId)) enemy.DynamicSkillTimers[trigger.SkillId] = 0;
+                    if (enemy.DynamicSkillTimers[trigger.SkillId] > 0) enemy.DynamicSkillTimers[trigger.SkillId] -= dt;
+
+                    if (trigger.ConditionType == "MissingHealthPercent" && enemy.DynamicSkillTimers[trigger.SkillId] <= 0)
+                    {
+                        float hpPct = enemy.CurrentHp / enemy.GetTotalStat("maxHp", _configs);
+                        if (hpPct <= trigger.ConditionThreshold && _configs.Skills.TryGetValue(trigger.SkillId, out var skillConfig))
+                        {
+                            var activeSkill = enemy.Skills.FirstOrDefault(s => s.ConfigId == trigger.SkillId);
+                            if (activeSkill != null && (activeSkill.CurrentCastTimer > 0 || activeSkill.CurrentChannelTimer > 0)) continue;
+                            float castTime = trigger.OverrideCastTime ?? skillConfig.CastTimeSeconds;
+                            if (activeSkill == null) { activeSkill = new ActiveSkill { ConfigId = trigger.SkillId }; enemy.Skills.Add(activeSkill); }
+                            enemy.DynamicSkillTimers[trigger.SkillId] = trigger.Cooldown;
+
+                            if (castTime <= 0)
+                            {
+                                if (skillConfig.ChannelDurationSeconds > 0) { activeSkill.CurrentChannelTimer = skillConfig.ChannelDurationSeconds; if (!skillConfig.IsRepeated) ExecuteSkill(skillConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus); }
+                                else { ExecuteSkill(skillConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus); activeSkill.CurrentCooldown = skillConfig.CooldownSeconds / hasteMult; }
+                            }
+                            else activeSkill.CurrentCastTimer = castTime / hasteMult;
+                        }
+                    }
+                }
             }
         }
     }
+
+    private void ProcessPlayerSkills(float dt, GameState state)
+    {
+        foreach (var player in state.Players.Values)
+        {
+            if (player.ActionState == "Dead") continue;
+            bool isCasting = false;
+            float hasteMult = (100f + Math.Max(0f, player.GetTotalStat("haste", _configs))) / 100f;
+
+            foreach (var skill in player.SynergizedSkills)
+            {
+                if (!_configs.Skills.TryGetValue(skill.ConfigId, out var config)) continue;
+                if (skill.CurrentCooldown > 0) skill.CurrentCooldown -= dt;
+
+                if (config.IsIndependent && skill.CurrentCastTimer > 0)
+                {
+                    skill.CurrentCastTimer -= dt;
+                    if (skill.CurrentCastTimer <= 0)
+                    {
+                        if (config.ChannelDurationSeconds > 0) { skill.CurrentChannelTimer = config.ChannelDurationSeconds; if (!config.IsRepeated) ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus); }
+                        else { ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus); skill.CurrentCooldown = config.CooldownSeconds / hasteMult; }
+                    }
+                }
+
+                if (skill.CurrentChannelTimer > 0)
+                {
+                    skill.CurrentChannelTimer -= dt;
+                    if (config.IsRepeated) ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus);
+                    if (skill.CurrentChannelTimer <= 0) skill.CurrentCooldown = config.CooldownSeconds / hasteMult;
+                }
+            }
+
+            var activeCast = player.SynergizedSkills.FirstOrDefault(s => s.CurrentCastTimer > 0 && (!_configs.Skills.TryGetValue(s.ConfigId, out var c) || !c.IsIndependent));
+            if (activeCast != null && _configs.Skills.TryGetValue(activeCast.ConfigId, out var activeConfig))
+            {
+                isCasting = true;
+                player.CurrentCastingSkillId = activeCast.ConfigId;
+                player.CurrentCastTimer = activeCast.CurrentCastTimer;
+                player.MaxCastTimer = activeConfig.CastTimeSeconds / hasteMult;
+
+                activeCast.CurrentCastTimer -= dt;
+                if (activeCast.CurrentCastTimer <= 0)
+                {
+                    if (activeConfig.ChannelDurationSeconds > 0) { activeCast.CurrentChannelTimer = activeConfig.ChannelDurationSeconds; if (!activeConfig.IsRepeated) ExecuteSkill(activeConfig, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus); }
+                    else { ExecuteSkill(activeConfig, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus); activeCast.CurrentCooldown = activeConfig.CooldownSeconds / hasteMult; }
+                }
+            }
+
+            if (isCasting) player.ActionState = "Casting";
+            else { if (player.ActionState == "Casting") player.ActionState = "Idle"; player.CurrentCastingSkillId = string.Empty; player.CurrentCastTimer = 0f; player.MaxCastTimer = 0f; }
+
+            foreach (var skill in player.SynergizedSkills)
+            {
+                if (_configs.Skills.TryGetValue(skill.ConfigId, out var config) && config.IsIndependent)
+                {
+                    if (config.TriggerType == SkillTriggerType.Auto && state.Phase != GamePhase.WaveActive) continue;
+                    if (skill.CurrentCooldown <= 0 && skill.CurrentCastTimer <= 0 && skill.CurrentChannelTimer <= 0)
+                    {
+                        if (config.CastTimeSeconds > 0) skill.CurrentCastTimer = config.CastTimeSeconds / hasteMult;
+                        else
+                        {
+                            if (config.ChannelDurationSeconds > 0) { skill.CurrentChannelTimer = config.ChannelDurationSeconds; if (!config.IsRepeated) ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus); }
+                            else { ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus); skill.CurrentCooldown = config.CooldownSeconds / hasteMult; }
+                        }
+                    }
+                }
+            }
+
+            if (!isCasting && player.SynergizedSkills.Count > 0)
+            {
+                for (int i = 0; i < player.SynergizedSkills.Count; i++)
+                {
+                    int checkIndex = (player.CurrentSkillIndex + i) % player.SynergizedSkills.Count;
+                    var skill = player.SynergizedSkills[checkIndex];
+                    if (_configs.Skills.TryGetValue(skill.ConfigId, out var config) && !config.IsIndependent && config.TriggerType == SkillTriggerType.Auto)
+                    {
+                        if (state.Phase != GamePhase.WaveActive) continue;
+                        if (config.CastTimeSeconds <= 0 && config.CooldownSeconds <= 0 && config.ChannelDurationSeconds <= 0) { ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus); continue; }
+                        if (skill.CurrentCooldown <= 0 && skill.CurrentCastTimer <= 0 && skill.CurrentChannelTimer <= 0)
+                        {
+                            if (config.CastTimeSeconds > 0) skill.CurrentCastTimer = config.CastTimeSeconds / hasteMult;
+                            else
+                            {
+                                if (config.ChannelDurationSeconds > 0) { skill.CurrentChannelTimer = config.ChannelDurationSeconds; if (!config.IsRepeated) ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus); }
+                                else { ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus); skill.CurrentCooldown = config.CooldownSeconds / hasteMult; }
+                            }
+                            player.CurrentSkillIndex = (checkIndex + 1) % player.SynergizedSkills.Count;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (_configs.Characters.TryGetValue(player.ConfigId, out var pConfig) && pConfig.DynamicSkills != null)
+            {
+                foreach (var trigger in pConfig.DynamicSkills)
+                {
+                    if (!player.DynamicSkillTimers.ContainsKey(trigger.SkillId)) player.DynamicSkillTimers[trigger.SkillId] = 0;
+                    if (player.DynamicSkillTimers[trigger.SkillId] > 0) player.DynamicSkillTimers[trigger.SkillId] -= dt;
+
+                    if (trigger.ConditionType == "MissingHealthPercent" && player.DynamicSkillTimers[trigger.SkillId] <= 0)
+                    {
+                        float hpPct = player.CurrentHp / player.GetTotalStat("maxHp", _configs);
+                        if (hpPct <= trigger.ConditionThreshold && _configs.Skills.TryGetValue(trigger.SkillId, out var skillConfig))
+                        {
+                            var activeSkill = player.SynergizedSkills.FirstOrDefault(s => s.ConfigId == trigger.SkillId);
+                            if (activeSkill != null && (activeSkill.CurrentCastTimer > 0 || activeSkill.CurrentChannelTimer > 0)) continue;
+                            float castTime = trigger.OverrideCastTime ?? skillConfig.CastTimeSeconds;
+                            if (activeSkill == null) { activeSkill = new ActiveSkill { ConfigId = trigger.SkillId }; player.SynergizedSkills.Add(activeSkill); }
+                            player.DynamicSkillTimers[trigger.SkillId] = trigger.Cooldown;
+
+                            if (castTime <= 0)
+                            {
+                                if (skillConfig.ChannelDurationSeconds > 0) { activeSkill.CurrentChannelTimer = skillConfig.ChannelDurationSeconds; if (!skillConfig.IsRepeated) ExecuteSkill(skillConfig, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus); }
+                                else { ExecuteSkill(skillConfig, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus); activeSkill.CurrentCooldown = skillConfig.CooldownSeconds / hasteMult; }
+                            }
+                            else activeSkill.CurrentCastTimer = castTime / hasteMult;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // >>> THE BRIDGE FIX: Routes all internal calls safely through the Event Bus! <<<
+    private void ExecuteSkill(SkillConfig config, string casterId, float startX, float startY, string team, GameState state, ConfigManager configs, EventBus eventBus, ProjectileEntity? sourceProjectile = null)
+    {
+        _eventBus.Publish(new RequestSkillCastEvent
+        {
+            Skill = config,
+            CasterId = casterId,
+            StartX = startX,
+            StartY = startY,
+            Team = team,
+            State = state,
+            SourceProjectile = sourceProjectile
+        });
+    }
+
+
+
+
 }
