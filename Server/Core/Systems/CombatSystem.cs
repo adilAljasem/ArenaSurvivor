@@ -368,17 +368,26 @@ public class CombatSystem : IGameSystem
                 foreach (var target in targets)
                 {
                     if (target.ActionState == "Dead") continue;
+
                     if ((target.X - enemy.X) * (target.X - enemy.X) + (target.Y - enemy.Y) * (target.Y - enemy.Y) <= attackRadiusSq)
                     {
                         float dodgeChance = Math.Clamp(target.GetTotalStat("dodge", _configs), 0f, 0.9f);
                         bool isDodge = dodgeChance > 0 && Random.Shared.NextDouble() <= dodgeChance;
+
+                        // THE FIX: Route the melee damage through the armor mitigation formula
+                        float finalDamage = 0f;
+                        if (!isDodge)
+                        {
+                            // Treat enemy normal attacks as 100% physical damage
+                            finalDamage = CalculateMitigatedDamage(meleeDmg, 0f, target, _configs);
+                        }
 
                         _eventBus.Publish(new DamageAppliedEvent
                         {
                             Target = target,
                             AttackerId = enemy.Id,
                             State = state,
-                            Amount = isDodge ? 0 : meleeDmg,
+                            Amount = finalDamage,
                             IsCritical = false,
                             IsDodge = isDodge,
                             IsBlock = false
@@ -392,11 +401,24 @@ public class CombatSystem : IGameSystem
         foreach (var id in pickupsToRemove) state.Pickups.TryRemove(id, out _);
     }
 
-    public static float CalculateMitigatedDamage(float physDmg, float magicDmg, BaseActorEntity target, ConfigManager configs)
+    internal static float CalculateMitigatedDamage(float physDmg, float magicDmg, BaseActorEntity target, ConfigManager configs)
     {
-        float armor = Math.Max(0f, target.GetTotalStat("armor", configs));
-        float magicDef = Math.Max(0f, target.GetTotalStat("magicDefense", configs));
-        return (physDmg * (100f / (100f + armor))) + (magicDmg * (100f / (100f + magicDef)));
+        // 1. Get the base flat stats
+        float baseArmor = Math.Max(0f, target.GetTotalStat("armor", configs));
+        float baseMagicDef = Math.Max(0f, target.GetTotalStat("magicDefense", configs));
+
+        // 2. Get the percentage boost (e.g., 0.50 for 50% defense)
+        float defensePercent = target.GetTotalStat("defensePercent", configs);
+
+        // 3. Apply the percentage to scale the stats up! (Your idea)
+        float finalArmor = baseArmor * (1f + defensePercent);
+        float finalMagicDef = baseMagicDef * (1f + defensePercent);
+
+        // 4. Run the standard MOBA mitigation formula using the boosted stats
+        float mitigatedPhys = physDmg * (100f / (100f + finalArmor));
+        float mitigatedMagic = magicDmg * (100f / (100f + finalMagicDef));
+
+        return mitigatedPhys + mitigatedMagic;
     }
 
     public static (float phys, float magic, bool isCrit) CalculateWeaponDamageSplit(BaseActorEntity actor, WeaponConfig wCfg, EquippedWeapon weapon, ConfigManager configs)

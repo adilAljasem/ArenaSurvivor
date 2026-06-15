@@ -93,6 +93,9 @@ public class GameLoop : BackgroundService
             foreach (var system in _systems)
             {
                 system.Update(dt, _gameState);
+                // Process events immediately after this system generates them,
+                // so the next system in the loop has the latest logical state.
+                _eventBus.ProcessQueue();
             }
 
             _eventBus.ProcessQueue();

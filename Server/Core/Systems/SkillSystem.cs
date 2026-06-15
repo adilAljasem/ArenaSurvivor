@@ -12,15 +12,11 @@ public class SkillSystem : IGameSystem
     private EventBus _eventBus = null!;
     private ConfigManager _configs = null!;
 
-    public List<AoeEventDto> TickAoeEvents { get; } = new();
-    public List<BeamEventDto> TickBeamEvents { get; } = new();
 
     public void Initialize(EventBus eventBus, ConfigManager configs)
     {
         _eventBus = eventBus;
         _configs = configs;
-        _eventBus.Subscribe<AoeVisualEvent>(ev => TickAoeEvents.Add(ev.Dto));
-        _eventBus.Subscribe<BeamVisualEvent>(ev => TickBeamEvents.Add(ev.Dto));
 
         // >>> NEW: TRUE EDA SUBSCRIPTIONS <<<
         _eventBus.Subscribe<RequestSkillCastEvent>(OnRequestSkillCast);
@@ -420,8 +416,6 @@ public class SkillSystem : IGameSystem
 
     public void Update(float dt, GameState state)
     {
-        TickAoeEvents.Clear();
-        TickBeamEvents.Clear();
         ProcessEnemySkills(dt, state);
         ProcessPlayerSkills(dt, state);
     }
