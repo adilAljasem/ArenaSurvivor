@@ -1,35 +1,35 @@
-namespace Server.Entities;
+// namespace Server.Entities;
 
-public class ProjectileEntity
-{
-    private static int _projIdCounter = 0;
-    public string Id { get; set; } = Interlocked.Increment(ref _projIdCounter).ToString(); public string ConfigId { get; set; } = string.Empty; // Tells the UI what sprite to draw!
-    public string OwnerId { get; set; } = string.Empty;
-    public float X { get; set; }
-    public float Y { get; set; }
-    public float VelX { get; set; }
-    public float VelY { get; set; }
-    public float PhysicalDamage { get; set; }
-    public float MagicDamage { get; set; }
-    public float LifeStealChance { get; set; }
-    // >>> NEW: Melee & Pierce Mechanics! <<<
-    public float HitRadius { get; set; } = 15f;
-    public float Lifespan { get; set; } = 1f;
-    public int PierceCount { get; set; } = 0;
-    public float SweepAngle { get; set; } = (float)(Random.Shared.NextDouble() * Math.PI * 2);
-    // >>> NEW: Orbit & Death Mechanics <<<
-    public string MovementBehavior { get; set; } = "Linear";
-    public float OrbitRadius { get; set; }
-    public float OrbitAngleOffset { get; set; }
-    public float OrbitSpeed { get; set; }
-    public string OnDeathSkillId { get; set; } = string.Empty;
+// public class ProjectileEntity
+// {
+//     private static int _projIdCounter = 0;
+//     public string Id { get; set; } = Interlocked.Increment(ref _projIdCounter).ToString(); public string ConfigId { get; set; } = string.Empty; // Tells the UI what sprite to draw!
+//     public string OwnerId { get; set; } = string.Empty;
+//     public float X { get; set; }
+//     public float Y { get; set; }
+//     public float VelX { get; set; }
+//     public float VelY { get; set; }
+//     public float PhysicalDamage { get; set; }
+//     public float MagicDamage { get; set; }
+//     public float LifeStealChance { get; set; }
+//     // >>> NEW: Melee & Pierce Mechanics! <<<
+//     public float HitRadius { get; set; } = 15f;
+//     public float Lifespan { get; set; } = 1f;
+//     public int PierceCount { get; set; } = 0;
+//     public float SweepAngle { get; set; } = (float)(Random.Shared.NextDouble() * Math.PI * 2);
+//     // >>> NEW: Orbit & Death Mechanics <<<
+//     public string MovementBehavior { get; set; } = "Linear";
+//     public float OrbitRadius { get; set; }
+//     public float OrbitAngleOffset { get; set; }
+//     public float OrbitSpeed { get; set; }
+//     public string OnDeathSkillId { get; set; } = string.Empty;
 
-    public float TickRate { get; set; }
-    public string TickSkillId { get; set; } = string.Empty;
-    public float TimeSinceLastTick { get; set; }
+//     public float TickRate { get; set; }
+//     public string TickSkillId { get; set; } = string.Empty;
+//     public float TimeSinceLastTick { get; set; }
 
-    public string Team { get; set; } = string.Empty;
-    public HashSet<string> HitEnemies { get; set; } = new();
-    public List<string> ApplyEffectsOnHit { get; set; } = new();
-    public bool IsCritical { get; set; }
-}
+//     public string Team { get; set; } = string.Empty;
+//     public HashSet<string> HitEnemies { get; set; } = new();
+//     public List<string> ApplyEffectsOnHit { get; set; } = new();
+//     public bool IsCritical { get; set; }
+// }
