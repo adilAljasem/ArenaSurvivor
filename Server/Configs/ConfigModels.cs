@@ -197,7 +197,9 @@ public class WeaponConfig : BaseGearConfig
 
     // --- Projectile Links ---
     public string ProjectileId { get; set; } = string.Empty;
+    public int ProjectileCount { get; set; } = 1;
     public float ProjectileSpeed { get; set; }
+    public float SpreadAngle { get; set; } = 0f;
 
     // --- Audio ---
     public string SoundFire { get; set; } = string.Empty;
@@ -327,6 +329,7 @@ public class SkillConfig
     // --- Payload ---
     public string ProjectileId { get; set; } = string.Empty;
     public int ProjectileCount { get; set; } = 1;
+    public float SpreadAngle { get; set; } = 0f;
     public float BeamWidth { get; set; } = 10f;
     public float Range { get; set; } = 500f;
     public float SweepAngleSpeed { get; set; } = 0.2f;

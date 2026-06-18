@@ -675,6 +675,15 @@ public class ProjectileEntity
     public HashSet<string> HitEnemies { get; set; } = new();
     public List<string> ApplyEffectsOnHit { get; set; } = new();
     public bool IsCritical { get; set; }
+
+    // >>> ORBIT RE-HIT SUPPORT <<<
+    // HitEnemies above is "pierce memory" for linear projectiles: once hit, never hit again, until the
+    // projectile dies. Orbitals never die from pierce, so they need a per-target re-hit cooldown instead
+    // of permanent pierce memory. Key = target id, Value = seconds remaining until this target can be hit again.
+    public Dictionary<string, float> OrbitHitCooldowns { get; set; } = new();
+
+    // How often (in seconds) an orbiting projectile can re-damage the same target while circling.
+    public float OrbitHitInterval { get; set; } = 0.5f;
 }
 
 public enum PickupType

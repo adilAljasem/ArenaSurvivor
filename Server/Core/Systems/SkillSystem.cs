@@ -120,17 +120,27 @@ public class SkillSystem : IGameSystem
                     foreach (var id in toRemove) state.Projectiles.TryRemove(id, out _);
                 }
 
-                int pCount = Math.Max(1, config.ProjectileCount);
+
                 float computedLifespan = projConfig.BaseSpeed > 0 ? (config.Range / Math.Max(1f, projConfig.BaseSpeed)) : 0.15f;
                 if (config.ChannelDurationSeconds > 0) computedLifespan = config.ChannelDurationSeconds;
                 if (projConfig.Lifespan > 0) computedLifespan = projConfig.Lifespan;
                 if (config.Lifespan > 0) computedLifespan = config.Lifespan;
+                
+                int pCount = Math.Max(1, config.ProjectileCount);
+                var shotDirections = ProjectileFactory.CalculateSpreadDirections(dirX, dirY, pCount, config.SpreadAngle);
+                var newBullets = new List<ProjectileEntity>();
 
-                var newBullets = ProjectileFactory.Create(
-                                    projConfig, casterId, team, startX, startY, dirX, dirY,
-                                    0f, finalSpellDamage,
-                                    projConfig.BaseSpeed, 0f, config.ApplyEffects, pCount, computedLifespan
-                                );
+                foreach (var (spreadDirX, spreadDirY) in shotDirections)
+                {
+                    newBullets.AddRange(ProjectileFactory.Create(
+                        projConfig, casterId, team, startX, startY,
+                        spreadDirX, spreadDirY, // Use the fanned-out direction!
+                        0f, finalSpellDamage, projConfig.BaseSpeed, 0f, config.ApplyEffects,
+                        1, // CRITICAL: Pass 1 here because our loop is handling the count now!
+                        computedLifespan
+                    ));
+                }
+
 
                 if (projConfig.MovementBehavior == "Orbital" && newBullets.Count > 0)
                 {

@@ -78,4 +78,38 @@ public static class ProjectileFactory
 
         return results;
     }
+
+    public static List<(float dirX, float dirY)> CalculateSpreadDirections(float baseDirX, float baseDirY, int count, float spreadAngleDegrees)
+    {
+        var directions = new List<(float dirX, float dirY)>();
+
+        // Safety check: If only 1 projectile or no spread, just return the base direction
+        if (count <= 1 || spreadAngleDegrees <= 0)
+        {
+            directions.Add((baseDirX, baseDirY));
+            return directions;
+        }
+
+        // Convert base direction vector into an angle (in radians)
+        float baseAngle = (float)Math.Atan2(baseDirY, baseDirX);
+        float spreadRadians = spreadAngleDegrees * (float)(Math.PI / 180.0);
+
+        // If it's a full 360 nova, divide evenly by the count.
+        // If it's a cone (e.g. 45 degrees), divide by (count - 1) so the outer projectiles sit exactly on the edges.
+        float angleStep = spreadAngleDegrees >= 360f ? (spreadRadians / count) : (spreadRadians / (count - 1));
+        float startAngle = spreadAngleDegrees >= 360f ? baseAngle : baseAngle - (spreadRadians / 2f);
+
+        for (int i = 0; i < count; i++)
+        {
+            float currentAngle = startAngle + (angleStep * i);
+
+            // Convert the new angle back into X/Y direction vectors
+            float newDirX = (float)Math.Cos(currentAngle);
+            float newDirY = (float)Math.Sin(currentAngle);
+
+            directions.Add((newDirX, newDirY));
+        }
+
+        return directions;
+    }
 }

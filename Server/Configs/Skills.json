@@ -265,7 +265,8 @@
         "cooldownSeconds": 2.0,
         "isRepeated": false,
         "projectileCount": 30,
-        "baseDamage": 20
+        "baseDamage": 20,
+        "spreadAngle": 360.0
     },
     "cast_orbital_fireballs_2": {
         "id": "cast_orbital_fireballs_2",
@@ -402,5 +403,14 @@
         "applyEffects": [
             "boss_sweeping_aura"
         ]
+    },
+    "fier_foom": {
+        "id": "fier_foom",
+        "actionType": "Projectile",
+        "cooldownSeconds": 8.0,
+        "castTimeSeconds": 2.0,
+        "projectileCount": 12,
+        "spreadAngle": 360.0,
+        "projectileId": "fireball"
     }
 }

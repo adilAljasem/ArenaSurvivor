@@ -163,6 +163,8 @@
     "rangedDamage": 15,
     "projectileSpeed": 500,
     "projectileId": "shotgun_shell",
+    "projectileCount": 5,
+    "spreadAngle": 45.0,
     "range": 300,
     "textureKey": "weapons_sheet",
     "scale": 0.15,
@@ -177,7 +179,8 @@
       "rangedDamage": 0.6
     },
     "grantedSkills": [
-      "laser_sweep"
+      "laser_sweep",
+      "fier_foom"
     ],
     "statRollChance": 0.50,
     "maxRandomStats": 2,

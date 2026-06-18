@@ -102,8 +102,24 @@ public class CombatSystem : IGameSystem
                             if (config.ApplyEffectsOnHit != null) combinedEffects.AddRange(config.ApplyEffectsOnHit);
                             if (projConfig.ApplyEffectsOnHit != null) combinedEffects.AddRange(projConfig.ApplyEffectsOnHit);
 
-                            var newBullets = ProjectileFactory.Create(projConfig, player.ConnectionId, "Player", spawnX, spawnY, dirX, dirY, physDmg, magicDmg, finalSpeed, totalLifeSteal, combinedEffects, 1, computedLifespan, isCrit);
-                            _eventBus.Publish(new SpawnProjectileEvent { Projectiles = newBullets, State = state });
+
+                            var shotDirections = ProjectileFactory.CalculateSpreadDirections(dirX, dirY, config.ProjectileCount, config.SpreadAngle);
+                            var allNewBullets = new List<ProjectileEntity>();
+
+                            // 2. Loop through and create a bullet for each direction
+                            foreach (var (spreadDirX, spreadDirY) in shotDirections)
+                            {
+                                allNewBullets.AddRange(ProjectileFactory.Create(
+                                    projConfig, player.ConnectionId, "Player", spawnX, spawnY,
+                                    spreadDirX, spreadDirY, // Use the fanned-out direction!
+                                    physDmg, magicDmg, finalSpeed, totalLifeSteal, combinedEffects,
+                                    1, // CRITICAL: Pass 1 here because our loop is handling the count now!
+                                    computedLifespan, isCrit
+                                ));
+                            }
+
+                            // 3. Publish them all at once
+                            _eventBus.Publish(new SpawnProjectileEvent { Projectiles = allNewBullets, State = state });
                         }
                     }
                 }
@@ -195,6 +211,16 @@ public class CombatSystem : IGameSystem
         var projectilesToRemove = new List<string>();
         var pickupsToRemove = new List<string>();
 
+        var hostileEnemies = state.Enemies.Values
+            .Where(e => e.Team == "Enemy")
+            .Cast<BaseActorEntity>()
+            .ToList();
+
+        var playerTeam = state.Players.Values.Cast<BaseActorEntity>()
+            .Concat(state.Enemies.Values.Where(e => e.Team != "Enemy"))
+            .ToList();
+
+
         foreach (var proj in state.Projectiles.Values)
         {
             float prevX = proj.X, prevY = proj.Y;
@@ -216,19 +242,43 @@ public class CombatSystem : IGameSystem
             }
             proj.Lifespan -= dt;
 
-            if (!string.IsNullOrEmpty(proj.TickSkillId) && _configs.Skills.TryGetValue(proj.TickSkillId, out var tickSkill))
+            // 1. Explicitly declare it first to satisfy the compiler
+            SkillConfig? tickSkill = null;
+            bool hasTickSkill = false;
+
+            // 2. Safely populate it
+            if (!string.IsNullOrEmpty(proj.TickSkillId))
+            {
+                hasTickSkill = _configs.Skills.TryGetValue(proj.TickSkillId, out tickSkill);
+            }
+
+            // 3. The projectile ticks if it has an explicit TickRate in JSON, OR a TickSkill cooldown.
+            // Because tickSkill could theoretically be null here, we use the ! (null-forgiving) or cast it safely
+            float effectiveTickRate = proj.TickRate > 0 ? proj.TickRate : (hasTickSkill && tickSkill != null ? tickSkill.CooldownSeconds : 0f);
+
+            if (effectiveTickRate > 0)
             {
                 proj.TimeSinceLastTick += dt;
-                float effectiveTickRate = Math.Max(0.1f, proj.TickRate > 0 ? proj.TickRate : tickSkill.CooldownSeconds);
-                if (proj.TimeSinceLastTick >= effectiveTickRate)
+                float safeTickRate = Math.Max(0.1f, effectiveTickRate);
+
+                if (proj.TimeSinceLastTick >= safeTickRate)
                 {
-                    proj.TimeSinceLastTick %= effectiveTickRate;
+                    proj.TimeSinceLastTick %= safeTickRate;
+
+                    // >>> THE FIX: Wipe the collision memory! <<<
+                    proj.HitEnemies.Clear();
+
                     // >>> FIX 1: EventBus <<<
-                    _eventBus.Publish(new RequestSkillCastEvent { Skill = tickSkill, CasterId = proj.OwnerId, StartX = proj.X, StartY = proj.Y, Team = proj.Team, State = state, SourceProjectile = proj });
+                    if (hasTickSkill && tickSkill != null)
+                    {
+                        _eventBus.Publish(new RequestSkillCastEvent { Skill = tickSkill, CasterId = proj.OwnerId, StartX = proj.X, StartY = proj.Y, Team = proj.Team, State = state, SourceProjectile = proj });
+                    }
                 }
             }
 
-            if (proj.Lifespan <= 0 || proj.HitEnemies.Count > proj.PierceCount)
+            bool isOrbital = proj.MovementBehavior == "Orbital";
+
+            if (proj.Lifespan <= 0 || (!isOrbital && proj.HitEnemies.Count > proj.PierceCount))
             {
                 if (!projectilesToRemove.Contains(proj.Id))
                 {
@@ -243,12 +293,28 @@ public class CombatSystem : IGameSystem
             }
 
             bool isPlayerProj = state.Players.ContainsKey(proj.OwnerId) || (state.Enemies.TryGetValue(proj.OwnerId, out var o) && o.Team != "Enemy");
-            var targets = isPlayerProj ? state.Enemies.Values.Where(e => e.Team == "Enemy") : state.Players.Values.Cast<BaseActorEntity>().Concat(state.Enemies.Values.Where(e => e.Team != "Enemy"));
-
+            var targets = isPlayerProj ? hostileEnemies : playerTeam;
             foreach (var target in targets)
             {
                 string tId = target is PlayerEntity pTarget ? pTarget.ConnectionId : ((EnemyEntity)target).Id;
-                if (target.ActionState == "Dead" || proj.HitEnemies.Contains(tId)) continue;
+                if (target.ActionState == "Dead") continue;
+
+                if (isOrbital)
+                {
+                    // Orbitals use a re-hit cooldown per target instead of permanent pierce memory,
+                    // so they keep damaging anything they circle through indefinitely.
+                    if (proj.OrbitHitCooldowns.TryGetValue(tId, out float remainingCooldown))
+                    {
+                        remainingCooldown -= dt;
+                        if (remainingCooldown > 0)
+                        {
+                            proj.OrbitHitCooldowns[tId] = remainingCooldown;
+                            continue;
+                        }
+                        proj.OrbitHitCooldowns.Remove(tId);
+                    }
+                }
+                else if (proj.HitEnemies.Contains(tId)) continue;
 
                 // >>> ABSOLUTE MANUAL CONTROL: No hidden scale multipliers <<<
                 float targetHitRadius = 15f;
@@ -297,7 +363,10 @@ public class CombatSystem : IGameSystem
                         IsBlock = isBlock
                     });
 
-                    proj.HitEnemies.Add(tId);
+                    if (isOrbital)
+                        proj.OrbitHitCooldowns[tId] = proj.OrbitHitInterval;
+                    else
+                        proj.HitEnemies.Add(tId);
 
                     if (!isDodge && !isBlock)
                     {
@@ -314,7 +383,7 @@ public class CombatSystem : IGameSystem
                             pHeal.CurrentHp = Math.Min(pHeal.GetTotalStat("maxHp", _configs), pHeal.CurrentHp + 1f);
                     }
 
-                    if (isBlock || proj.HitEnemies.Count > proj.PierceCount)
+                    if (isBlock || (!isOrbital && proj.HitEnemies.Count > proj.PierceCount))
                     {
                         if (!projectilesToRemove.Contains(proj.Id))
                         {
@@ -394,6 +463,7 @@ public class CombatSystem : IGameSystem
                         });
                     }
                 }
+                enemy.AttackCooldown = scaledDuration - (dt * 3f);
             }
         }
 
