@@ -22,7 +22,8 @@ public class NetworkSystem : IGameSystem
 
     private readonly List<DamageEventDto> _damageEvents = new();
     private readonly List<AoeEventDto> _aoeEvents = new();
-    private readonly List<BeamEventDto> _beamEvents = new();
+    private readonly List<BeamVisualEvent> _beamEvents = new();
+    private readonly List<BeamEndedEvent> _beamEndedEvents = new();
 
     private readonly ConcurrentDictionary<string, HashSet<string>> _clientKnownEnemies = new();
     private readonly ConcurrentDictionary<string, HashSet<string>> _clientKnownPickups = new();
@@ -51,7 +52,8 @@ public class NetworkSystem : IGameSystem
         });
 
         _eventBus.Subscribe<AoeVisualEvent>(ev => _aoeEvents.Add(ev.Dto));
-        _eventBus.Subscribe<BeamVisualEvent>(ev => _beamEvents.Add(ev.Dto));
+        _eventBus.Subscribe<BeamVisualEvent>(ev => _beamEvents.Add(ev));
+        _eventBus.Subscribe<BeamEndedEvent>(ev => _beamEndedEvents.Add(ev));
     }
 
     public void Update(float dt, GameState state) { }
@@ -61,6 +63,13 @@ public class NetworkSystem : IGameSystem
         if (gameState.Players.IsEmpty) return;
 
         var globalFlatState = FlattenGlobalState(gameState, configManager, _damageEvents, _aoeEvents, _beamEvents);
+
+        // Sent unculled (not run through CullForViewport) and identically to every player:
+        // it's tiny, and a client tracking a persistent beam object must always learn it
+        // ended, even if the beam's last known position was outside that player's viewport.
+        var beamEndedPayload = _beamEndedEvents.Count > 0
+            ? _beamEndedEvents.Select(b => new object[] { b.CasterId, b.SkillId }).ToList()
+            : null;
 
         float mapW = 4000f, mapH = 4000f;
         if (configManager.Maps != null && configManager.Maps.TryGetValue("map_forest", out var currentMap))
@@ -92,6 +101,7 @@ public class NetworkSystem : IGameSystem
                 dmg = visibleState.Damage.Count > 0 ? visibleState.Damage : null,
                 aoe = visibleState.Aoe.Count > 0 ? visibleState.Aoe : null,
                 bm = visibleState.Beams.Count > 0 ? visibleState.Beams : null,
+                be = beamEndedPayload,
 
                 ph = (byte)gameState.Phase,
                 w = gameState.CurrentWave,
@@ -107,6 +117,7 @@ public class NetworkSystem : IGameSystem
         _damageEvents.Clear();
         _aoeEvents.Clear();
         _beamEvents.Clear();
+        _beamEndedEvents.Clear();
     }
 
     private static byte GetStateId(string state) => state switch
@@ -138,7 +149,7 @@ public class NetworkSystem : IGameSystem
         public const int FiredWeapons = 14; public const int Team = 15;
     }
 
-    private static FlatState FlattenGlobalState(GameState gameState, ConfigManager configManager, List<DamageEventDto> dmgEvents, List<AoeEventDto> aoeEvents, List<BeamEventDto> beamEvents)
+    private static FlatState FlattenGlobalState(GameState gameState, ConfigManager configManager, List<DamageEventDto> dmgEvents, List<AoeEventDto> aoeEvents, List<BeamVisualEvent> beamEvents)
     {
         return new FlatState
         {
@@ -183,7 +194,7 @@ public class NetworkSystem : IGameSystem
 
             Damage = dmgEvents.Select(d => new object[] { (int)d.X, (int)d.Y, (int)d.Amount, d.IsCritical ? 1 : 0, d.IsDodge ? 1 : 0, d.IsBlock ? 1 : 0 }).ToList(),
             Aoe = aoeEvents.Select(a => new object[] { (int)a.X, (int)a.Y, (int)a.Radius, a.IsFriendly, a.ConfigId }).ToList(),
-            Beams = beamEvents.Select(b => new object[] { (int)b.StartX, (int)b.StartY, (int)b.TargetX, (int)b.TargetY, (int)b.Width, b.ColorTint }).ToList()
+            Beams = beamEvents.Select(b => new object[] { (int)b.Dto.StartX, (int)b.Dto.StartY, (int)b.Dto.TargetX, (int)b.Dto.TargetY, (int)b.Dto.Width, b.Dto.ColorTint, b.CasterId, b.SkillId }).ToList()
         };
     }
 

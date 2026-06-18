@@ -49,13 +49,15 @@ interface ServerPickup {
   skills: string[];
 }
 interface DamageEvent { x: number; y: number; amount: number; isCritical: boolean; isDodge: boolean; isBlock: boolean; }
-interface BeamEvent { startX: number; startY: number; targetX: number; targetY: number; width: number; colorTint: string; }
+interface BeamEvent { startX: number; startY: number; targetX: number; targetY: number; width: number; colorTint: string; casterId: string; skillId: string; }
+interface BeamEndedEvent { casterId: string; skillId: string; }
 
 export interface GameStatePayload {
   players: ServerPlayer[]; enemies: ServerEnemy[]; projectiles: ServerProjectile[];
   pickups: ServerPickup[]; damageEvents: DamageEvent[]; aoeEvents: AoeEvent[];
   phase: string; currentWave: number; timeRemaining: number;
   beamEvents: BeamEvent[];
+  beamEndedEvents: BeamEndedEvent[];
 }
 
 let masterConfigs: any = {};
@@ -73,6 +75,9 @@ class GameScene extends Phaser.Scene {
   private enemySprites: Map<string, Phaser.GameObjects.Container> = new Map();
   private projectileSprites: Map<string, Phaser.GameObjects.Rectangle | Phaser.GameObjects.Sprite> = new Map();
   private pickupSprites: Map<string, Phaser.GameObjects.Sprite | Phaser.GameObjects.Rectangle> = new Map();
+  // Persistent channeled-beam objects, keyed by "casterId:skillId". One entry lives for the
+  // whole channel duration; see VfxRenderer.renderBeamEvents / endBeam.
+  private activeBeams: Map<string, { beam: Phaser.GameObjects.Rectangle, core: Phaser.GameObjects.Rectangle }> = new Map();
   private targetPositions: Map<string, { x: number, y: number }> = new Map();
   private skillActionBar!: SkillActionBar;
   private enemyCache: Map<string, ServerEnemy> = new Map();
@@ -508,14 +513,21 @@ class GameScene extends Phaser.Scene {
           isBlock: d[5] === 1  // Read Block
         })) || [],
         aoeEvents: rawState.aoe?.map((a: any[]) => ({ x: a[0], y: a[1], radius: a[2], isFriendly: a[3], configId: a[4] })) || [],
-        beamEvents: rawState.bm?.map((b: any[]) => ({ startX: b[0], startY: b[1], targetX: b[2], targetY: b[3], width: b[4], colorTint: b[5] })) || [] // <<< NEW
+        beamEvents: rawState.bm?.map((b: any[]) => ({ startX: b[0], startY: b[1], targetX: b[2], targetY: b[3], width: b[4], colorTint: b[5], casterId: b[6], skillId: b[7] })) || [], // <<< NEW
+        beamEndedEvents: rawState.be?.map((b: any[]) => ({ casterId: b[0], skillId: b[1] })) || []
       };
 
       // 1. Parse the events from the payload (Assuming they are p[10] or whatever index you assigned)
       const aoeEvents = state.aoeEvents || [];
+      const beamEvents = state.beamEvents || [];
+      const beamEndedEvents = state.beamEndedEvents || [];
 
       // 2. Pass them to the renderer instantly
       VfxRenderer.renderAoeEvents(this, aoeEvents, masterConfigs);
+      VfxRenderer.renderBeamEvents(this, beamEvents, masterConfigs, this.activeBeams);
+      beamEndedEvents.forEach((ev: { casterId: string, skillId: string }) => {
+        VfxRenderer.endBeam(ev.casterId, ev.skillId, this.activeBeams);
+      });
 
       this.currentPhase = state.phase;
       const myPlayer = state.players.find(p => p.connectionId === connection.connectionId);
@@ -633,6 +645,12 @@ class GameScene extends Phaser.Scene {
       connection.off('UpdateStateCompressed');
       this.game.events.off(Phaser.Core.Events.PRE_RENDER);
       this.game.events.off(Phaser.Core.Events.POST_RENDER);
+
+      // Persistent beams live independently of the normal sprite maps and won't be cleaned
+      // up by Phaser's own scene teardown automatically destroying game objects in time to
+      // avoid a leak warning, so clear the tracking map explicitly here too.
+      this.activeBeams.forEach(entry => { entry.beam.destroy(); entry.core.destroy(); });
+      this.activeBeams.clear();
     });
   }
 
@@ -684,6 +702,14 @@ class GameScene extends Phaser.Scene {
           // Lock tightly to the smoothly interpolated visual position
           sprite.x = ownerSprite.x + Math.cos(angle) * radius;
           sprite.y = ownerSprite.y + Math.sin(angle) * radius;
+
+          // Face the direction of travel around the circle (tangent to the orbit),
+          // not the radius vector itself. Spawn-time rotation only ever pointed flat
+          // right (atan2(0, OrbitSpeed) == 0), so without this the sprite never turns.
+          // Tangent direction is the radius angle rotated 90 degrees, sign matched to
+          // the spin direction so it flips correctly if OrbitSpeed is negative.
+          const spinSign = Math.sign(radiansPerSec) || 1;
+          sprite.rotation = angle + (spinSign * Math.PI) / 2;
         }
       } else {
         // Standard Fire-and-Forget Linear Physics

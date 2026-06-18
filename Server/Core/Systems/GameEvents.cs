@@ -121,4 +121,22 @@ public class SpawnProjectileEvent
 
 // Visual routing events
 public class AoeVisualEvent { public AoeEventDto Dto { get; set; } = null!; }
-public class BeamVisualEvent { public BeamEventDto Dto { get; set; } = null!; }
+public class BeamVisualEvent
+{
+    public BeamEventDto Dto { get; set; } = null!;
+
+    // Identity for this beam instance, used by the client to track one persistent beam
+    // object per (caster, skill) pair across ticks instead of spawning a new flash each tick.
+    public string CasterId { get; set; } = string.Empty;
+    public string SkillId { get; set; } = string.Empty;
+}
+
+// Fired the instant a channeled beam's CurrentChannelTimer expires (or the caster dies/is
+// interrupted), so the client can destroy its persistent beam object precisely instead of
+// guessing from a gap between BeamVisualEvent ticks (which would always be either too early,
+// cutting the tail off, or leave a stale beam on screen if a packet ever drops).
+public class BeamEndedEvent
+{
+    public string CasterId { get; set; } = string.Empty;
+    public string SkillId { get; set; } = string.Empty;
+}

@@ -218,7 +218,12 @@ public class SkillSystem : IGameSystem
             float endY = startY + (dirY * config.Range);
 
             // >>> EDA: PUBLISH BEAM VISUAL EVENT <<<
-            _eventBus.Publish(new BeamVisualEvent { Dto = new BeamEventDto { StartX = startX, StartY = startY, TargetX = endX, TargetY = endY, Width = config.BeamWidth, ColorTint = config.ColorTint } });
+            _eventBus.Publish(new BeamVisualEvent
+            {
+                Dto = new BeamEventDto { StartX = startX, StartY = startY, TargetX = endX, TargetY = endY, Width = config.BeamWidth, ColorTint = config.ColorTint },
+                CasterId = casterId,
+                SkillId = config.Id
+            });
 
             float hitThresholdSq = (config.BeamWidth / 2) * (config.BeamWidth / 2);
 
@@ -420,7 +425,16 @@ public class SkillSystem : IGameSystem
             player.CurrentCastTimer = 0f;
             player.MaxCastTimer = 0f;
             player.DynamicSkillTimers.Clear();
-            foreach (var skill in player.SynergizedSkills) { skill.CurrentCastTimer = 0f; skill.CurrentChannelTimer = 0f; skill.CurrentCooldown = 0f; }
+            foreach (var skill in player.SynergizedSkills)
+            {
+                // Any beam mid-channel needs an explicit end signal, or the client's
+                // persistent beam object never gets destroyed (no further timer-expiry
+                // tick will ever come now that we're zeroing everything directly).
+                if (skill.CurrentChannelTimer > 0)
+                    _eventBus.Publish(new BeamEndedEvent { CasterId = player.ConnectionId, SkillId = skill.ConfigId });
+
+                skill.CurrentCastTimer = 0f; skill.CurrentChannelTimer = 0f; skill.CurrentCooldown = 0f;
+            }
         }
     }
 
@@ -459,7 +473,11 @@ public class SkillSystem : IGameSystem
                 {
                     skill.CurrentChannelTimer -= dt;
                     if (config.IsRepeated) ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus);
-                    if (skill.CurrentChannelTimer <= 0) skill.CurrentCooldown = config.CooldownSeconds / hasteMult;
+                    if (skill.CurrentChannelTimer <= 0)
+                    {
+                        skill.CurrentCooldown = config.CooldownSeconds / hasteMult;
+                        _eventBus.Publish(new BeamEndedEvent { CasterId = enemy.Id, SkillId = config.Id });
+                    }
                 }
             }
 
@@ -580,7 +598,11 @@ public class SkillSystem : IGameSystem
                 {
                     skill.CurrentChannelTimer -= dt;
                     if (config.IsRepeated) ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus);
-                    if (skill.CurrentChannelTimer <= 0) skill.CurrentCooldown = config.CooldownSeconds / hasteMult;
+                    if (skill.CurrentChannelTimer <= 0)
+                    {
+                        skill.CurrentCooldown = config.CooldownSeconds / hasteMult;
+                        _eventBus.Publish(new BeamEndedEvent { CasterId = player.ConnectionId, SkillId = config.Id });
+                    }
                 }
             }
 

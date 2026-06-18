@@ -926,4 +926,91 @@ export class VfxRenderer {
       }
     });
   }
+
+  // Beams are drawn procedurally, never as scaled sprite art, so the visual is always
+  // pixel-exact to the hitbox the server used (StartX/StartY -> TargetX/TargetY, Width).
+  // Technique: one rectangle, anchored at its LEFT edge, rotated to point at the target,
+  // and stretched in length to match the distance. Width maps 1:1 to the rectangle height.
+  //
+  // PERSISTENT BEAMS: a channeled laser fires a BeamVisualEvent every server tick for its
+  // whole duration. Treating each one as a disposable flash (spawn + fade + destroy) means
+  // dozens of overlapping fades per second — wasteful, and any dropped packet shows as a
+  // visible flicker. Instead we keep ONE beam object alive per (casterId, skillId) for the
+  // whole channel and just reposition/restretch it every tick. The server tells us exactly
+  // when to destroy it via a BeamEndedEvent (see endBeam), so there's no guessing from a
+  // timeout — works correctly whether the beam tracks the caster's aim live (AimDirection)
+  // or sweeps on its own (Sweep), since we don't care why the endpoints moved, just where
+  // they are this tick.
+  //
+  // `activeBeams` is owned by the caller (the scene) and passed in, same pattern as
+  // projectileSprites/playerSprites elsewhere — VfxRenderer itself stays stateless.
+  static renderBeamEvents(scene: Phaser.Scene, beamEvents: any[], configs: any, activeBeams: Map<string, { beam: Phaser.GameObjects.Rectangle, core: Phaser.GameObjects.Rectangle }>) {
+    if (!beamEvents || beamEvents.length === 0) return;
+
+    beamEvents.forEach(ev => {
+      const startX = ev.startX ?? ev.StartX;
+      const startY = ev.startY ?? ev.StartY;
+      const targetX = ev.targetX ?? ev.TargetX;
+      const targetY = ev.targetY ?? ev.TargetY;
+      const width = ev.width ?? ev.Width ?? 10;
+      const casterId = ev.casterId ?? ev.CasterId;
+      const skillId = ev.skillId ?? ev.SkillId;
+
+      const dx = targetX - startX;
+      const dy = targetY - startY;
+      const length = Math.sqrt(dx * dx + dy * dy);
+      if (length <= 0) return;
+
+      const angle = Math.atan2(dy, dx);
+
+      let colorHex = 0xff3030;
+      const colorStr = ev.colorTint ?? ev.ColorTint;
+      if (colorStr) {
+        colorHex = typeof colorStr === 'string' ? parseInt(colorStr.replace(/^#|^0x/i, ''), 16) : colorStr;
+      }
+
+      const key = `${casterId}:${skillId}`;
+      let entry = activeBeams.get(key);
+
+      if (!entry) {
+        // setOrigin(0, 0.5): left-center anchor, so the rectangle grows away from the
+        // caster along its rotation axis instead of growing from its own center.
+        const beam = scene.add.rectangle(startX, startY, length, width, colorHex, 0.85);
+        beam.setOrigin(0, 0.5);
+        beam.setDepth(298);
+
+        // Thin bright core on top of the wider translucent body reads better than a flat
+        // single-color bar, without needing any art.
+        const core = scene.add.rectangle(startX, startY, length, Math.max(2, width * 0.25), 0xffffff, 0.9);
+        core.setOrigin(0, 0.5);
+        core.setDepth(299);
+
+        entry = { beam, core };
+        activeBeams.set(key, entry);
+      }
+
+      // Reposition + restretch every tick. setSize controls the rectangle's actual collision
+      // geometry, not just visuals, but Phaser's renderer reads geometry+position+rotation
+      // fresh each frame, so this is enough to make it track the caster smoothly.
+      entry.beam.setPosition(startX, startY);
+      entry.beam.rotation = angle;
+      entry.beam.setSize(length, width);
+
+      entry.core.setPosition(startX, startY);
+      entry.core.rotation = angle;
+      entry.core.setSize(length, Math.max(2, width * 0.25));
+    });
+  }
+
+  // Called when the server confirms a channel has ended (timer expired, or the skill was
+  // force-reset). Destroys the persistent beam objects and removes the map entry.
+  static endBeam(casterId: string, skillId: string, activeBeams: Map<string, { beam: Phaser.GameObjects.Rectangle, core: Phaser.GameObjects.Rectangle }>) {
+    const key = `${casterId}:${skillId}`;
+    const entry = activeBeams.get(key);
+    if (!entry) return;
+
+    entry.beam.destroy();
+    entry.core.destroy();
+    activeBeams.delete(key);
+  }
 }
