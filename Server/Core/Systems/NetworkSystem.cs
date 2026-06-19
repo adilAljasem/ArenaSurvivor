@@ -32,6 +32,7 @@ public class NetworkSystem : IGameSystem
     public NetworkSystem(IHubContext<GameHub> hubContext)
     {
         _hubContext = hubContext;
+        
     }
 
     public void Initialize(EventBus eventBus, ConfigManager configs)
@@ -165,7 +166,8 @@ public class NetworkSystem : IGameSystem
                 p.FiredWeaponsThisTick.ToList(),
                 p.ActiveEffects.Select(e => e.ConfigId).ToList(),
                 p.SynergizedSkills.Select(s => new object[] { s.ConfigId, Math.Round(Math.Max(0, s.CurrentCooldown), 1) }).ToList(),
-                p.PendingStatDiff.Count > 0 ? (object)p.PendingStatDiff : null
+                p.PendingStatDiff.Count > 0 ? (object)p.PendingStatDiff : null,
+                (int)p.CurrentShield
             }).ToList(),
 
             Enemies = gameState.Enemies.Values.Select(e => new object[] {
@@ -175,7 +177,8 @@ public class NetworkSystem : IGameSystem
                 e.ActiveEffects.Select(a => a.ConfigId).ToList(),
                 e.Weapons.Select(w => new object[] { w.ConfigId, w.SlotIndex, w.Level, w.RolledStats ?? new Dictionary<string, float>(), w.TotalBaseStats ?? new Dictionary<string, float>() }).ToList(),
                 e.FiredWeaponsThisTick.ToList(),
-                e.Team
+                e.Team,
+                e.CurrentShield
             }).ToList(),
 
             Projectiles = gameState.Projectiles.Values.Select(proj => proj.MovementBehavior == "Orbital"
@@ -244,7 +247,8 @@ public class NetworkSystem : IGameSystem
                           .Where(e => existingEnemyIds.Contains((string)e[EnemyIdx.Id]))
                           .Select(e => new object[] {
                         e[EnemyIdx.Id], e[EnemyIdx.X], e[EnemyIdx.Y], e[EnemyIdx.CurrentHp],e[EnemyIdx.MaxHp], e[EnemyIdx.AimX], e[EnemyIdx.AimY], e[EnemyIdx.StateId],
-                        e[EnemyIdx.CastingSkillId], e[EnemyIdx.CastTimer], e[EnemyIdx.MaxCastTimer], e[EnemyIdx.ActiveEffects], e[EnemyIdx.FiredWeapons]
+                        e[EnemyIdx.CastingSkillId], e[EnemyIdx.CastTimer], e[EnemyIdx.MaxCastTimer], e[EnemyIdx.ActiveEffects], e[EnemyIdx.FiredWeapons],
+                        e[16]
                           }).ToList();
 
         return (fullEnemies, miniEnemies, destroyedEnemyIds);

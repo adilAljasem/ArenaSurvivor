@@ -26,8 +26,29 @@ public class EffectSystem : IGameSystem
         if (_configs.Effects.TryGetValue(ev.EffectConfigId, out var effectConfig))
         {
             var existing = ev.Target.ActiveEffects.FirstOrDefault(e => e.ConfigId == ev.EffectConfigId);
-            if (existing != null) existing.TimeRemaining = effectConfig.Duration;
-            else ev.Target.ActiveEffects.Add(new ActiveEffect { ConfigId = ev.EffectConfigId, TimeRemaining = effectConfig.Duration });
+            if (existing != null)
+            {
+                existing.TimeRemaining = effectConfig.Duration;
+                // >>> NEW: Refresh the shield if it's applied again
+                if (effectConfig.GrantedShield > 0)
+                {
+                    ev.Target.CurrentShield -= existing.GrantedShieldAmount; // Remove leftover old shield
+                    existing.GrantedShieldAmount = effectConfig.GrantedShield;
+                    ev.Target.CurrentShield += effectConfig.GrantedShield;   // Add fresh full shield
+                }
+            }
+            else
+            {
+                ev.Target.ActiveEffects.Add(new ActiveEffect
+                {
+                    ConfigId = ev.EffectConfigId,
+                    TimeRemaining = effectConfig.Duration,
+                    GrantedShieldAmount = effectConfig.GrantedShield // >>> NEW
+                });
+
+                // >>> NEW: Grant the shield
+                ev.Target.CurrentShield += effectConfig.GrantedShield;
+            }
         }
     }
 
@@ -42,7 +63,7 @@ public class EffectSystem : IGameSystem
             }
             return;
         }
-        
+
         for (int i = entity.ActiveEffects.Count - 1; i >= 0; i--)
         {
             var effect = entity.ActiveEffects[i];
@@ -84,6 +105,12 @@ public class EffectSystem : IGameSystem
 
             if (effect.TimeRemaining <= 0)
             {
+                // >>> NEW: Remove the remaining shield when the effect naturally expires
+                if (effect.GrantedShieldAmount > 0)
+                {
+                    entity.CurrentShield = Math.Max(0, entity.CurrentShield - effect.GrantedShieldAmount);
+                }
+                
                 entity.ActiveEffects.RemoveAt(i);
                 entity.StatsNeedRecalculation = true; // <<< THE FIX
             }

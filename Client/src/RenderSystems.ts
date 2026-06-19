@@ -1,6 +1,65 @@
 import * as Phaser from 'phaser';
 import { AudioManager } from './AudioManager';
 
+// Cache parsed hex-color strings -> number. Same strings repeat every single
+// frame for every actor/skill/effect, so avoid re-running parseInt+replace each time.
+const colorCache: Map<string, number> = new Map();
+function parseColor(colorStr: any, fallback: number): number {
+  if (colorStr === undefined || colorStr === null) return fallback;
+  if (typeof colorStr === 'number') return colorStr;
+  let cached = colorCache.get(colorStr);
+  if (cached === undefined) {
+    cached = parseInt(colorStr.replace(/^#|^0x/i, ''), 16);
+    if (isNaN(cached)) cached = fallback;
+    colorCache.set(colorStr, cached);
+  }
+  return cached;
+}
+
+// Phaser's container.getData()/setData() lazily allocates a DataManager (its own
+// event-emitter + Map) the first time it's touched, and every get/set after that goes
+// through that indirection. At 500+ actors doing ~10 getData calls each per frame, that's
+// thousands of event-emitter-backed map lookups a frame for data that never needs to be
+// observable - it's pure internal bookkeeping. Stashing a plain object directly on the
+// container (a regular JS property) and reading/writing its fields is just a property
+// access, and is dramatically cheaper at scale with identical lifetime/cleanup semantics
+// (it dies with the container, same as setData did).
+interface ActorRefs {
+  bodySprite: Phaser.GameObjects.Sprite | Phaser.GameObjects.Rectangle;
+  // HP background + fill + segment markers used to be 3 separate game objects
+  // (2 Rectangles + 1 Graphics), each contributing its own draw call. A WebGL batch
+  // flush happens every time the renderer hits a different object/texture type, so
+  // interleaving Rectangle/Graphics/Sprite/Text per actor was forcing several batch
+  // flushes per actor just for the HP bar. Drawing bg+fill+markers into ONE Graphics
+  // object per actor collapses that to a single draw call, with identical pixels.
+  hpBarGfx: Phaser.GameObjects.Graphics;
+  hpText: Phaser.GameObjects.Text;
+  baseWidth: number;
+  weaponsContainer: Phaser.GameObjects.Container;
+  // Weapon sprites keyed by slot index, replacing weaponsContainer.getByName()/.each()
+  // linear scans (both O(weapon count) per actor per frame) with O(1) lookups.
+  weaponSprites: Map<number, Phaser.GameObjects.Sprite>;
+  castCircle: Phaser.GameObjects.Ellipse;
+  // Cast bar background + fill merged into one Graphics object for the same reason
+  // as hpBarGfx above.
+  castBarGfx: Phaser.GameObjects.Graphics;
+  wasDead: boolean;
+  prevActionState: string | undefined;
+  prevCastSkillId: string | undefined;
+  prevHp: number | undefined;
+  flashTimer: number;
+  // Cache the raw fields that drove the last FX rebuild, instead of re-building a
+  // concatenated string key from them every frame just to compare.
+  lastFxActionState: string;
+  lastFxCastSkillId: string;
+  lastFxEffectsKey: string;
+  wasFlashing: boolean;
+}
+
+function getRefs(container: Phaser.GameObjects.Container): ActorRefs {
+  return (container as any).__refs as ActorRefs;
+}
+
 export class ActorRenderer {
   static render(
     scene: Phaser.Scene,
@@ -66,9 +125,8 @@ export class ActorRenderer {
           bodySprite = scene.add.rectangle(0, 0, 32, 32, 0x000000).setStrokeStyle(2, 0x00ff00) as any;
         }
 
-        const hpBg = scene.add.rectangle(0, 0, uiWidth, 6, 0x000000);
-        const hpFill = scene.add.rectangle(-uiWidth / 2, 0, uiWidth, 6, hpColor).setOrigin(0, 0.5);
-        const hpMarkers = scene.add.graphics();
+        const hpBarGfx = scene.add.graphics();
+        const castBarGfx = scene.add.graphics().setVisible(false);
 
         const hpText = scene.add.text(0, 0, '', {
           fontFamily: "'Segoe UI', Tahoma, sans-serif",
@@ -82,28 +140,36 @@ export class ActorRenderer {
 
         const weaponsContainer = scene.add.container(0, 0);
 
-        const castBarBg = scene.add.rectangle(0, 0, 40, 6, 0x000000).setOrigin(0.5, 0.5).setStrokeStyle(1, 0x555555).setVisible(false);
-        const castBarFill = scene.add.rectangle(-20, 0, 40, 6, 0xffd700).setOrigin(0, 0.5).setVisible(false);
+        // Same anchor/order as before: castCircle, body, hpBarGfx, hpText, weapons, castBarGfx.
+        // Grouping the two Graphics objects with the Sprite/Text in a stable order also helps
+        // the WebGL batcher merge consecutive same-type draws across actors in the list.
+        container.add([castCircle, bodySprite, hpBarGfx, hpText, weaponsContainer, castBarGfx]);
 
-        container.add([castCircle, bodySprite, hpBg, hpFill, hpMarkers, hpText, weaponsContainer, castBarBg, castBarFill]);
-
-        container.setData('bodySprite', bodySprite);
-        container.setData('hpBg', hpBg);
-        container.setData('hpFill', hpFill);
-        container.setData('hpMarkers', hpMarkers);
-        container.setData('hpText', hpText);
-        container.setData('baseWidth', uiWidth);
-        container.setData('weaponsContainer', weaponsContainer);
-        container.setData('castCircle', castCircle);
-        container.setData('castBarBg', castBarBg);
-        container.setData('castBarFill', castBarFill);
+        const refs: ActorRefs = {
+          bodySprite, hpBarGfx, hpText,
+          baseWidth: uiWidth,
+          weaponsContainer,
+          weaponSprites: new Map(),
+          castCircle, castBarGfx,
+          wasDead: false,
+          prevActionState: undefined,
+          prevCastSkillId: undefined,
+          prevHp: undefined,
+          flashTimer: 0,
+          lastFxActionState: '',
+          lastFxCastSkillId: '',
+          lastFxEffectsKey: '',
+          wasFlashing: false,
+        };
+        (container as any).__refs = refs;
 
         sprites.set(safeId, container);
       }
 
       // 3. UPDATE UI BARS
       const container = sprites.get(safeId)!;
-      const body = container.getData('bodySprite') as Phaser.GameObjects.Sprite;
+      const refs = getRefs(container);
+      const body = refs.bodySprite as Phaser.GameObjects.Sprite;
 
       let topY = -16;
       let bottomY = 16;
@@ -127,32 +193,47 @@ export class ActorRenderer {
       }
 
 
-      const hpBg = container.getData('hpBg') as Phaser.GameObjects.Rectangle;
-      const hpFill = container.getData('hpFill') as Phaser.GameObjects.Rectangle;
-      const hpMarkers = container.getData('hpMarkers') as Phaser.GameObjects.Graphics;
-      const baseW = container.getData('baseWidth') as number ?? 32;
+      const hpBarGfx = refs.hpBarGfx;
+      const baseW = refs.baseWidth ?? 32;
 
-      hpBg.y = topY;
-      hpFill.y = topY;
-      hpMarkers.y = topY;
+      hpBarGfx.y = topY;
 
       const currentHp = actor.currentHp ?? actor.CurrentHp ?? 0;
       const maxHp = actor.maxHp ?? actor.MaxHp ?? 1;
-      hpFill.width = baseW * Math.max(0, currentHp / maxHp);
-      hpFill.fillColor = hpColor;
+      const currentShield = actor.currentShield ?? 0; // <<< NEW
 
+      // If shield exceeds max HP, the bar scales down to fit everything natively!
+      const totalCapacity = Math.max(maxHp, currentHp + currentShield);
 
+      const fillWidth = baseW * Math.max(0, currentHp / totalCapacity);
+      const shieldWidth = baseW * Math.max(0, currentShield / totalCapacity);
 
-      hpMarkers.clear();
-      if (maxHp > 50) {
-        hpMarkers.lineStyle(2, 0x000000, 1.0);
-        const segments = Math.floor(maxHp / 50);
-        const pixelsPer50 = baseW / Math.floor(maxHp / 50);
+      hpBarGfx.clear();
+      hpBarGfx.fillStyle(0x000000, 1);
+      hpBarGfx.fillRect(-baseW / 2, -3, baseW, 6);
+
+      // Draw HP
+      if (fillWidth > 0) {
+        hpBarGfx.fillStyle(hpColor, 1);
+        hpBarGfx.fillRect(-baseW / 2, -3, fillWidth, 6);
+      }
+
+      // Draw Shield (White) right where the HP ends!
+      if (shieldWidth > 0) {
+        hpBarGfx.fillStyle(0xffffff, 1);
+        hpBarGfx.fillRect((-baseW / 2) + fillWidth, -3, shieldWidth, 6);
+      }
+
+      // Draw segment ticks based on total capacity so the visual scaling stays true
+      if (totalCapacity > 50) {
+        hpBarGfx.lineStyle(2, 0x000000, 1.0);
+        const segments = Math.floor(totalCapacity / 50);
+        const pixelsPer50 = baseW / (totalCapacity / 50);
 
         for (let i = 1; i <= segments; i++) {
           const lineX = -(baseW / 2) + (i * pixelsPer50);
           if (lineX >= (baseW / 2) - 1.5) continue;
-          hpMarkers.beginPath().moveTo(lineX, -4).lineTo(lineX, 4).strokePath();
+          hpBarGfx.beginPath().moveTo(lineX, -4).lineTo(lineX, 4).strokePath();
         }
       }
 
@@ -160,22 +241,28 @@ export class ActorRenderer {
       const currentCast = actor.currentCastTimer || actor.CurrentCastTimer || 0;
       const maxCast = actor.maxCastTimer || actor.MaxCastTimer || 0;
 
-      const hpText = container.getData('hpText') as Phaser.GameObjects.Text;
+      const hpText = refs.hpText;
       if (hpText) {
-        hpText.y = topY; // Stick it right in the middle of the health bar
-        hpText.setText(`${Math.round(currentHp)} / ${Math.round(maxHp)}`);
-
-        // Only show it if the 'U' key flag is true, AND the entity is not dead
         const shouldShow = scene.data.get('showHealthNumbers') === true && actionState !== "Dead";
-        hpText.setVisible(shouldShow);
+
+        if (shouldShow) {
+          hpText.y = topY;
+          // >>> NEW: Add shield to the floating text if active
+          if (currentShield > 0) {
+            hpText.setText(`${Math.round(currentHp)} (+${Math.round(currentShield)}) / ${Math.round(maxHp)}`);
+          } else {
+            hpText.setText(`${Math.round(currentHp)} / ${Math.round(maxHp)}`);
+          }
+          hpText.setVisible(true);
+        } else if (hpText.visible) {
+          hpText.setVisible(false);
+        }
       }
 
-      const castBarBg = container.getData('castBarBg') as Phaser.GameObjects.Rectangle;
-      const castBarFill = container.getData('castBarFill') as Phaser.GameObjects.Rectangle;
-      const castCircle = container.getData('castCircle') as Phaser.GameObjects.Ellipse;
+      const castBarGfx = refs.castBarGfx;
+      const castCircle = refs.castCircle;
 
-      castBarBg.y = bottomY + 6;
-      castBarFill.y = bottomY + 6;
+      castBarGfx.y = bottomY + 6;
       castCircle.y = bottomY;
 
       // Extract the casting config if available to check the UI toggle
@@ -184,19 +271,29 @@ export class ActorRenderer {
       const showCastBar = skillCfg ? (skillCfg.showCastBar !== false && skillCfg.ShowCastBar !== false) : true;
 
       if (actionState === "Casting" && maxCast > 0 && showCastBar) {
-        castBarBg.setVisible(true);
-        castBarFill.setVisible(true);
         castCircle.setVisible(true);
         castCircle.scaleX = 0.8 + Math.sin(scene.time.now / 100) * 0.2;
-        castBarFill.width = 40 * Math.max(0, 1 - (currentCast / maxCast));
+
+        // Same geometry as before: bg rect 40x6 centered, with a 1px gray stroke, plus a
+        // gold fill rect anchored at the left edge shrinking as cast progresses.
+        const castFillWidth = 40 * Math.max(0, 1 - (currentCast / maxCast));
+        castBarGfx.clear();
+        castBarGfx.fillStyle(0x000000, 1);
+        castBarGfx.fillRect(-20, -3, 40, 6);
+        castBarGfx.lineStyle(1, 0x555555, 1);
+        castBarGfx.strokeRect(-20, -3, 40, 6);
+        if (castFillWidth > 0) {
+          castBarGfx.fillStyle(0xffd700, 1);
+          castBarGfx.fillRect(-20, -3, castFillWidth, 6);
+        }
+        castBarGfx.setVisible(true);
       } else {
-        castBarBg.setVisible(false);
-        castBarFill.setVisible(false);
+        castBarGfx.setVisible(false);
         castCircle.setVisible(false);
       }
 
       // 4. WEAPONS
-      const weaponsContainer = container.getData('weaponsContainer') as Phaser.GameObjects.Container;
+      const weaponsContainer = refs.weaponsContainer;
       const activeWeaponSlots = new Set<number>();
       const weaponsList = actor.weapons || actor.Weapons || [];
 
@@ -212,14 +309,15 @@ export class ActorRenderer {
         else if (slotIndex === 3) { wx = 0; wy = weaponOffset; }
 
         const wConfig = configs.weapons ? (configs.weapons[wConfigId] || configs.Weapons?.[wConfigId]) : null;
-        let sprite = weaponsContainer.getByName(`weapon_${slotIndex}`) as Phaser.GameObjects.Sprite;
+        let sprite = refs.weaponSprites.get(slotIndex);
 
         if (!sprite && wConfig && wConfig.textureKey && scene.textures.exists(wConfig.textureKey)) {
-          sprite = scene.add.sprite(wx, wy, wConfig.textureKey).setName(`weapon_${slotIndex}`);
+          sprite = scene.add.sprite(wx, wy, wConfig.textureKey);
           if (wConfig.iconFrame !== undefined) sprite.setFrame(wConfig.iconFrame);
           sprite.setScale(wConfig.scale || 1.0);
           if (wConfig.defaultFacingRight === false) sprite.setFlipX(true);
           weaponsContainer.add(sprite);
+          refs.weaponSprites.set(slotIndex, sprite);
         }
 
         if (sprite && wConfig) {
@@ -227,61 +325,55 @@ export class ActorRenderer {
           let aimX = actor.aimX ?? actor.AimX ?? targetX;
           let aimY = actor.aimY ?? actor.AimY ?? targetY;
 
-          // ✅ NEW: AutoShot Visual Rotation Tracking
+          // ✅ AutoShot Visual Rotation Tracking
+          // Same behavior as before (in-range target preferred, else absolute closest),
+          // but merged into a single enemy scan instead of two full passes.
           const isAutoShot = wConfig.autoShot === true || wConfig.AutoShot === true;
           if (isPlayer && isAutoShot && enemyList && enemyList.length > 0) {
             const baseRange = wConfig.range ?? wConfig.Range ?? 300;
             const latestStats = scene.data.get('latestPlayerStats');
             const rangeBonus = latestStats?.range ?? 0;
             const finalRange = baseRange + rangeBonus;
-
-            let bestDistSq = finalRange * finalRange;
-            let targetFound = false;
+            const rangeSq = finalRange * finalRange;
 
             const weaponWorldX = targetX + wx;
             const weaponWorldY = targetY + wy;
 
-            // 1. Scan for the closest enemy within weapon range
-            enemyList.forEach((enemy: any) => {
+            let bestInRangeDistSq = rangeSq;
+            let bestInRangeX = 0, bestInRangeY = 0, foundInRange = false;
+
+            let bestAnyDistSq = Number.MAX_VALUE;
+            let bestAnyX = 0, bestAnyY = 0, foundAny = false;
+
+            for (let ei = 0; ei < enemyList.length; ei++) {
+              const enemy = enemyList[ei];
+              const eState = enemy.actionState || enemy.ActionState || "Idle";
+              if (eState === "Dead") continue;
+              const eTeam = enemy.team || enemy.Team || "Enemy";
+              if (eTeam !== "Enemy") continue;
+
               const ex = enemy.x ?? enemy.X ?? 0;
               const ey = enemy.y ?? enemy.Y ?? 0;
-              const eState = enemy.actionState || enemy.ActionState || "Idle";
-              const eTeam = enemy.team || enemy.Team || "Enemy";
+              const dx = ex - weaponWorldX;
+              const dy = ey - weaponWorldY;
+              const distSq = dx * dx + dy * dy;
 
-              if (eState !== "Dead" && eTeam === "Enemy") {
-                const dx = ex - weaponWorldX;
-                const dy = ey - weaponWorldY;
-                const distSq = dx * dx + dy * dy;
-
-                if (distSq <= bestDistSq) {
-                  bestDistSq = distSq;
-                  aimX = ex;
-                  aimY = ey;
-                  targetFound = true;
-                }
+              if (distSq <= bestInRangeDistSq) {
+                bestInRangeDistSq = distSq;
+                bestInRangeX = ex; bestInRangeY = ey;
+                foundInRange = true;
               }
-            });
+              if (distSq < bestAnyDistSq) {
+                bestAnyDistSq = distSq;
+                bestAnyX = ex; bestAnyY = ey;
+                foundAny = true;
+              }
+            }
 
-            // 2. Fallback: If no enemy is in range, aim at the absolute closest enemy 
-            // so the gun doesn't awkwardly snap back to the mouse pointer
-            if (!targetFound) {
-              let absoluteClosestDistSq = Number.MAX_VALUE;
-              enemyList.forEach((enemy: any) => {
-                const eState = enemy.actionState || enemy.ActionState || "Idle";
-                const eTeam = enemy.team || enemy.Team || "Enemy";
-
-                if (eState !== "Dead" && eTeam === "Enemy") {
-                  const dx = (enemy.x ?? enemy.X) - weaponWorldX;
-                  const dy = (enemy.y ?? enemy.Y) - weaponWorldY;
-                  const distSq = dx * dx + dy * dy;
-
-                  if (distSq < absoluteClosestDistSq) {
-                    absoluteClosestDistSq = distSq;
-                    aimX = enemy.x ?? enemy.X;
-                    aimY = enemy.y ?? enemy.Y;
-                  }
-                }
-              });
+            if (foundInRange) {
+              aimX = bestInRangeX; aimY = bestInRangeY;
+            } else if (foundAny) {
+              aimX = bestAnyX; aimY = bestAnyY;
             }
           }
 
@@ -307,17 +399,22 @@ export class ActorRenderer {
         }
       });
 
-      weaponsContainer.each((child: Phaser.GameObjects.Sprite) => {
-        if (!child.name?.startsWith('weapon_')) return;
-        const slot = parseInt(child.name.split('_')[1]);
-        if (!isNaN(slot) && !activeWeaponSlots.has(slot)) child.destroy();
-      });
+      // Remove sprites for slots that are no longer active. Iterating the small
+      // weaponSprites map (almost always 1-4 entries) instead of every container
+      // child avoids a linear scan of the whole container per actor per frame.
+      if (refs.weaponSprites.size > 0) {
+        refs.weaponSprites.forEach((child, slot) => {
+          if (!activeWeaponSlots.has(slot)) {
+            child.destroy();
+            refs.weaponSprites.delete(slot);
+          }
+        });
+      }
 
       // 5. ENEMY DEATH SKILL VISUALIZER (Only runs for enemies)
       if (!isPlayer) {
-        const wasDead = container.getData('wasDead') || false;
-        if (actionState === 'Dead' && !wasDead) {
-          container.setData('wasDead', true);
+        if (actionState === 'Dead' && !refs.wasDead) {
+          refs.wasDead = true;
           const deathSkills = config?.onDeathSkills || config?.OnDeathSkills;
 
           if (deathSkills && deathSkills.length > 0) {
@@ -441,25 +538,25 @@ export class ActorRenderer {
 
         if (!body.anims?.isPlaying && actionState !== "Dead" && targetAnim !== '') body.anims?.resume();
 
-        const prevActionState = container.getData('prevActionState');
-        const prevCastSkillId = container.getData('prevCastSkillId') as string | undefined;
+        const prevActionState = refs.prevActionState;
+        const prevCastSkillId = refs.prevCastSkillId;
 
         if (prevActionState === 'Casting' && actionState !== 'Casting' && prevCastSkillId) {
           const sCfg = (configs.skills || configs.Skills)?.[prevCastSkillId];
           if (sCfg?.soundCast) AudioManager.getInstance().playSfx(sCfg.soundCast);
         }
 
-        container.setData('prevActionState', actionState);
-        if (actionState === 'Casting' && castingSkillId) container.setData('prevCastSkillId', castingSkillId);
+        refs.prevActionState = actionState;
+        if (actionState === 'Casting' && castingSkillId) refs.prevCastSkillId = castingSkillId;
 
-        const prevHp = container.getData('prevHp');
+        const prevHp = refs.prevHp;
         if (prevHp !== undefined && currentHp < prevHp) {
-          container.setData('flashTimer', scene.time.now + 150);
+          refs.flashTimer = scene.time.now + 150;
           AudioManager.getInstance().playLastProjectileHitSound();
         }
-        container.setData('prevHp', currentHp);
+        refs.prevHp = currentHp;
 
-        applyVisualFX(scene, container, body as Phaser.GameObjects.Sprite, actor, configs, topY, bottomY, realHeight);
+        applyVisualFX(scene, container, refs, body as Phaser.GameObjects.Sprite, actor, configs, topY, bottomY, realHeight);
       }
     });
 
@@ -550,6 +647,17 @@ export class WorldRenderer {
     });
 
     const dmgList = state.damageEvents || state.DamageEvents || [];
+    // Safety valve: a single network tick during a big fight can carry far more damage
+    // events than a player can usefully read as floating numbers anyway. Each one creates
+    // a Text object (one of Phaser's most expensive single calls - canvas rasterize +
+    // texture upload) plus particle Rectangles and several tweens. Capping how many get a
+    // floating number prevents a spike (e.g. 150 simultaneous hits) from creating 150 Text
+    // objects in one frame. The cap is set well above normal combat volume, so ordinary
+    // fights are completely unaffected - this only engages during genuine overload.
+    const MAX_FLOATING_NUMBERS_PER_TICK = 40;
+    let floatingNumbersThisTick = 0;
+    const MAX_PARTICLE_BURSTS_PER_TICK = 40;
+    let particleBurstsThisTick = 0;
     dmgList.forEach((de: any) => {
       const startX = (de.x || de.X) + Phaser.Math.Between(-10, 10);
       const startY = (de.y || de.Y) - 16 + Phaser.Math.Between(-10, 10);
@@ -565,28 +673,51 @@ export class WorldRenderer {
       // ====================================================================
       if (!isDodge && !isBlock && !isHeal) {
 
+        const playerList = state.players || state.Players || [];
+        const enemyList = state.enemies || state.Enemies || [];
+
         // >>> THE FIX: CHECK IF THE HIT TARGET IS FRIENDLY <<<
         let isFriendlyHit = false;
 
         // 1. Check if hit is near a player
-        const playerList = state.players || state.Players || [];
-        playerList.forEach((p: any) => {
+        for (let pi = 0; pi < playerList.length; pi++) {
+          const p = playerList[pi];
           const px = p.x ?? p.X;
           const py = p.y ?? p.Y;
-          if ((px - startX) * (px - startX) + (py - startY) * (py - startY) < 1600) isFriendlyHit = true;
-        });
-
-        // 2. Check if hit is near a friendly summon
-        const enemyList = state.enemies || state.Enemies || [];
-        enemyList.forEach((e: any) => {
-          const team = e.team ?? e.Team ?? "Enemy";
-          if (team !== "Enemy") {
-            const ex = e.x ?? e.X;
-            const ey = e.y ?? e.Y;
-            if ((ex - startX) * (ex - startX) + (ey - startY) * (ey - startY) < 1600) isFriendlyHit = true;
+          if ((px - startX) * (px - startX) + (py - startY) * (py - startY) < 1600) {
+            isFriendlyHit = true;
+            break;
           }
-        });
+        }
 
+        // 2. Single pass over enemies: check for a nearby friendly summon (for the
+        // friendly-hit flag) AND track the closest enemy's blood color (for particles),
+        // since both previously scanned the same enemyList separately.
+        let hitColor = 0xff0000; // Default Red
+        let closestDistSq = 999999;
+
+        if (!isFriendlyHit) {
+          for (let ei = 0; ei < enemyList.length; ei++) {
+            const e = enemyList[ei];
+            const team = e.team ?? e.Team ?? "Enemy";
+            const ex = e.x ?? e.X ?? 0;
+            const ey = e.y ?? e.Y ?? 0;
+            const distSq = (ex - startX) * (ex - startX) + (ey - startY) * (ey - startY);
+
+            if (team !== "Enemy" && distSq < 1600) {
+              isFriendlyHit = true;
+              // Don't break: still need closest-enemy blood color below for symmetry
+              // with prior behavior (the original ran both scans unconditionally).
+            }
+            if (distSq < closestDistSq && distSq < 10000) {
+              closestDistSq = distSq;
+              const eCfg = configs.enemies?.[e.configId || e.ConfigId] || configs.Enemies?.[e.configId || e.ConfigId];
+              if (eCfg && eCfg.calculatedBloodColor !== undefined) {
+                hitColor = eCfg.calculatedBloodColor;
+              }
+            }
+          }
+        }
 
         // 1. GENTLE CAMERA BUMP (CRITS ONLY)
         if (isCrit && Math.random() < 0.5) {
@@ -605,26 +736,12 @@ export class WorldRenderer {
 
         // 2. CHUNKY BROTATO PARTICLES 
         // >>> We now skip this entirely if isFriendlyHit is true! <<<
-        if (!isFriendlyHit && (Math.random() < 0.35 || isCrit)) {
-          let hitColor = 0xff0000; // Default Red
-          let closestDistSq = 999999;
-
-          if (state.enemies) {
-            state.enemies.forEach((e: any) => {
-              const ex = e.x ?? e.X ?? 0;
-              const ey = e.y ?? e.Y ?? 0;
-              const distSq = (ex - startX) * (ex - startX) + (ey - startY) * (ey - startY);
-
-              if (distSq < closestDistSq && distSq < 10000) {
-                closestDistSq = distSq;
-                const eCfg = configs.enemies?.[e.configId || e.ConfigId] || configs.Enemies?.[e.configId || e.ConfigId];
-                if (eCfg && eCfg.calculatedBloodColor !== undefined) {
-                  hitColor = eCfg.calculatedBloodColor;
-                }
-              }
-            });
-          }
-
+        // Same safety-valve reasoning as the floating-number cap below: a crit-heavy
+        // spike bypasses the 35% random skip (crits always spawn particles), and each
+        // burst is up to 8 Rectangle+tween pairs, so an uncapped pile of simultaneous
+        // crits could spawn hundreds of objects in one tick.
+        if (!isFriendlyHit && (Math.random() < 0.35 || isCrit) && particleBurstsThisTick < MAX_PARTICLE_BURSTS_PER_TICK) {
+          particleBurstsThisTick++;
           const numParticles = isCrit ? 8 : 4;
           for (let i = 0; i < numParticles; i++) {
             const pSize = Phaser.Math.Between(20, 32);
@@ -650,6 +767,13 @@ export class WorldRenderer {
       }
       // ====================================================================
       // ====================================================================
+
+      // Cap applies only to the floating number itself - particles and camera bump above
+      // already ran for this event. Once the cap is hit, the hit still happened, it just
+      // doesn't get a popping number on screen (extremely unlikely to be noticed when it
+      // only kicks in at 40+ simultaneous hits in one tick).
+      if (floatingNumbersThisTick >= MAX_FLOATING_NUMBERS_PER_TICK) return;
+      floatingNumbersThisTick++;
 
       let color = '#ffffff';
 
@@ -707,11 +831,7 @@ export class WorldRenderer {
 
     const beamList = state.beamEvents || state.BeamEvents || [];
     beamList.forEach((beam: any) => {
-      let color = 0x00ffff;
-      if (beam.colorTint) {
-        const parsed = parseInt(beam.colorTint.replace(/^#|^0x/i, ''), 16);
-        if (!isNaN(parsed)) color = parsed;
-      }
+      const color = beam.colorTint ? parseColor(beam.colorTint, 0x00ffff) : 0x00ffff;
 
       const length = Phaser.Math.Distance.Between(beam.startX, beam.startY, beam.targetX, beam.targetY);
       const angle = Phaser.Math.Angle.Between(beam.startX, beam.startY, beam.targetX, beam.targetY);
@@ -747,6 +867,7 @@ export class WorldRenderer {
 export function applyVisualFX(
   scene: Phaser.Scene,
   container: Phaser.GameObjects.Container,
+  refs: ActorRefs,
   mainSprite: Phaser.GameObjects.Sprite,
   entity: any,
   masterConfigs: any,
@@ -754,12 +875,23 @@ export function applyVisualFX(
   bottomY: number = 20,
   realHeight: number = 32 // <--- New parameter!
 ) {
-  const currentFxState = `${entity.actionState}_${entity.currentCastingSkillId || ''}_${(entity.activeEffects || []).join(',')}`;
-  const isFlashing = scene.time.now < (container.getData('flashTimer') || 0);
+  // Compare the raw fields directly instead of concatenating them into a string every
+  // frame for every actor just to compare strings - same result, no allocation/join cost
+  // on the (very common) frame where nothing changed.
+  const castSkillId = entity.currentCastingSkillId || '';
+  const effectsKey = (entity.activeEffects || []).join(',');
+  const isFlashing = scene.time.now < (refs.flashTimer || 0);
 
-  if (container.getData('lastFxState') === currentFxState && container.getData('wasFlashing') === isFlashing) return;
-  container.setData('lastFxState', currentFxState);
-  container.setData('wasFlashing', isFlashing);
+  const unchanged = refs.lastFxActionState === entity.actionState &&
+    refs.lastFxCastSkillId === castSkillId &&
+    refs.lastFxEffectsKey === effectsKey &&
+    refs.wasFlashing === isFlashing;
+  if (unchanged) return;
+
+  refs.lastFxActionState = entity.actionState;
+  refs.lastFxCastSkillId = castSkillId;
+  refs.lastFxEffectsKey = effectsKey;
+  refs.wasFlashing = isFlashing;
 
   container.list.filter(c => c.name === 'overhead_fx' || c.name === 'status_fx').forEach(c => c.destroy());
 
@@ -844,8 +976,7 @@ export function applyVisualFX(
       }
 
       if (colorTint && !isFlashing) {
-        const tintValue = typeof colorTint === 'string' ? parseInt(colorTint.replace(/^#|^0x/i, ''), 16) : colorTint;
-        mainSprite.setTint(tintValue);
+        mainSprite.setTint(parseColor(colorTint, 0xffffff));
       }
     });
   }
@@ -880,8 +1011,19 @@ export class VfxRenderer {
         const animKey = `${configId}_vfx`;
         const sprite = scene.add.sprite(x, y, vfxTex).setDepth(300);
 
-        const vfxScale = config.vfxScale || config.VfxScale || 1.0;
-        sprite.setScale(vfxScale);
+        const flatVfxScale = config.vfxScale || config.VfxScale || 1.0;
+        const baseRadius = config.vfxBaseRadius || config.VfxBaseRadius || 0;
+
+        // If the art's base radius is known, scale it to match the skill's actual radius
+        // (e.g. drawn for 100px, skill radius is 140px -> scale 1.4x), then apply the flat
+        // VfxScale on top as a manual fine-tune (art padding, stylistic oversize, etc.).
+        // If baseRadius is unset (0), fall back to flatVfxScale alone -- old behavior,
+        // for skills where art size is intentionally decoupled from the hitbox.
+        const finalScale = baseRadius > 0 && radius > 0
+          ? (radius / baseRadius) * flatVfxScale
+          : flatVfxScale;
+
+        sprite.setScale(finalScale);
 
         if (!scene.anims.exists(animKey)) {
           const frameRate = config.vfxFrameRate || config.VfxFrameRate || 15;
@@ -905,7 +1047,7 @@ export class VfxRenderer {
 
         // If you explicitly set a colorTint in JSON, it will override the Green/Red.
         if (colorStr) {
-          colorHex = typeof colorStr === 'string' ? parseInt(colorStr.replace(/^#|^0x/i, ''), 16) : colorStr;
+          colorHex = parseColor(colorStr, colorHex);
         }
 
         const visualRadius = radius > 0 ? radius : 60;
@@ -966,7 +1108,7 @@ export class VfxRenderer {
       let colorHex = 0xff3030;
       const colorStr = ev.colorTint ?? ev.ColorTint;
       if (colorStr) {
-        colorHex = typeof colorStr === 'string' ? parseInt(colorStr.replace(/^#|^0x/i, ''), 16) : colorStr;
+        colorHex = parseColor(colorStr, colorHex);
       }
 
       const key = `${casterId}:${skillId}`;

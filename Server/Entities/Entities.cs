@@ -24,6 +24,7 @@ public abstract class BaseActorEntity
     public float Y { get; set; }
 
     public float CurrentSweepAngle { get; set; } = 0f;
+    public float CurrentShield { get; set; }
 
     // >>> THE FIX: Changing HP instantly flags the entity as Dirty! <<<
     private float _currentHp;
@@ -111,6 +112,7 @@ public class ActiveEffect
     
     // Who caused this effect? (Useful if an enemy dies to poison and we need to know which Player gets the Gold/XP!)
     public string SourceId { get; set; } = string.Empty; 
+    public float GrantedShieldAmount { get; set; }
 }
 
 public class ActiveSkill

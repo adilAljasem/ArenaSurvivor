@@ -273,6 +273,7 @@ public class EffectConfig
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public bool IsBuff { get; set; }
+    public float GrantedShield { get; set; }
     // --- Visuals ---
     public string TextureKey { get; set; } = string.Empty;
     public int? IconFrame { get; set; }
@@ -310,6 +311,23 @@ public class SkillConfig
     public int[]? ChargeVfxAnimFrames { get; set; }
     public int ChargeVfxFrameRate { get; set; } = 15;
     public float ChargeVfxScale { get; set; } = 1.0f;
+
+    // --- Post-Cast Effect Visuals (the actual skill effect: explosion burst, beam impact, etc.) ---
+    // These were already read by VfxRenderer.renderAoeEvents on the client (config.vfxTextureKey
+    // etc.) but never actually declared here, so they were silently dropped by deserialization.
+    // If set, the AOE plays this sprite animation instead of falling back to the procedural
+    // shockwave ring. Leave empty/unset to keep using the procedural ring (no art required).
+    public string VfxTextureKey { get; set; } = string.Empty;
+    public int[]? VfxAnimFrames { get; set; }
+    public int VfxFrameRate { get; set; } = 15;
+    public float VfxScale { get; set; } = 1.0f;
+
+    // The radius (in world units) the VfxTextureKey art was actually drawn for. The client
+    // uses this to auto-scale the sprite burst to match the skill's real Radius below, so
+    // a later balance change to Radius doesn't visually desync from the hitbox. VfxScale
+    // above still applies on top as a manual fine-tune multiplier (e.g. art has padding).
+    // Leave at 0 to disable auto-scaling and use VfxScale as a flat scale instead (old behavior).
+    public float VfxBaseRadius { get; set; } = 0f;
 
     // --- Timing ---
     public float CooldownSeconds { get; set; }

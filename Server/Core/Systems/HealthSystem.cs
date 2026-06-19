@@ -47,6 +47,7 @@ public class HealthSystem : IGameSystem
         // 1. Ignore HP changes on Dodge/Block
         if (ev.IsDodge || ev.IsBlock) return;
 
+
         // 2. Handle Healing natively (Negative amount = Heal)
         if (ev.Amount < 0)
         {
@@ -55,10 +56,33 @@ public class HealthSystem : IGameSystem
             return;
         }
 
-        // 3. Apply Damage
+        // >>> 3. NEW: SHIELD ABSORPTION LOGIC <<<
+        if (ev.Amount > 0 && ev.Target.CurrentShield > 0)
+        {
+            float remainingDamage = ev.Amount;
+
+            // Deplete the active shield effects greedily
+            foreach (var effect in ev.Target.ActiveEffects.Where(e => e.GrantedShieldAmount > 0))
+            {
+                if (remainingDamage <= 0) break;
+                float absorb = Math.Min(effect.GrantedShieldAmount, remainingDamage);
+
+                effect.GrantedShieldAmount -= absorb;
+                ev.Target.CurrentShield -= absorb;
+                remainingDamage -= absorb;
+            }
+
+            // Ensure no negative shield anomalies
+            ev.Target.CurrentShield = Math.Max(0, ev.Target.CurrentShield);
+
+            // Pass whatever damage broke through the shield to the HP logic below
+            ev.Amount = remainingDamage;
+        }
+
+        // 4. Apply Damage
         ev.Target.CurrentHp -= ev.Amount;
 
-        // 4. Centralized Death Trigger
+        // 5. Centralized Death Trigger
         if (ev.Target.CurrentHp <= 0 && ev.Target.ActionState != "Dead")
         {
             ev.Target.ActionState = "Dead";

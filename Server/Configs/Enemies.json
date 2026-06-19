@@ -41,8 +41,7 @@
       "magicDefense": 5,
       "armor": 2
     },
-    "startingWeapons": [
-    ],
+    "startingWeapons": [],
     "startingItems": [
       "ugly_tooth"
     ],
@@ -187,6 +186,7 @@
     "id": "mushroom",
     "name": "Mushroom",
     "tier": 1,
+    "VisualHeight": 20.0,
     "movesRandomly": true,
     "isBoss": false,
     "minWave": 20,
@@ -269,7 +269,7 @@
       "frost_nova"
     ],
     "startingWeapons": [
-      "pistol_t2"
+      "pistol"
     ],
     "startingWeaponTiers": [
       2
@@ -297,6 +297,7 @@
     "id": "flying_forest",
     "name": "Flying Forest",
     "tier": 1,
+    "VisualHeight": 35.0,
     "isBoss": false,
     "minWave": 20,
     "maxWave": 50,

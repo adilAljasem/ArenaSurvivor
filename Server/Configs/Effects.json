@@ -14,6 +14,8 @@
   "adrenaline": {
     "id": "adrenaline",
     "name": "Adrenaline Rush",
+    "textureKey": "icons1",
+    "iconFrame": 2,
     "isBuff": true,
     "duration": 4.0,
     "tickRate": 0.0,
@@ -22,18 +24,19 @@
       "attackSpeedPercent": 1.5,
       "speed": 500
     },
-    "textureKey": "effects_sheet",
     "colorTint": "0xffd700"
   },
   "stunned": {
     "id": "stunned",
     "name": "Stunned",
+    "textureKey": "icons1",
+    "iconFrame": 3,
     "isBuff": false,
     "duration": 6.0,
     "tickRate": 0.0,
     "tickDamage": 0.0,
     "statModifiers": {
-      "speed": -9999,
+      "movementSpeed": -9999,
       "attackSpeedPercent": -0.99
     },
     "colorTint": "0x888888"
@@ -55,6 +58,8 @@
   "vampiric_aura": {
     "id": "vampiric_aura",
     "name": "Blood Leech",
+    "textureKey": "icons1",
+    "iconFrame": 4,
     "isBuff": true,
     "duration": 8.0,
     "tickRate": 0.0,
@@ -68,6 +73,8 @@
   "rejuvenation_aura": {
     "id": "rejuvenation_aura",
     "name": "Healing Aura",
+    "textureKey": "icons1",
+    "iconFrame": 5,
     "isBuff": true,
     "duration": 5.0,
     "tickRate": 1.0,
@@ -77,6 +84,8 @@
   "test_fire_aura_buff": {
     "id": "test_fire_aura_buff",
     "name": "Fire Aura Buff",
+    "textureKey": "icons1",
+    "iconFrame": 6,
     "isBuff": true,
     "duration": 5.0,
     "tickRate": 0.5,
@@ -86,10 +95,19 @@
   },
   "boss_sweeping_aura": {
     "id": "boss_sweeping_aura",
+    "textureKey": "icons1",
+    "iconFrame": 7,
     "isBuff": true,
     "duration": 5.0,
     "tickRate": 0.05,
     "tickDamage": 0,
     "tickSkillId": "laser_sweep"
+  },
+  "holy_barrier": {
+    "id": "holy_barrier",
+    "name": "Holy Barrier",
+    "isBuff": true,
+    "grantedShield": 150,
+    "duration": 5.0
   }
 }

@@ -28,7 +28,8 @@ interface ServerPlayer {
   aimX: number; aimY: number; firedWeapons: number[]; activeEffects: string[];
   currentCastingSkillId: string; currentCastTimer: number; maxCastTimer: number;
   synergizedSkills: { configId: string, currentCooldown: number }[];
-  statDiff?: Record<string, number>; // <<< ADD THIS LINE
+  statDiff?: Record<string, number>;
+  currentShield: number;
 }
 interface ServerEnemy {
   id: string; configId: string; x: number; y: number; velX?: number;
@@ -37,6 +38,7 @@ interface ServerEnemy {
   aimX?: number; aimY?: number; firedWeapons: number[];
   weapons: { configId: string; slotIndex: number; level: number; rolledStats: Record<string, number>; totalBaseStats: Record<string, number>; }[];
   team: string;
+  currentShield: number;
 }
 interface ServerProjectile { id: string; configId: string; x: number; y: number; velX: number; velY: number; }
 interface ServerPickup {
@@ -128,25 +130,23 @@ class GameScene extends Phaser.Scene {
   constructor() { super('GameScene'); }
 
   preload() {
-    this.load.spritesheet('enemies_sheet1', '/assets/Enemies/enemy1.png', { frameWidth: 720, frameHeight: 490 });
-    this.load.spritesheet('Flying_Forest', '/assets/Enemies/Flying Forest.png', { frameWidth: 64, frameHeight: 64 });
     this.load.spritesheet('mushroomEnemy', '/assets/Enemies/mushroom.png', { frameWidth: 80, frameHeight: 64 });
-    this.load.spritesheet('ironenemy', '/assets/Enemies/ironEnemy.png', { frameWidth: 180, frameHeight: 181 });
-    this.load.spritesheet('weapons_sheet', '/assets/Weapons/weapons.png', { frameWidth: 704, frameHeight: 384 });
-    this.load.spritesheet('ammo_sheet', '/assets/Weapons/ammo1.png', { frameWidth: 16, frameHeight: 16 });
-    this.load.spritesheet('items_sheet', 'assets/Enemies/items_sheet.png', { frameWidth: 16, frameHeight: 16 });
-    this.load.spritesheet('characters_sheet', 'assets/characters_sheet.png', { frameWidth: 32, frameHeight: 32 });
+    this.load.spritesheet('weapons_sheet', '/assets/Weapons/weapons.png', { frameWidth: 176, frameHeight: 96 });
     this.load.spritesheet('tree', 'assets/obstacles/Tree Lights 02-Sheet.png', { frameWidth: 32, frameHeight: 64 });
     this.load.spritesheet('effects1', 'assets/Effects/effects1.png', { frameWidth: 64, frameHeight: 64 });
     this.load.spritesheet('characters_sheet1', 'assets/Characters/char1.png', { frameWidth: 32, frameHeight: 32 });
-    this.load.spritesheet('ammo_sheet2', '/assets/Weapons/ammo2.png', { frameWidth: 240, frameHeight: 218 });
+    this.load.spritesheet('ammo_sheet2', '/assets/Weapons/ammo2.png', { frameWidth: 60, frameHeight: 54 });
     this.load.spritesheet('goblinCavebat_sheet', '/assets/Enemies/goblin-cavbat.png', { frameWidth: 400, frameHeight: 268 });
     this.load.spritesheet('spike_enemy', '/assets/Enemies/spike enemy.png', { frameWidth: 47, frameHeight: 38 });
     this.load.spritesheet('spring_enemy', '/assets/Enemies/spring enemy.png', { frameWidth: 48, frameHeight: 48 });
     this.load.spritesheet('effects2', '/assets/Effects/effect2.png', { frameWidth: 64, frameHeight: 96 });
     this.load.spritesheet('icons1', '/assets/Effects/icons1.png', { frameWidth: 32, frameHeight: 32 });
+    this.load.spritesheet('explosion1', '/assets/Effects/explosion1.png', { frameWidth: 96, frameHeight: 96 });
+    this.load.spritesheet('explosion2', '/assets/Effects/explosion2.png', { frameWidth: 128, frameHeight: 96 });
 
-    this.load.spritesheet('skill_icons', '/assets/Skills/skillsicon.png', { frameWidth: 312, frameHeight: 307 });
+
+
+    this.load.spritesheet('skill_icons', '/assets/Skills/skillsicon.png', { frameWidth: 78, frameHeight: 76 });
     this.load.spritesheet('Enemies1_sheet', '/assets/Enemies/mosquito-fly devil - fly fortest.png', { frameWidth: 64, frameHeight: 64 });
 
     this.load.image('tex_grass', '/assets/obstacles/grass map.jpg');
@@ -372,7 +372,7 @@ class GameScene extends Phaser.Scene {
           const sprite = this.projectileSprites.get(id);
           if (sprite) {
             // Store this projectile's hit sound so renderers can play it on HP drop
-            const configId = sprite.getData('configId') as string | undefined;
+            const configId = (sprite as any).__pdata?.configId as string | undefined;
             if (configId) {
               const projCfg = masterConfigs.projectiles?.[configId] ?? masterConfigs.Projectiles?.[configId];
               if (projCfg?.soundHit) AudioManager.getInstance().setLastProjectileHitSound(projCfg.soundHit);
@@ -405,16 +405,17 @@ class GameScene extends Phaser.Scene {
           }
           sprite.setDepth(10);
 
-          sprite.setData('vx', vx);
-          sprite.setData('vy', vy);
-          sprite.setData('configId', configId);
-
-          if (b[6] === 1) {
-            sprite.setData('isOrbital', true);
-            sprite.setData('ownerId', b[7]);
-            sprite.setData('orbitRadius', b[8]);
-            sprite.setData('orbitAngleOffset', b[9]);
-          }
+          // Plain object instead of Phaser's setData()/DataManager: the per-frame physics
+          // loop below reads these fields for EVERY projectile EVERY render frame (60/sec),
+          // so this is the single highest-traffic getData/setData usage in the client -
+          // skipping the DataManager's event-emitter+Map indirection here matters most.
+          sprite.__pdata = {
+            vx, vy, configId,
+            isOrbital: b[6] === 1,
+            ownerId: b[6] === 1 ? b[7] : undefined,
+            orbitRadius: b[6] === 1 ? b[8] : undefined,
+            orbitAngleOffset: b[6] === 1 ? b[9] : undefined,
+          };
 
           this.projectileSprites.set(id, sprite);
         });
@@ -443,7 +444,8 @@ class GameScene extends Phaser.Scene {
             configId: w[0], slotIndex: w[1], level: w[2], rolledStats: w[3] || {}, totalBaseStats: w[4] || {}
           })) || [],
           firedWeapons: e[14] || [],
-          team: e[15]
+          team: e[15],
+          currentShield: e[16] || 0
         });
       });
       rawState.pk?.forEach((pk: any[]) => {
@@ -473,6 +475,7 @@ class GameScene extends Phaser.Scene {
           cached.maxCastTimer = m[10];
           cached.activeEffects = m[11] || [];
           cached.firedWeapons = m[12] || [];
+          cached.currentShield = m[13] || 0;
         }
       });
 
@@ -497,7 +500,7 @@ class GameScene extends Phaser.Scene {
           })) || [],
 
           statDiff: p[16], // <<< ADD THIS LINE (Reads the new diff from NetworkSystem!)
-
+          currentShield: p[17] || 0,
           currentShop: [], stats: {}, ownedItems: {}
         })) || [],
 
@@ -570,14 +573,16 @@ class GameScene extends Phaser.Scene {
       const PICKUP_RADIUS_SQ = 50 * 50;
       let newNearbyLootId: string | null = null;
       if (myPlayer) {
-        const cacheEntries = Array.from(this.pickupCache.entries());
-        const found = cacheEntries.find(([, pickup]) => {
-          if (pickup.type === 0) return false; // skip gold – auto-collected
+        // Iterate the Map directly instead of materializing entries into an array each tick.
+        for (const [id, pickup] of this.pickupCache) {
+          if (pickup.type === 0) continue; // skip gold – auto-collected
           const dx = pickup.x - myPlayer.x;
           const dy = pickup.y - myPlayer.y;
-          return dx * dx + dy * dy <= PICKUP_RADIUS_SQ;
-        });
-        if (found) newNearbyLootId = found[0];
+          if (dx * dx + dy * dy <= PICKUP_RADIUS_SQ) {
+            newNearbyLootId = id;
+            break;
+          }
+        }
       }
 
       if (newNearbyLootId !== this.nearbyLootId) {
@@ -684,20 +689,20 @@ class GameScene extends Phaser.Scene {
 
     // >>> FIX: Hybrid Physics (Linear vs Orbital) <<<
     this.projectileSprites.forEach((sprite) => {
-      if (sprite.getData('isOrbital')) {
-        const ownerId = sprite.getData('ownerId');
-        const ownerSprite = this.playerSprites.get(ownerId) || this.enemySprites.get(ownerId);
+      const pdata = (sprite as any).__pdata;
+      if (!pdata) return;
+
+      if (pdata.isOrbital) {
+        const ownerSprite = this.playerSprites.get(pdata.ownerId) || this.enemySprites.get(pdata.ownerId);
 
         if (ownerSprite) {
-          let angle = sprite.getData('orbitAngleOffset');
-          const radius = sprite.getData('orbitRadius');
+          const radius = pdata.orbitRadius;
 
           // >>> FIX: vx holds OrbitSpeed in Degrees. Convert to Radians! <<<
-          const degreesPerSec = sprite.getData('vx');
-          const radiansPerSec = degreesPerSec * (Math.PI / 180);
+          const radiansPerSec = pdata.vx * (Math.PI / 180);
 
-          angle += radiansPerSec * dtSeconds;
-          sprite.setData('orbitAngleOffset', angle);
+          let angle = pdata.orbitAngleOffset + radiansPerSec * dtSeconds;
+          pdata.orbitAngleOffset = angle;
 
           // Lock tightly to the smoothly interpolated visual position
           sprite.x = ownerSprite.x + Math.cos(angle) * radius;
@@ -713,10 +718,8 @@ class GameScene extends Phaser.Scene {
         }
       } else {
         // Standard Fire-and-Forget Linear Physics
-        const vx = sprite.getData('vx');
-        const vy = sprite.getData('vy');
-        sprite.x += vx * dtSeconds;
-        sprite.y += vy * dtSeconds;
+        sprite.x += pdata.vx * dtSeconds;
+        sprite.y += pdata.vy * dtSeconds;
       }
     });
 
@@ -767,7 +770,7 @@ class GameScene extends Phaser.Scene {
       });
 
       this.projectileSprites.forEach((sprite) => {
-        const configId = (sprite as any).getData('configId');
+        const configId = (sprite as any).__pdata?.configId;
         const config = masterConfigs.projectiles ? (masterConfigs.projectiles[configId] || masterConfigs.Projectiles?.[configId]) : null;
 
         // Exact manual control from JSON (using ?? so 0 is allowed)
@@ -923,7 +926,8 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
     { cmd: '/giveweapon', desc: '/giveweapon <configId>' },
     { cmd: '/addtime', desc: '/addtime <seconds>' },
     { cmd: '/removetime', desc: '/removetime <seconds>' },
-    { cmd: '/toggleshop', desc: '/toggleshop' }
+    { cmd: '/toggleshop', desc: '/toggleshop' },
+    { cmd: '/givestat', desc: '/givestat <statName> <amount>' },
   ];
 
   // 1. Inject HTML & CSS into the document

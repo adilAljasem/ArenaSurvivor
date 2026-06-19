@@ -170,12 +170,20 @@
         "id": "frost_nova",
         "name": "Frost Nova",
         "nextLevelId": "frost_nova_2",
-        "cooldownSeconds": 8.0,
+        "vfxTextureKey": "explosion1",
+        "vfxAnimFrames": [
+            0,
+            8
+        ],
+        "vfxFrameRate": 15,
+        "vfxBaseRadius": 50,
+        "vfxScale": 1.0,
+        "cooldownSeconds": 2.0,
         "castTimeSeconds": 2.0,
         "triggerType": "Auto",
         "targetType": "Self",
         "actionType": "AoE",
-        "radius": 300,
+        "radius": 200,
         "baseDamage": 10,
         "applyEffects": [
             "stunned"
@@ -250,7 +258,15 @@
         "id": "test_rocket_explosion",
         "actionType": "AoE",
         "targetType": "Self",
-        "radius": 500,
+        "vfxTextureKey": "explosion2",
+        "vfxAnimFrames": [
+            0,
+            13
+        ],
+        "vfxFrameRate": 15,
+        "vfxBaseRadius": 50,
+        "vfxScale": 1.0,
+        "radius": 100,
         "baseDamage": 5000,
         "colorTint": "0xff4400"
     },
@@ -412,5 +428,17 @@
         "projectileCount": 12,
         "spreadAngle": 360.0,
         "projectileId": "fireball"
+    },
+    "barrier": {
+        "id": "barrier",
+        "name": "Barrier",
+        "actionType": "SelfBuff",
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "cooldownSeconds": 5.0,
+        "castTimeSeconds": 1.5,
+        "applyEffects": [
+            "holy_barrier"
+        ]
     }
 }

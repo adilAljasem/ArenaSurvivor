@@ -38,6 +38,7 @@ public static class CommandDispatcher
         _commands["addtime"] = new AddTimeCommand();
         _commands["removetime"] = new RemoveTimeCommand();
         _commands["toggleshop"] = new ToggleShopCommand();
+        _commands["givestat"] = new GiveStatCommand();
     }
 
     public static async Task ExecuteAsync(string input, GameState state, ConfigManager configs, string playerId, IClientProxy caller)
@@ -233,10 +234,10 @@ public class GiveWeaponCommand : ICheatCommand
             {
                 // Generate a fresh Level 1 weapon
                 var newWeapon = Server.Core.Systems.WeaponGenerator.GenerateWeapon(wId, player, configs, 1);
-                
+
                 // Use your existing inventory logic to add/merge it safely
                 bool success = player.TryAddOrMergeWeapon(newWeapon, configs);
-                
+
                 if (success) await caller.SendAsync("ReceiveChatMessage", "System", $"Added weapon: {wCfg.Name}!");
                 else await caller.SendAsync("ReceiveChatMessage", "System", "Inventory full or merge failed!");
             }
@@ -290,15 +291,53 @@ public class ToggleShopCommand : ICheatCommand
     public async Task ExecuteAsync(string[] args, GameState state, ConfigManager configs, string playerId, IClientProxy caller)
     {
         state.SkipShopPhase = !state.SkipShopPhase;
-        
+
         string status = state.SkipShopPhase ? "DISABLED (Skipping directly to combat)" : "ENABLED (Normal 30s shop phase)";
-        
+
         // Bonus: If they type it while already IN the shop, skip it immediately!
         if (state.SkipShopPhase && state.Phase == GamePhase.ShopPhase)
         {
-            state.PhaseTimer = 0; 
+            state.PhaseTimer = 0;
         }
 
         await caller.SendAsync("ReceiveChatMessage", "System", $"Shop Phase is now {status}!");
+    }
+}
+
+public class GiveStatCommand : ICheatCommand
+{
+    public string Description => "Gives you a specific stat bonus. Usage: /givestat <statName> <amount>";
+
+    public async Task ExecuteAsync(string[] args, GameState state, ConfigManager configs, string playerId, IClientProxy caller)
+    {
+        if (args.Length < 2 || !float.TryParse(args[1], out float amount))
+        {
+            await caller.SendAsync("ReceiveChatMessage", "System", "Usage: /givestat <statName> <amount>");
+            return;
+        }
+
+        string statName = args[0];
+
+        // Ensure they typed a valid stat
+        if (!configs.AllStats.Contains(statName))
+        {
+            await caller.SendAsync("ReceiveChatMessage", "System", $"Invalid stat '{statName}'.");
+            return;
+        }
+
+        if (state.Players.TryGetValue(playerId, out var player))
+        {
+            // Add a permanent flat modifier (0 means flat addition, not multiplier)
+            player.Stats.AddModifier(statName, amount, 0);
+            player.StatsNeedRecalculation = true;
+
+            // If they are boosting maxHp, give them the health instantly so they don't stay at low HP
+            if (statName == "maxHp")
+            {
+                player.CurrentHp += amount;
+            }
+
+            await caller.SendAsync("ReceiveChatMessage", "System", $"Added {amount} to {statName}!");
+        }
     }
 }

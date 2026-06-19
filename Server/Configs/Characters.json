@@ -23,7 +23,7 @@
     ],
     "animDeathFrameRate": 12,
     "baseStats": {
-      "maxHp": 30000,
+      "maxHp": 300,
       "movementSpeed": 200,
       "meleeDamage": 50,
       "rangedDamage": 50,
