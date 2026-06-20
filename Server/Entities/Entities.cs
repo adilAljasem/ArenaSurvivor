@@ -103,15 +103,15 @@ public abstract class BaseEquippedGear
 public class ActiveEffect
 {
     public string ConfigId { get; set; } = string.Empty;
-    
+
     // How much longer this effect lasts
     public float TimeRemaining { get; set; }
-    
+
     // Tracks when to deal the next "tick" of damage
     public float TimeSinceLastTick { get; set; }
-    
+
     // Who caused this effect? (Useful if an enemy dies to poison and we need to know which Player gets the Gold/XP!)
-    public string SourceId { get; set; } = string.Empty; 
+    public string SourceId { get; set; } = string.Empty;
     public float GrantedShieldAmount { get; set; }
 }
 
@@ -119,7 +119,7 @@ public class ActiveSkill
 {
     public string ConfigId { get; set; } = string.Empty;
     public float CurrentCooldown { get; set; }
-    
+
     public bool IsCasting { get; set; }
     public float CurrentCastTimer { get; set; }
     public float CurrentChannelTimer { get; set; }
@@ -269,6 +269,8 @@ public class PlayerEntity : BaseActorEntity
 {
     public string ConnectionId { get; set; } = string.Empty;
     public string ConfigId { get; set; } = "char_well_rounded";
+    public string Name { get; set; } = "Guest";
+    public bool IsReady { get; set; } = false;
 
     public int Level { get; set; } = 1;
     public float CurrentXp { get; set; }

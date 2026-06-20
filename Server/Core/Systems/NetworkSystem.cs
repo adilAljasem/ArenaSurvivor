@@ -18,8 +18,7 @@ namespace Server.Core.Systems;
 public class NetworkSystem : IGameSystem
 {
     private EventBus _eventBus = null!;
-    private readonly IHubContext<GameHub> _hubContext;
-
+    private readonly IHubContext<MatchHub> _hubContext;
     private readonly List<DamageEventDto> _damageEvents = new();
     private readonly List<AoeEventDto> _aoeEvents = new();
     private readonly List<BeamVisualEvent> _beamEvents = new();
@@ -29,10 +28,9 @@ public class NetworkSystem : IGameSystem
     private readonly ConcurrentDictionary<string, HashSet<string>> _clientKnownPickups = new();
     private readonly ConcurrentDictionary<string, HashSet<string>> _clientKnownProjectiles = new();
 
-    public NetworkSystem(IHubContext<GameHub> hubContext)
+    public NetworkSystem(IHubContext<MatchHub> hubContext)
     {
         _hubContext = hubContext;
-        
     }
 
     public void Initialize(EventBus eventBus, ConfigManager configs)

@@ -5,16 +5,20 @@ import { EscMenu } from './ui/EscMenu';
 import { ActorRenderer, VfxRenderer, WorldRenderer } from './RenderSystems';
 import { AudioManager } from './AudioManager';
 import pako from 'pako';
+import { LobbyUI } from './LobbyUI';
 
-
-// --- SIGNALR CONNECTION ---
-const connection = new HubConnectionBuilder()
-  .withUrl("http://localhost:5000/gameHub")
+// --- SIGNALR CONNECTIONS ---
+// 1. Master Node
+export const lobbyConnection = new HubConnectionBuilder()
+  .withUrl("http://localhost:5000/lobbyHub")
   .withAutomaticReconnect()
   .build();
 
-
-
+// 2. Worker Node (Starts with fallback, overwritten dynamically during Handoff!)
+export let matchConnection: any = new HubConnectionBuilder()
+  .withUrl("http://localhost:5000/matchHub")
+  .withAutomaticReconnect()
+  .build();
 
 // --- INTERFACES ---
 interface EquippedWeapon { configId: string; slotIndex: number; level: number; }
@@ -64,12 +68,8 @@ export interface GameStatePayload {
 
 let masterConfigs: any = {};
 
-// >>> NEW: The Event-Driven UI Listener <<<
 // We export this globally so any HTML UI component can read the latest stats
 (window as any).playerCachedStats = {};
-
-
-
 
 // --- PHASER SCENE ---
 class GameScene extends Phaser.Scene {
@@ -77,8 +77,6 @@ class GameScene extends Phaser.Scene {
   private enemySprites: Map<string, Phaser.GameObjects.Container> = new Map();
   private projectileSprites: Map<string, Phaser.GameObjects.Rectangle | Phaser.GameObjects.Sprite> = new Map();
   private pickupSprites: Map<string, Phaser.GameObjects.Sprite | Phaser.GameObjects.Rectangle> = new Map();
-  // Persistent channeled-beam objects, keyed by "casterId:skillId". One entry lives for the
-  // whole channel duration; see VfxRenderer.renderBeamEvents / endBeam.
   private activeBeams: Map<string, { beam: Phaser.GameObjects.Rectangle, core: Phaser.GameObjects.Rectangle }> = new Map();
   private targetPositions: Map<string, { x: number, y: number }> = new Map();
   private skillActionBar!: SkillActionBar;
@@ -97,13 +95,10 @@ class GameScene extends Phaser.Scene {
   private previousPhase: string = "WaitingForPlayers";
   private manuallyClosedShop: boolean = false;
 
-
-  // Spacebar loot pickup
   private spaceKey!: Phaser.Input.Keyboard.Key;
   private nearbyLootId: string | null = null;
   private groundTooltip!: Tooltip;
 
-  // Map Variables
   private isMapInitialized: boolean = false;
   private mapWidth: number = 4000;
   private mapHeight: number = 4000;
@@ -124,7 +119,6 @@ class GameScene extends Phaser.Scene {
   private currentCompressedKbps: string = "0.00";
   private currentUncompressedKbps: string = "0.00";
 
-  // Memory-leak prevention: store handles to be cleaned up on shutdown
   private pingIntervalId: ReturnType<typeof setInterval> | null = null;
 
   constructor() { super('GameScene'); }
@@ -143,22 +137,15 @@ class GameScene extends Phaser.Scene {
     this.load.spritesheet('icons1', '/assets/Effects/icons1.png', { frameWidth: 32, frameHeight: 32 });
     this.load.spritesheet('explosion1', '/assets/Effects/explosion1.png', { frameWidth: 96, frameHeight: 96 });
     this.load.spritesheet('explosion2', '/assets/Effects/explosion2.png', { frameWidth: 128, frameHeight: 96 });
-
-
-
     this.load.spritesheet('skill_icons', '/assets/Skills/skillsicon.png', { frameWidth: 78, frameHeight: 76 });
     this.load.spritesheet('Enemies1_sheet', '/assets/Enemies/mosquito-fly devil - fly fortest.png', { frameWidth: 64, frameHeight: 64 });
 
     this.load.image('tex_grass', '/assets/obstacles/grass map.jpg');
     this.load.image('tex_sand', '/assets/obstacles/map1.jpg');
 
-
     this.load.audio('sfx_shoot', 'assets/Audio/weapon-fire-1.wav');
     this.load.audio('ball-shoot', 'assets/Audio/ball-tap.wav');
     this.load.audio('sword-shoot', 'assets/Audio/sword-strikes.wav');
-
-
-
   }
 
   create() {
@@ -167,7 +154,6 @@ class GameScene extends Phaser.Scene {
     this.skillActionBar = new SkillActionBar(this);
     this.skillActionBar.updateLayout(this.scale.width, this.scale.height);
 
-    // Initialise the global AudioManager with this scene's sound system
     AudioManager.getInstance().init(this);
 
     const initConfigs = () => {
@@ -193,8 +179,6 @@ class GameScene extends Phaser.Scene {
 
           if (mapTex && this.textures.exists(mapTex)) {
             const groundTile = this.add.tileSprite(this.mapWidth / 2, this.mapHeight / 2, this.mapWidth, this.mapHeight, mapTex).setDepth(-2);
-
-            // This stretches or shrinks the image pattern inside the grid!
             groundTile.setTileScale(texScale, texScale);
           } else {
             this.add.grid(this.mapWidth / 2, this.mapHeight / 2, this.mapWidth, this.mapHeight, 64, 64, 0x1a1a1a, 1, 0x333333, 1).setDepth(-2);
@@ -210,16 +194,52 @@ class GameScene extends Phaser.Scene {
       }
     };
 
-    // Bind the handshake receiver directly inside the scene BEFORE connecting
-    connection.on("ReceiveHandshake", (payload: any) => {
+    // ==========================================
+    // 1. MASTER NODE (LOBBY) LISTENERS
+    // ==========================================
+    lobbyConnection.on("ReceiveHandshake", (payload: any) => {
       masterConfigs = payload;
       console.log("Handshake received. Configs loaded.");
       initConfigs();
-      setupChatUI(this, connection);
     });
 
+    lobbyConnection.on("MatchStarted", (roomId: string, matchToken: string, workerUrl: string) => {
+      console.log(`Routing to Dedicated Worker: ${workerUrl}`);
+      const lobbyWrapper = document.getElementById('lobby-ui-wrapper');
+      if (lobbyWrapper) lobbyWrapper.style.display = 'none';
 
+      lobbyConnection.stop().then(() => {
+          // 1. Build the connection dynamically using the IP the Master gave us!
+          matchConnection = new HubConnectionBuilder()
+            .withUrl(workerUrl)
+            .withAutomaticReconnect()
+            .build();
 
+          // 2. Bind all the physics and UI listeners
+          this.bindWorkerListeners();
+
+          // 3. Connect and send the Secure Token!
+          matchConnection.start().then(() => {
+              console.log("Successfully connected to MatchHub Worker! Joining Sandbox...");
+              
+              setupChatUI(this, matchConnection);
+              
+              // Re-bind the ShopUI to the new connection safely
+              if (this.shopUIModule && typeof (this.shopUIModule as any).destroy === 'function') {
+                  (this.shopUIModule as any).destroy();
+              }
+              this.shopUIModule = new ShopUI(this, matchConnection); 
+              this.shopUIModule.setDepth(1000);
+              this.shopUIModule.setVisible(false);
+              
+              matchConnection.invoke("JoinLiveMatch", roomId, matchToken).catch((err: any) => console.error(err));
+          });
+      });
+    });
+
+    // ==========================================
+    // UI & INPUT SETUP
+    // ==========================================
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();
       this.wasd = this.input.keyboard.addKeys('W,A,S,D');
@@ -246,9 +266,9 @@ class GameScene extends Phaser.Scene {
     }
 
     this.pingIntervalId = setInterval(() => {
-      if (connection.state === HubConnectionState.Connected) {
+      if (matchConnection && matchConnection.state === HubConnectionState.Connected) {
         const startTime = Date.now();
-        connection.invoke("Ping").then(() => { this.pingMs = Date.now() - startTime; }).catch(() => { });
+        matchConnection.invoke("Ping").then(() => { this.pingMs = Date.now() - startTime; }).catch(() => { });
       }
     }, 1000);
 
@@ -265,11 +285,10 @@ class GameScene extends Phaser.Scene {
       backgroundColor: '#000000aa', padding: { x: 8, y: 8 }
     }).setOrigin(0, 1).setDepth(9999).setVisible(false).setScrollFactor(0);
 
-    this.shopUIModule = new ShopUI(this, connection);
+    this.shopUIModule = new ShopUI(this, matchConnection);
     this.shopUIModule.setDepth(1000);
     this.shopUIModule.setVisible(false);
 
-    // ESC Menu (appears when pressing ESC while no other panel is open)
     this.escMenu = new EscMenu(this);
     this.escMenu.setVisible(false);
 
@@ -277,41 +296,34 @@ class GameScene extends Phaser.Scene {
       this.perfText.setPosition(10, gameSize.height - 10);
       this.waveUIText.setPosition(gameSize.width / 2, 20);
       this.escMenu.reposition(gameSize.width, gameSize.height);
-
-      // >>> Call the resizer on window change <<<
       this.skillActionBar.updateLayout(gameSize.width, gameSize.height);
     });
 
     this.skillActionBar.setPosition(this.scale.width / 2, this.scale.height - 40);
 
     this.input.keyboard?.on('keydown-B', () => {
-      // 1. Toggle the visibility state
       const isNowVisible = !this.shopUIModule.visible;
       this.shopUIModule.setVisible(isNowVisible);
       this.manuallyClosedShop = !isNowVisible;
 
-      // 2. If the menu was just OPENED, ask the server for fresh data!
-      if (isNowVisible) {
-        // Note: Ensure your SignalR connection object is correctly referenced here 
-        // (it might be 'this.connection' or just 'connection' depending on your scope)
-        connection.invoke("RequestUIUpdate").catch((err: any) => {
+      if (isNowVisible && matchConnection && matchConnection.state === HubConnectionState.Connected) {
+        matchConnection.invoke("RequestUIUpdate").catch((err: any) => {
           console.error("Failed to request UI update:", err);
         });
       }
     });
+
     this.input.keyboard?.on('keydown-ESC', () => {
       if (this.shopUIModule.visible) {
-        // First priority: close the shop
         this.shopUIModule.setVisible(false);
         this.manuallyClosedShop = true;
       } else if (this.escMenu.visible) {
-        // Second priority: close the ESC menu
         this.escMenu.setVisible(false);
       } else {
-        // Nothing open → open the ESC menu
         this.escMenu.setVisible(true);
       }
     });
+
     this.input.keyboard?.on('keydown-H', () => {
       this.isDebugMode = !this.isDebugMode;
       this.perfText.setVisible(this.isDebugMode);
@@ -319,35 +331,73 @@ class GameScene extends Phaser.Scene {
 
     this.debugGraphics = this.add.graphics().setDepth(9998);
 
-    // >>> NEW: U Key to Toggle Health Numbers <<<
-    this.data.set('showHealthNumbers', false); // Default to hidden
+    this.data.set('showHealthNumbers', false);
     this.input.keyboard?.on('keydown-U', () => {
       const currentState = this.data.get('showHealthNumbers');
       this.data.set('showHealthNumbers', !currentState);
     });
-    connection.on("UpdatePlayerUI", (uiData: any) => {
-      // Save the level so the stat display knows what level you are
-      this.data.set('playerLevel', uiData.level || 1);
 
+    // Initial Boot Sequence (Start the Master Node!)
+    if (lobbyConnection.state === HubConnectionState.Disconnected) {
+      lobbyConnection.start()
+        .then(() => {
+          console.log("SignalR Master Connected! Launching Lobby UI...");
+
+          const getIconBase64 = (textureKey: string, frame: number) => {
+            if (this.textures.exists(textureKey)) {
+              return this.textures.getBase64(textureKey, frame);
+            }
+            return null;
+          };
+
+          // Pass the Master connection to the HTML UI
+          new LobbyUI(lobbyConnection, getIconBase64, () => {
+            console.log("Match joined. Entering Game mode!");
+          });
+        })
+        .catch((err: any) => console.error("SignalR Master Connection Error:", err));
+    }
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      if (this.pingIntervalId !== null) {
+        clearInterval(this.pingIntervalId);
+        this.pingIntervalId = null;
+      }
+      if (matchConnection) {
+          matchConnection.off('UpdatePlayerUI');
+          matchConnection.off('UpdateStateCompressed');
+      }
+      lobbyConnection.off('ReceiveHandshake');
+      lobbyConnection.off('MatchStarted');
+      this.game.events.off(Phaser.Core.Events.PRE_RENDER);
+      this.game.events.off(Phaser.Core.Events.POST_RENDER);
+
+      this.activeBeams.forEach(entry => { entry.beam.destroy(); entry.core.destroy(); });
+      this.activeBeams.clear();
+    });
+  }
+
+  // ==========================================
+  // 2. WORKER NODE (MATCH) LISTENERS
+  // ==========================================
+  private bindWorkerListeners() {
+    matchConnection.on("UpdatePlayerUI", (uiData: any) => {
+      this.data.set('playerLevel', uiData.level || 1);
       if (this.shopUIModule) {
         this.shopUIModule.updateUIData(uiData, masterConfigs);
       }
     });
 
-    connection.on("UpdateStateCompressed", (compressedBase64: string) => {
-      // 1. Dual-Tracker Math
+    matchConnection.on("UpdateStateCompressed", (compressedBase64: string) => {
       const compressedSize = compressedBase64.length + 50;
       this.compressedBytesReceived += compressedSize;
 
-      // Decode Base64 and Decompress with Pako
       const binaryString = atob(compressedBase64);
       const len = binaryString.length;
       const bytes = new Uint8Array(len);
       for (let i = 0; i < len; i++) {
         bytes[i] = binaryString.charCodeAt(i);
       }
-
-
 
       const decompressedBytes = pako.ungzip(bytes);
       const jsonString = new TextDecoder().decode(decompressedBytes);
@@ -364,14 +414,11 @@ class GameScene extends Phaser.Scene {
       const PhaseMap = ["WaitingForPlayers", "WaveActive", "ShopPhase"];
       const StateMap = ["Idle", "Moving", "Attacking", "Casting", "Dead"];
 
-      // ==========================================================
-      // >>> 1. FIRE AND FORGET: PROJECTILES <<<
-      // ==========================================================
+      // --- PROJECTILES ---
       if (rawState.db) {
         rawState.db.forEach((id: string) => {
           const sprite = this.projectileSprites.get(id);
           if (sprite) {
-            // Store this projectile's hit sound so renderers can play it on HP drop
             const configId = (sprite as any).__pdata?.configId as string | undefined;
             if (configId) {
               const projCfg = masterConfigs.projectiles?.[configId] ?? masterConfigs.Projectiles?.[configId];
@@ -405,10 +452,6 @@ class GameScene extends Phaser.Scene {
           }
           sprite.setDepth(10);
 
-          // Plain object instead of Phaser's setData()/DataManager: the per-frame physics
-          // loop below reads these fields for EVERY projectile EVERY render frame (60/sec),
-          // so this is the single highest-traffic getData/setData usage in the client -
-          // skipping the DataManager's event-emitter+Map indirection here matters most.
           sprite.__pdata = {
             vx, vy, configId,
             isOrbital: b[6] === 1,
@@ -421,13 +464,10 @@ class GameScene extends Phaser.Scene {
         });
       }
 
-      // ==========================================================
-      // >>> 2. DELTA COMPRESSION: ENEMIES & PICKUPS <<<
-      // ==========================================================
+      // --- ENEMIES & PICKUPS DELTAS ---
       rawState.de?.forEach((id: string) => this.enemyCache.delete(id));
       rawState.dpk?.forEach((id: string) => {
         this.pickupCache.delete(id);
-        // If the nearby loot was just destroyed/picked up, clear the tooltip immediately
         if (id === this.nearbyLootId) {
           this.nearbyLootId = null;
           this.groundTooltip.hide();
@@ -448,6 +488,7 @@ class GameScene extends Phaser.Scene {
           currentShield: e[16] || 0
         });
       });
+
       rawState.pk?.forEach((pk: any[]) => {
         this.pickupCache.set(pk[0], {
           id: pk[0], x: pk[1], y: pk[2], value: pk[3],
@@ -466,7 +507,7 @@ class GameScene extends Phaser.Scene {
           cached.x = m[1];
           cached.y = m[2];
           cached.currentHp = m[3];
-          cached.maxHp = m[4]; // <<< FIX 2: READ MAX HP HERE!
+          cached.maxHp = m[4];
           cached.aimX = m[5];
           cached.aimY = m[6];
           cached.actionState = StateMap[m[7]];
@@ -479,9 +520,7 @@ class GameScene extends Phaser.Scene {
         }
       });
 
-      // ==========================================================
-      // >>> 3. BUILD FINAL STATE FOR RENDERERS <<<
-      // ==========================================================
+      // --- FINAL STATE PAYLOAD ---
       const state: GameStatePayload = {
         phase: PhaseMap[rawState.ph] || "WaitingForPlayers",
         currentWave: rawState.w, timeRemaining: rawState.tr,
@@ -498,34 +537,26 @@ class GameScene extends Phaser.Scene {
           synergizedSkills: p[15]?.map((s: any[]) => ({
             configId: s[0], currentCooldown: s[1]
           })) || [],
-
-          statDiff: p[16], // <<< ADD THIS LINE (Reads the new diff from NetworkSystem!)
+          statDiff: p[16], 
           currentShield: p[17] || 0,
           currentShop: [], stats: {}, ownedItems: {}
         })) || [],
-
         enemies: Array.from(this.enemyCache.values()),
         pickups: Array.from(this.pickupCache.values()),
-        projectiles: [], // Kept empty because Fire-and-Forget physics controls them!
+        projectiles: [], 
         damageEvents: rawState.dmg?.map((d: any[]) => ({
-          x: d[0],
-          y: d[1],
-          amount: d[2],
-          isCritical: d[3] === 1,
-          isDodge: d[4] === 1, // Read Dodge
-          isBlock: d[5] === 1  // Read Block
+          x: d[0], y: d[1], amount: d[2],
+          isCritical: d[3] === 1, isDodge: d[4] === 1, isBlock: d[5] === 1 
         })) || [],
         aoeEvents: rawState.aoe?.map((a: any[]) => ({ x: a[0], y: a[1], radius: a[2], isFriendly: a[3], configId: a[4] })) || [],
-        beamEvents: rawState.bm?.map((b: any[]) => ({ startX: b[0], startY: b[1], targetX: b[2], targetY: b[3], width: b[4], colorTint: b[5], casterId: b[6], skillId: b[7] })) || [], // <<< NEW
+        beamEvents: rawState.bm?.map((b: any[]) => ({ startX: b[0], startY: b[1], targetX: b[2], targetY: b[3], width: b[4], colorTint: b[5], casterId: b[6], skillId: b[7] })) || [],
         beamEndedEvents: rawState.be?.map((b: any[]) => ({ casterId: b[0], skillId: b[1] })) || []
       };
 
-      // 1. Parse the events from the payload (Assuming they are p[10] or whatever index you assigned)
       const aoeEvents = state.aoeEvents || [];
       const beamEvents = state.beamEvents || [];
       const beamEndedEvents = state.beamEndedEvents || [];
 
-      // 2. Pass them to the renderer instantly
       VfxRenderer.renderAoeEvents(this, aoeEvents, masterConfigs);
       VfxRenderer.renderBeamEvents(this, beamEvents, masterConfigs, this.activeBeams);
       beamEndedEvents.forEach((ev: { casterId: string, skillId: string }) => {
@@ -533,26 +564,21 @@ class GameScene extends Phaser.Scene {
       });
 
       this.currentPhase = state.phase;
-      const myPlayer = state.players.find(p => p.connectionId === connection.connectionId);
+      const myPlayer = state.players.find(p => p.connectionId === matchConnection.connectionId);
+
       if (myPlayer) {
         this.goldUIText.setText(`💰 ${myPlayer.gold}`);
 
-        // >>> NEW: If the server sent a stat diff this frame, merge it and update the UI! <<<
         if (myPlayer.statDiff) {
-          // 1. Get the local cache (or start fresh)
           let currentStats = this.data.get('latestPlayerStats') || {};
-
-          // 2. Merge only the changed values natively
           Object.assign(currentStats, myPlayer.statDiff);
           this.data.set('latestPlayerStats', currentStats);
 
-          // 3. Update the Phaser Canvas UI instantly
           if (this.shopUIModule) {
             const currentLevel = this.data.get('playerLevel') || 1;
             this.shopUIModule.updateJustStats(currentStats, currentLevel);
           }
 
-          // 4. Update the HTML DOM UI
           const speedEl = document.getElementById('ui-stat-speed');
           if (speedEl) speedEl.innerText = Math.floor(currentStats["movementSpeed"] || 0).toString();
 
@@ -569,13 +595,12 @@ class GameScene extends Phaser.Scene {
         const pStats = this.data.get('latestPlayerStats') || {};
         this.skillActionBar.updateSkills(myPlayer.synergizedSkills, masterConfigs, pStats);
       }
-      // Detect the nearest gear loot within pickup radius and manage the ground tooltip
+
       const PICKUP_RADIUS_SQ = 50 * 50;
       let newNearbyLootId: string | null = null;
       if (myPlayer) {
-        // Iterate the Map directly instead of materializing entries into an array each tick.
         for (const [id, pickup] of this.pickupCache) {
-          if (pickup.type === 0) continue; // skip gold – auto-collected
+          if (pickup.type === 0) continue; 
           const dx = pickup.x - myPlayer.x;
           const dy = pickup.y - myPlayer.y;
           if (dx * dx + dy * dy <= PICKUP_RADIUS_SQ) {
@@ -604,7 +629,9 @@ class GameScene extends Phaser.Scene {
         }
       }
 
-      if (this.currentPhase === "WaveActive") {
+      if (this.currentPhase === "WaitingForPlayers") {
+        this.waveUIText.setText(`WAITING FOR HOST TO START...`).setColor('#bf55ec');
+      } else if (this.currentPhase === "WaveActive") {
         this.waveUIText.setText(`Wave ${state.currentWave} - 0:${state.timeRemaining.toString().padStart(2, '0')}`).setColor('#ffffff');
         if (this.previousPhase !== "WaveActive") { this.shopUIModule.setVisible(false); this.manuallyClosedShop = true; }
       } else if (this.currentPhase === "ShopPhase") {
@@ -613,17 +640,13 @@ class GameScene extends Phaser.Scene {
       }
       this.previousPhase = this.currentPhase;
 
-      state.projectiles = [];
-
       const activePlayers = ActorRenderer.render(this, state.players, this.playerSprites, masterConfigs, this.targetPositions, true, state.enemies);
-
-      // The 'false' flag at the end identifies them as Enemies
       const activeEnemies = ActorRenderer.render(this, state.enemies, this.enemySprites, masterConfigs, this.targetPositions, false);
 
-      // Pass a dummy map to WorldRenderer so it ignores our local bullets
       const dummyMap = new Map();
       const { activePickups } = WorldRenderer.render(this, state, dummyMap, this.pickupSprites, masterConfigs, this.targetPositions) as any;
-      const mySprite = this.playerSprites.get(connection.connectionId || "");
+      
+      const mySprite = this.playerSprites.get(matchConnection.connectionId || "");
       if (mySprite && !(this.cameras.main as any)._isFollowing) {
         this.cameras.main.startFollow(mySprite, true, 0.1, 0.1);
         (this.cameras.main as any)._isFollowing = true;
@@ -633,30 +656,6 @@ class GameScene extends Phaser.Scene {
       this.cleanupSprites(this.enemySprites, activeEnemies);
       this.cleanupSprites(this.pickupSprites, activePickups);
     });
-
-    if (connection.state === HubConnectionState.Disconnected) {
-      connection.start()
-        .then(() => console.log("SignalR Connected safely after Scene Creation!"))
-        .catch((err: any) => console.error("SignalR Connection Error:", err));
-    }
-
-    // Clean up external event listeners when the scene shuts down to prevent memory leaks
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      if (this.pingIntervalId !== null) {
-        clearInterval(this.pingIntervalId);
-        this.pingIntervalId = null;
-      }
-      connection.off('UpdatePlayerUI');
-      connection.off('UpdateStateCompressed');
-      this.game.events.off(Phaser.Core.Events.PRE_RENDER);
-      this.game.events.off(Phaser.Core.Events.POST_RENDER);
-
-      // Persistent beams live independently of the normal sprite maps and won't be cleaned
-      // up by Phaser's own scene teardown automatically destroying game objects in time to
-      // avoid a leak warning, so clear the tracking map explicitly here too.
-      this.activeBeams.forEach(entry => { entry.beam.destroy(); entry.core.destroy(); });
-      this.activeBeams.clear();
-    });
   }
 
   update(time: number, delta: number) {
@@ -665,12 +664,10 @@ class GameScene extends Phaser.Scene {
     this.smoothInterpolateSprites(this.enemySprites, 0.2);
     const dtSeconds = delta / 1000;
 
-
     if (this.skillActionBar) {
       this.skillActionBar.smoothTickCooldowns(dtSeconds);
     }
 
-    // Keep ground tooltip positioned above the nearby loot pickup as the camera moves
     if (this.nearbyLootId && this.groundTooltip?.visible) {
       const pickup = this.pickupCache.get(this.nearbyLootId);
       if (pickup) {
@@ -681,13 +678,10 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    // Spacebar: manually pick up the nearest gear loot within range
-    if (this.spaceKey && Phaser.Input.Keyboard.JustDown(this.spaceKey) && this.nearbyLootId) {
-      connection.invoke("TryPickupLoot", this.nearbyLootId).catch((err: any) => console.error(err));
+    if (this.spaceKey && Phaser.Input.Keyboard.JustDown(this.spaceKey) && this.nearbyLootId && matchConnection) {
+      matchConnection.invoke("TryPickupLoot", this.nearbyLootId).catch((err: any) => console.error(err));
     }
 
-
-    // >>> FIX: Hybrid Physics (Linear vs Orbital) <<<
     this.projectileSprites.forEach((sprite) => {
       const pdata = (sprite as any).__pdata;
       if (!pdata) return;
@@ -697,36 +691,24 @@ class GameScene extends Phaser.Scene {
 
         if (ownerSprite) {
           const radius = pdata.orbitRadius;
-
-          // >>> FIX: vx holds OrbitSpeed in Degrees. Convert to Radians! <<<
           const radiansPerSec = pdata.vx * (Math.PI / 180);
-
           let angle = pdata.orbitAngleOffset + radiansPerSec * dtSeconds;
           pdata.orbitAngleOffset = angle;
 
-          // Lock tightly to the smoothly interpolated visual position
           sprite.x = ownerSprite.x + Math.cos(angle) * radius;
           sprite.y = ownerSprite.y + Math.sin(angle) * radius;
 
-          // Face the direction of travel around the circle (tangent to the orbit),
-          // not the radius vector itself. Spawn-time rotation only ever pointed flat
-          // right (atan2(0, OrbitSpeed) == 0), so without this the sprite never turns.
-          // Tangent direction is the radius angle rotated 90 degrees, sign matched to
-          // the spin direction so it flips correctly if OrbitSpeed is negative.
           const spinSign = Math.sign(radiansPerSec) || 1;
           sprite.rotation = angle + (spinSign * Math.PI) / 2;
         }
       } else {
-        // Standard Fire-and-Forget Linear Physics
         sprite.x += pdata.vx * dtSeconds;
         sprite.y += pdata.vy * dtSeconds;
       }
     });
 
-
     if (this.isDebugMode) {
       if (time - this.lastBandwidthTime > 1000) {
-        // Calculate both metrics!
         this.currentCompressedKbps = ((this.compressedBytesReceived * 8) / 1000).toFixed(2);
         this.currentUncompressedKbps = ((this.uncompressedBytesReceived * 8) / 1000).toFixed(2);
 
@@ -746,7 +728,6 @@ class GameScene extends Phaser.Scene {
         `Sprites : ${renderedSprites} (GPU Visuals)\n` +
         `Entities: ${this.lastNetworkEntitiesCount} (C# Network)\n` +
         `Draws   : ${this.currentDrawCalls} (Peak: ${this.maxDrawCalls})\n` +
-        // >>> THE NEW DUAL TRACKER! <<<
         `Network : ${this.currentCompressedKbps} kbps (Raw: ${this.currentUncompressedKbps} kbps)`
       );
     }
@@ -761,10 +742,7 @@ class GameScene extends Phaser.Scene {
       this.enemySprites.forEach((sprite) => {
         const configId = sprite.getData('configId');
         const config = masterConfigs.enemies ? (masterConfigs.enemies[configId] || masterConfigs.Enemies?.[configId]) : null;
-
-        // Exact manual control from JSON
         const hitR = config ? (config.hitRadius ?? config.HitRadius ?? 15) : 15;
-
         this.debugGraphics.lineStyle(2, 0xff0000);
         this.debugGraphics.strokeCircle(sprite.x, sprite.y, hitR);
       });
@@ -772,10 +750,7 @@ class GameScene extends Phaser.Scene {
       this.projectileSprites.forEach((sprite) => {
         const configId = (sprite as any).__pdata?.configId;
         const config = masterConfigs.projectiles ? (masterConfigs.projectiles[configId] || masterConfigs.Projectiles?.[configId]) : null;
-
-        // Exact manual control from JSON (using ?? so 0 is allowed)
         const hitR = config ? (config.hitRadius ?? config.HitRadius ?? 10) : 10;
-
         this.debugGraphics.lineStyle(2, 0x00ff00);
         this.debugGraphics.strokeCircle(sprite.x, sprite.y, hitR);
       });
@@ -788,8 +763,8 @@ class GameScene extends Phaser.Scene {
   }
 
   private handleInput(time: number) {
-    if (!this.cursors || !this.wasd || connection.state !== HubConnectionState.Connected) return;
-
+    if (!this.cursors || !this.wasd || !matchConnection || matchConnection.state !== HubConnectionState.Connected) return;
+    
     let dirX = 0, dirY = 0;
     if (this.cursors.left.isDown || this.wasd.A.isDown) dirX = -1;
     if (this.cursors.right.isDown || this.wasd.D.isDown) dirX = 1;
@@ -808,7 +783,7 @@ class GameScene extends Phaser.Scene {
 
     const inputString = JSON.stringify(inputData);
     if (inputString !== this.lastSentInput || time - this.lastInputSendTime > 100) {
-      connection.invoke("SendInput", inputData).catch((err: any) => console.error(err));
+      matchConnection.invoke("SendInput", inputData).catch((err: any) => console.error(err));
       this.lastSentInput = inputString;
       this.lastInputSendTime = time;
     }
@@ -849,8 +824,6 @@ class GameScene extends Phaser.Scene {
       if (!entity.textureKey && !entity.TextureKey) return;
 
       Object.keys(entity).forEach(key => {
-
-        // --- 1. NEW: Handle VFX Animations for Skills ---
         if (key === 'vfxAnimFrames' || key === 'VfxAnimFrames') {
           const id = entity.id || entity.Id;
           const animKey = `${id}_vfx`;
@@ -859,7 +832,6 @@ class GameScene extends Phaser.Scene {
             const textureKey = entity.vfxTextureKey || entity.VfxTextureKey;
             const frameRate = entity.vfxFrameRate || entity.VfxFrameRate || 15;
 
-            // Only create if a vfxTextureKey was actually provided in the JSON
             if (textureKey) {
               this.anims.create({
                 key: animKey,
@@ -868,13 +840,11 @@ class GameScene extends Phaser.Scene {
                   end: entity[key][1]
                 }),
                 frameRate: frameRate,
-                repeat: 0 // VFX always plays exactly once and stops
+                repeat: 0
               });
             }
           }
         }
-
-        // --- 2. EXISTING: Handle standard Entity Animations (walk, attack, hit, death) ---
         else if (key.toLowerCase().startsWith('anim') && Array.isArray(entity[key]) && entity[key].length === 2) {
           const actionName = key.toLowerCase().replace('anim', '');
           const id = entity.id || entity.Id;
@@ -884,11 +854,10 @@ class GameScene extends Phaser.Scene {
             const textureKey = entity.textureKey || entity.TextureKey;
             let customFrameRate = entity[`${key}FrameRate`] || 15;
 
-            // >>> NEW: AUTO-CALCULATE ATTACK ANIMATION FPS <<<
             if (actionName === 'attack' && (entity.attackDuration || entity.AttackDuration)) {
               const duration = entity.attackDuration || entity.AttackDuration;
               const totalFrames = (entity[key][1] - entity[key][0]) + 1;
-              customFrameRate = totalFrames / duration; // e.g., 9 frames / 0.4s = 22.5 FPS!
+              customFrameRate = totalFrames / duration;
             }
 
             const shouldLoop = (actionName === 'attack' || actionName === 'hit' || actionName === 'death' || actionName === 'skill') ? 0 : -1;
@@ -914,7 +883,6 @@ class GameScene extends Phaser.Scene {
 // CHAT & COMMAND UI OVERLAY
 // =========================================================
 export function setupChatUI(scene: Phaser.Scene, connection: any) {
-  // Define available commands for the auto-complete feature
   const availableCommands = [
     { cmd: '/setwave', desc: '/setwave <number>' },
     { cmd: '/skipphase', desc: '/skipphase' },
@@ -930,7 +898,6 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
     { cmd: '/givestat', desc: '/givestat <statName> <amount>' },
   ];
 
-  // 1. Inject HTML & CSS into the document
   const chatHTML = `
     <style>
       #chat-wrapper { position: absolute; bottom: 20px; left: 20px; width: 350px; z-index: 10000; font-family: 'Segoe UI', sans-serif; pointer-events: none; }
@@ -951,7 +918,10 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
       </div>
     </div>
   `;
-  document.body.insertAdjacentHTML('beforeend', chatHTML);
+  
+  if (!document.getElementById('chat-wrapper')) {
+      document.body.insertAdjacentHTML('beforeend', chatHTML);
+  }
 
   const historyBox = document.getElementById('chat-history')!;
   const inputContainer = document.getElementById('chat-input-container')!;
@@ -962,7 +932,6 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
   let suggestionIndex = -1;
   let currentMatches: any[] = [];
 
-  // 2. Logic: Adding messages to the screen
   const addMessage = (sender: string, text: string) => {
     const isSystem = sender === "System";
     const msgDiv = document.createElement('div');
@@ -972,29 +941,26 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
 
     if (historyBox.children.length > 10) historyBox.firstChild?.remove();
 
-    // Auto-fade out messages after 5 seconds if chat is closed
     if (!isChatActive) {
       setTimeout(() => { if (!isChatActive) msgDiv.style.opacity = '0.3'; }, 5000);
     }
   };
 
-  // 3. Listen for incoming server messages
+  // Remove old listeners to prevent duplicate text in chat
+  connection.off("ReceiveChatMessage");
   connection.on("ReceiveChatMessage", (sender: string, msg: string) => {
     addMessage(sender, msg);
   });
 
-  // 4. Draw Autocomplete Suggestions
   const drawSuggestions = () => {
     suggestionsBox.innerHTML = '';
     if (currentMatches.length > 0) {
       suggestionsBox.style.display = 'flex';
       currentMatches.forEach((m, idx) => {
         const item = document.createElement('div');
-        // Add the 'active' class if this is the currently highlighted suggestion
         item.className = 'suggestion-item' + (idx === suggestionIndex ? ' active' : '');
         item.innerText = m.desc;
 
-        // Mouse click selection
         item.onclick = () => {
           inputEl.value = m.cmd + ' ';
           inputEl.focus();
@@ -1009,10 +975,9 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
     }
   };
 
-  // 5. Input text changed
   inputEl.addEventListener('input', () => {
     const val = inputEl.value.toLowerCase();
-    suggestionIndex = -1; // Reset selection when typing
+    suggestionIndex = -1; 
 
     if (val.startsWith('/')) {
       currentMatches = availableCommands.filter(c => c.cmd.startsWith(val));
@@ -1022,13 +987,11 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
     drawSuggestions();
   });
 
-  // 6. DOM Keyboard Handler (Arrows & Enter inside the input box)
   inputEl.addEventListener('keydown', (e) => {
-    // Stop Phaser from hearing anything we type in here
     e.stopPropagation();
 
     if (e.key === 'ArrowDown') {
-      e.preventDefault(); // Stop cursor from jumping around
+      e.preventDefault(); 
       if (currentMatches.length > 0) {
         suggestionIndex = (suggestionIndex + 1) % currentMatches.length;
         drawSuggestions();
@@ -1044,22 +1007,19 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
     else if (e.key === 'Enter') {
       e.preventDefault();
 
-      // IF a suggestion is highlighted, Enter selects it!
       if (suggestionIndex >= 0 && currentMatches.length > 0) {
         inputEl.value = currentMatches[suggestionIndex].cmd + ' ';
         suggestionIndex = -1;
         currentMatches = [];
         drawSuggestions();
-        return; // Stop here so they can type the rest of the command
+        return; 
       }
 
-      // OTHERWISE, send the message to the server
       const text = inputEl.value.trim();
       if (text.length > 0) {
         connection.invoke("SendChatMessage", text).catch((err: any) => console.error(err));
       }
 
-      // Close the UI
       inputEl.value = '';
       inputEl.blur();
       inputContainer.style.display = 'none';
@@ -1069,14 +1029,11 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
       currentMatches = [];
       Array.from(historyBox.children).forEach((child: any) => child.style.opacity = '0.3');
 
-      // Wait a tiny fraction of a second before giving the keyboard back to Phaser 
-      // so Phaser doesn't instantly re-open the chat
       setTimeout(() => {
         scene.input.keyboard!.enabled = true;
       }, 50);
     }
     else if (e.key === 'Escape') {
-      // Bonus: Pressing Escape closes the chat cleanly
       e.preventDefault();
       inputEl.value = '';
       inputEl.blur();
@@ -1088,17 +1045,14 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
     }
   });
 
-  // 7. Phaser Global 'Enter' key interceptor (ONLY OPENS THE CHAT)
   scene.input.keyboard?.on('keydown-ENTER', () => {
     if (!isChatActive) {
       isChatActive = true;
       inputContainer.style.display = 'block';
       inputEl.focus();
 
-      // Light up history
       Array.from(historyBox.children).forEach((child: any) => child.style.opacity = '1.0');
 
-      // CRITICAL: Disable Phaser keyboard so it completely ignores WASD and Enter
       scene.input.keyboard!.enabled = false;
     }
   });
