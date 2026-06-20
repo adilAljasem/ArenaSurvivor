@@ -36,7 +36,8 @@ jobs:
           host: ${{ secrets.SERVER_IP }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 2222
           script: |
             # Tell the master and worker services to pull the latest image and update
-            docker service update --image ghcr.io/adelaljasem/arenasurvivor:latest --with-registry-auth arena_stack_master
-            docker service update --image ghcr.io/adelaljasem/arenasurvivor:latest --with-registry-auth arena_stack_worker
+            docker service update --image ghcr.io/adilaljasem/arenasurvivor:latest --with-registry-auth arena_stack_master
+            docker service update --image ghcr.io/adilaljasem/arenasurvivor:latest --with-registry-auth arena_stack_worker
