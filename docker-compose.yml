@@ -48,7 +48,7 @@ services:
   # 3. MASTER NODE (Lobby, Matchmaking, UI)
   # ==========================================
   master:
-    image: ghcr.io/adelAljasem/arenasurvivor:latest
+    image: ghcr.io/adilaljasem/arenasurvivor:latest
     environment:
       - ServerConfig__Role=Master
       - RedisConfig__ConnectionString=redis:6379
@@ -72,7 +72,7 @@ services:
   # 4. WORKER NODES (Gameplay Physics)
   # ==========================================
   worker:
-    image: ghcr.io/adelAljasem/arenasurvivor:latest
+    image: ghcr.io/adilaljasem/arenasurvivor:latest
     ports:
       - target: 8080
         published: 8081

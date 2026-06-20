@@ -1,0 +1,42 @@
+name: Build, Push, and Deploy
+
+on:
+  push:
+    branches: [ "master" ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/adilaljasem/arenasurvivor:latest
+
+      # >>> NEW: Automatically connect to your server and update Swarm <<<
+      - name: Deploy to Docker Swarm
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            # Tell the master and worker services to pull the latest image and update
+            docker service update --image ghcr.io/adelaljasem/arenasurvivor:latest --with-registry-auth arena_stack_master
+            docker service update --image ghcr.io/adelaljasem/arenasurvivor:latest --with-registry-auth arena_stack_worker
