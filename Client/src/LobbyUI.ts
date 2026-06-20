@@ -150,6 +150,7 @@ export class LobbyUI {
 
     private buildHTML() {
         this.wrapper.innerHTML = `
+        <div id="lobby-version-display" style="position:fixed; bottom:10px; left:10px; color:#aaa; font-size:14px; z-index: 1000000; font-family: monospace; text-shadow: 1px 1px 2px black;"></div>
         <div id="toast-container"></div>
         
         <div id="password-modal-overlay" class="hidden">
@@ -382,6 +383,12 @@ export class LobbyUI {
         document.getElementById('btn-send-chat')!.addEventListener('click', () => submitChat());
 
         // --- SIGNALR LISTENERS ---
+
+        this.connection.invoke("GetServerVersion").then((v: string) => {
+            const vDiv = document.getElementById('lobby-version-display');
+            if (vDiv) vDiv.innerText = v;
+        }).catch(err => console.error("Failed to fetch version:", err));
+
         this.connection.on("LobbyError", (msg: string) => {
             // Smart Password Catching
             if (msg === "Incorrect password.") {

@@ -1,0 +1,90 @@
+version: '3.8'
+
+networks:
+  arena_network:
+    driver: overlay
+
+services:
+  # ==========================================
+  # 1. TRAEFIK (The Load Balancer / Proxy)
+  # ==========================================
+  traefik:
+    image: traefik:v2.10
+    command:
+      - "--api.insecure=true" 
+      - "--providers.docker=true"
+      - "--providers.docker.swarmMode=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"       
+      - "8080:8080"   
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - arena_network
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+
+  # ==========================================
+  # 2. REDIS (The Central Bulletin Board)
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    networks:
+      - arena_network
+    deploy:
+      replicas: 1
+      placement:
+        # Since both 'adel' and 'linux1' are managers, this guarantees Redis 
+        # will run on one of them, and automatically migrate if one dies!
+        constraints:
+          - node.role == manager 
+
+  # ==========================================
+  # 3. MASTER NODE (Lobby, Matchmaking, UI)
+  # ==========================================
+  master:
+    image: ghcr.io/adelAljasem/arenasurvivor:latest
+    environment:
+      - ServerConfig__Role=Master
+      - RedisConfig__ConnectionString=redis:6379
+    networks:
+      - arena_network
+    depends_on:
+      - redis
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - "traefik.enable=true"
+        # >>> UPDATED: Your Custom DNS <<<
+        - "traefik.http.routers.master.rule=Host(`adel.giize.com`)" 
+        - "traefik.http.routers.master.entrypoints=web"
+        - "traefik.http.services.master.loadbalancer.server.port=8080"
+
+  # ==========================================
+  # 4. WORKER NODES (Gameplay Physics)
+  # ==========================================
+  worker:
+    image: ghcr.io/adelAljasem/arenasurvivor:latest
+    ports:
+      - target: 8080
+        published: 8081
+        protocol: tcp
+        mode: host 
+    environment:
+      - ServerConfig__Role=Worker
+      - RedisConfig__ConnectionString=redis:6379
+      - ServerConfig__PublicUrl=http://{{.Node.Hostname}}:8081/matchHub
+    networks:
+      - arena_network
+    depends_on:
+      - redis
+    deploy:
+      mode: global

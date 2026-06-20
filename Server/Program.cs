@@ -3,42 +3,54 @@ using Server.Hubs;
 using Server.Core;
 using Server.Services;
 using StackExchange.Redis;
+using Server.Configs;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// 1. Bind Configurations
+builder.Services.Configure<ServerConfig>(builder.Configuration.GetSection("ServerConfig"));
+builder.Services.Configure<RedisConfig>(builder.Configuration.GetSection("RedisConfig"));
+
+var serverConfig = builder.Configuration.GetSection("ServerConfig").Get<ServerConfig>() ?? new ServerConfig();
+var redisConfig = builder.Configuration.GetSection("RedisConfig").Get<RedisConfig>() ?? new RedisConfig();
 
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<Server.Configs.ConfigManager>();
 builder.Services.AddSingleton<RoomManager>();
 
-// Default to "Dev" so everything runs on one machine for you!
-var serverRole = Environment.GetEnvironmentVariable("SERVER_ROLE") ?? "Dev";
+// 2. Use Configured Role
+var serverRole = serverConfig.Role;
 
-if (serverRole == "Worker" || serverRole == "Dev") 
+if (serverRole == "Worker" || serverRole == "Dev")
 {
     Console.WriteLine("[BOOT] Starting as WORKER Node. Initializing Physics & Game Loops.");
     builder.Services.AddHostedService<GameLoop>();
-
-    // >>> NEW: Start Heartbeat <<<
     builder.Services.AddHostedService<Server.Core.Services.WorkerHeartbeatService>();
 }
 
+// 3. Dynamic CORS Origins
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.WithOrigins("http://localhost:5173").AllowAnyHeader().AllowAnyMethod().AllowCredentials();
+        if (serverConfig.AllowedCorsOrigins != null && serverConfig.AllowedCorsOrigins.Length > 0)
+        {
+            policy.WithOrigins(serverConfig.AllowedCorsOrigins)
+                  .AllowAnyHeader()
+                  .AllowAnyMethod()
+                  .AllowCredentials(); // Required for SignalR WebSockets
+        }
     });
 });
 
-// 1. Connect to Redis (Default local port is 6379)
-var redisConfiguration = "192.168.2.85:6379";
-builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisConfiguration));
+// 4. Connect to Redis (Using Config!)
+builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisConfig.ConnectionString));
 builder.Services.AddSingleton<RedisService>();
 
-// 2. Add SignalR WITH the Redis Backplane!
-builder.Services.AddSignalR().AddStackExchangeRedis(redisConfiguration, options =>
+// 5. Add SignalR WITH the Redis Backplane (Using Config!)
+builder.Services.AddSignalR().AddStackExchangeRedis(redisConfig.ConnectionString, options =>
 {
-    options.Configuration.ChannelPrefix = "ArenaSurvivor"; // Keeps your keys organized
+    options.Configuration.ChannelPrefix = redisConfig.ChannelPrefix;
 });
 
 var app = builder.Build();
@@ -49,6 +61,8 @@ Console.WriteLine($"[BOOT] Server Role Active: {serverRole}");
 // Route Mapping based on Role
 if (serverRole == "Master" || serverRole == "Dev")
 {
+    app.UseDefaultFiles(); // Looks for index.html in wwwroot
+    app.UseStaticFiles();  // Serves the assets in wwwroot
     app.MapHub<LobbyHub>("/lobbyHub");
     Console.WriteLine("[BOOT] Mapped: /lobbyHub");
 }

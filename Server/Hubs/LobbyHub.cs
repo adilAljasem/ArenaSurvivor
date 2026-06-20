@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Options;
 using Server.Configs;
 using Server.Core;
 using Server.Entities;
@@ -17,14 +18,18 @@ public class LobbyHub : Hub
     private readonly ConfigManager _configManager;
     private readonly RedisService _redisService;
     private IConnectionMultiplexer _redis;
+    private readonly ServerConfig _serverConfig;
 
-    public LobbyHub(RoomManager roomManager, ConfigManager configManager, RedisService redisService,IConnectionMultiplexer redis)
+    public LobbyHub(RoomManager roomManager, ConfigManager configManager, RedisService redisService, IConnectionMultiplexer redis, IOptions<ServerConfig> serverConfig)
     {
         _roomManager = roomManager;
         _configManager = configManager;
         _redisService = redisService;
         _redis = redis;
+        _serverConfig = serverConfig.Value;
     }
+
+    public string GetServerVersion() => _serverConfig.GameVersion;
 
     public override async Task OnConnectedAsync()
     {
@@ -98,6 +103,7 @@ public class LobbyHub : Hub
 
         var handshakePayload = new
         {
+            version = _serverConfig.GameVersion,
             enemies = _configManager.Enemies,
             weapons = _configManager.Weapons,
             items = _configManager.Items,
@@ -218,33 +224,45 @@ public class LobbyHub : Hub
         }
 
         // ==========================================
-        // 1. DYNAMIC LOAD BALANCING
+        // 1. DYNAMIC LOAD BALANCING (CPU/RAM Aware)
         // ==========================================
         var server = _redis.GetServer(_redis.GetEndPoints().First());
         var db = _redis.GetDatabase();
         var keys = server.Keys(pattern: "worker_node:*").ToList();
 
         string bestWorkerUrl = "http://localhost:5000/matchHub"; // Fallback
-        int lowestRooms = int.MaxValue;
+        double lowestLoadScore = double.MaxValue;
 
-        // Loop through all active workers globally and pick the least busy one
         foreach (var key in keys)
         {
             var data = await db.StringGetAsync(key);
             if (!data.IsNullOrEmpty)
             {
                 var doc = System.Text.Json.JsonDocument.Parse(data.ToString());
-                int activeRooms = doc.RootElement.GetProperty("ActiveRooms").GetInt32();
+                var root = doc.RootElement;
 
-                if (activeRooms < lowestRooms)
+                int activeRooms = root.GetProperty("ActiveRooms").GetInt32();
+                double cpuUsage = root.GetProperty("CpuUsage").GetDouble();
+                long ramUsageMB = root.GetProperty("RamUsageMB").GetInt64();
+                string url = root.GetProperty("Url").GetString();
+
+                // If a server is melting down (>90% CPU), skip it entirely if possible
+                if (cpuUsage > 90.0 && keys.Count > 1) continue;
+
+                // Calculate a composite load score. 
+                // Example Weighting: CPU is king. RAM is secondary. Rooms are minor.
+                // Lower score is better.
+                double score = (cpuUsage * 10) + (ramUsageMB * 0.1) + (activeRooms * 5);
+
+                if (score < lowestLoadScore)
                 {
-                    lowestRooms = activeRooms;
-                    bestWorkerUrl = doc.RootElement.GetProperty("Url").GetString();
+                    lowestLoadScore = score;
+                    bestWorkerUrl = url;
                 }
             }
         }
 
-        Console.WriteLine($"[LOBBY] Match starting. Routing players to Worker: {bestWorkerUrl}");
+        Console.WriteLine($"[LOBBY] Match starting. Routing players to Worker: {bestWorkerUrl} (Score: {lowestLoadScore})");
         room.StartMatch();
 
         // ==========================================

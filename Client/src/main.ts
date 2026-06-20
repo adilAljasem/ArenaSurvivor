@@ -88,6 +88,7 @@ class GameScene extends Phaser.Scene {
   private shopUIModule!: ShopUI;
   private escMenu!: EscMenu;
   private perfText!: Phaser.GameObjects.Text;
+  private versionText!: Phaser.GameObjects.Text;
 
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: any;
@@ -200,6 +201,9 @@ class GameScene extends Phaser.Scene {
     lobbyConnection.on("ReceiveHandshake", (payload: any) => {
       masterConfigs = payload;
       console.log("Handshake received. Configs loaded.");
+      if (this.versionText) {
+        this.versionText.setText(payload.version || "v?.?.?");
+      }
       initConfigs();
     });
 
@@ -209,31 +213,31 @@ class GameScene extends Phaser.Scene {
       if (lobbyWrapper) lobbyWrapper.style.display = 'none';
 
       lobbyConnection.stop().then(() => {
-          // 1. Build the connection dynamically using the IP the Master gave us!
-          matchConnection = new HubConnectionBuilder()
-            .withUrl(workerUrl)
-            .withAutomaticReconnect()
-            .build();
+        // 1. Build the connection dynamically using the IP the Master gave us!
+        matchConnection = new HubConnectionBuilder()
+          .withUrl(workerUrl)
+          .withAutomaticReconnect()
+          .build();
 
-          // 2. Bind all the physics and UI listeners
-          this.bindWorkerListeners();
+        // 2. Bind all the physics and UI listeners
+        this.bindWorkerListeners();
 
-          // 3. Connect and send the Secure Token!
-          matchConnection.start().then(() => {
-              console.log("Successfully connected to MatchHub Worker! Joining Sandbox...");
-              
-              setupChatUI(this, matchConnection);
-              
-              // Re-bind the ShopUI to the new connection safely
-              if (this.shopUIModule && typeof (this.shopUIModule as any).destroy === 'function') {
-                  (this.shopUIModule as any).destroy();
-              }
-              this.shopUIModule = new ShopUI(this, matchConnection); 
-              this.shopUIModule.setDepth(1000);
-              this.shopUIModule.setVisible(false);
-              
-              matchConnection.invoke("JoinLiveMatch", roomId, matchToken).catch((err: any) => console.error(err));
-          });
+        // 3. Connect and send the Secure Token!
+        matchConnection.start().then(() => {
+          console.log("Successfully connected to MatchHub Worker! Joining Sandbox...");
+
+          setupChatUI(this, matchConnection);
+
+          // Re-bind the ShopUI to the new connection safely
+          if (this.shopUIModule && typeof (this.shopUIModule as any).destroy === 'function') {
+            (this.shopUIModule as any).destroy();
+          }
+          this.shopUIModule = new ShopUI(this, matchConnection);
+          this.shopUIModule.setDepth(1000);
+          this.shopUIModule.setVisible(false);
+
+          matchConnection.invoke("JoinLiveMatch", roomId, matchToken).catch((err: any) => console.error(err));
+        });
       });
     });
 
@@ -280,7 +284,11 @@ class GameScene extends Phaser.Scene {
       fontSize: '28px', color: '#ffd700', fontStyle: 'bold', stroke: '#000000', strokeThickness: 4
     }).setDepth(3000).setScrollFactor(0);
 
-    this.perfText = this.add.text(10, this.scale.height - 10, '', {
+    this.versionText = this.add.text(10, this.scale.height - 10, 'v1.0.0', {
+      fontFamily: "'Segoe UI', Consolas, monospace", fontSize: '14px', color: '#aaaaaa'
+    }).setOrigin(0, 1).setDepth(9999).setScrollFactor(0);
+
+    this.perfText = this.add.text(10, this.scale.height - 35, '', {
       fontFamily: "'Segoe UI', Consolas, monospace", fontSize: '14px', color: '#00ff00',
       backgroundColor: '#000000aa', padding: { x: 8, y: 8 }
     }).setOrigin(0, 1).setDepth(9999).setVisible(false).setScrollFactor(0);
@@ -293,7 +301,8 @@ class GameScene extends Phaser.Scene {
     this.escMenu.setVisible(false);
 
     this.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
-      this.perfText.setPosition(10, gameSize.height - 10);
+      this.versionText.setPosition(10, gameSize.height - 10);
+      this.perfText.setPosition(10, gameSize.height - 35);
       this.waveUIText.setPosition(gameSize.width / 2, 20);
       this.escMenu.reposition(gameSize.width, gameSize.height);
       this.skillActionBar.updateLayout(gameSize.width, gameSize.height);
@@ -364,8 +373,8 @@ class GameScene extends Phaser.Scene {
         this.pingIntervalId = null;
       }
       if (matchConnection) {
-          matchConnection.off('UpdatePlayerUI');
-          matchConnection.off('UpdateStateCompressed');
+        matchConnection.off('UpdatePlayerUI');
+        matchConnection.off('UpdateStateCompressed');
       }
       lobbyConnection.off('ReceiveHandshake');
       lobbyConnection.off('MatchStarted');
@@ -537,16 +546,16 @@ class GameScene extends Phaser.Scene {
           synergizedSkills: p[15]?.map((s: any[]) => ({
             configId: s[0], currentCooldown: s[1]
           })) || [],
-          statDiff: p[16], 
+          statDiff: p[16],
           currentShield: p[17] || 0,
           currentShop: [], stats: {}, ownedItems: {}
         })) || [],
         enemies: Array.from(this.enemyCache.values()),
         pickups: Array.from(this.pickupCache.values()),
-        projectiles: [], 
+        projectiles: [],
         damageEvents: rawState.dmg?.map((d: any[]) => ({
           x: d[0], y: d[1], amount: d[2],
-          isCritical: d[3] === 1, isDodge: d[4] === 1, isBlock: d[5] === 1 
+          isCritical: d[3] === 1, isDodge: d[4] === 1, isBlock: d[5] === 1
         })) || [],
         aoeEvents: rawState.aoe?.map((a: any[]) => ({ x: a[0], y: a[1], radius: a[2], isFriendly: a[3], configId: a[4] })) || [],
         beamEvents: rawState.bm?.map((b: any[]) => ({ startX: b[0], startY: b[1], targetX: b[2], targetY: b[3], width: b[4], colorTint: b[5], casterId: b[6], skillId: b[7] })) || [],
@@ -600,7 +609,7 @@ class GameScene extends Phaser.Scene {
       let newNearbyLootId: string | null = null;
       if (myPlayer) {
         for (const [id, pickup] of this.pickupCache) {
-          if (pickup.type === 0) continue; 
+          if (pickup.type === 0) continue;
           const dx = pickup.x - myPlayer.x;
           const dy = pickup.y - myPlayer.y;
           if (dx * dx + dy * dy <= PICKUP_RADIUS_SQ) {
@@ -645,7 +654,7 @@ class GameScene extends Phaser.Scene {
 
       const dummyMap = new Map();
       const { activePickups } = WorldRenderer.render(this, state, dummyMap, this.pickupSprites, masterConfigs, this.targetPositions) as any;
-      
+
       const mySprite = this.playerSprites.get(matchConnection.connectionId || "");
       if (mySprite && !(this.cameras.main as any)._isFollowing) {
         this.cameras.main.startFollow(mySprite, true, 0.1, 0.1);
@@ -721,7 +730,11 @@ class GameScene extends Phaser.Scene {
       const frameTime = this.game.loop.delta.toFixed(1);
       const renderedSprites = this.cameras.main.renderList.length;
 
+      // Grab the URL from the active connection
+      const currentServer = matchConnection?.baseUrl || "Disconnected";
+
       this.perfText.setText(
+        `Server  : ${currentServer}\n` +
         `FPS     : ${fps}\n` +
         `Ping    : ${this.pingMs} ms\n` +
         `Logic   : ${frameTime} ms\n` +
@@ -764,7 +777,7 @@ class GameScene extends Phaser.Scene {
 
   private handleInput(time: number) {
     if (!this.cursors || !this.wasd || !matchConnection || matchConnection.state !== HubConnectionState.Connected) return;
-    
+
     let dirX = 0, dirY = 0;
     if (this.cursors.left.isDown || this.wasd.A.isDown) dirX = -1;
     if (this.cursors.right.isDown || this.wasd.D.isDown) dirX = 1;
@@ -918,9 +931,9 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
       </div>
     </div>
   `;
-  
+
   if (!document.getElementById('chat-wrapper')) {
-      document.body.insertAdjacentHTML('beforeend', chatHTML);
+    document.body.insertAdjacentHTML('beforeend', chatHTML);
   }
 
   const historyBox = document.getElementById('chat-history')!;
@@ -977,7 +990,7 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
 
   inputEl.addEventListener('input', () => {
     const val = inputEl.value.toLowerCase();
-    suggestionIndex = -1; 
+    suggestionIndex = -1;
 
     if (val.startsWith('/')) {
       currentMatches = availableCommands.filter(c => c.cmd.startsWith(val));
@@ -991,7 +1004,7 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
     e.stopPropagation();
 
     if (e.key === 'ArrowDown') {
-      e.preventDefault(); 
+      e.preventDefault();
       if (currentMatches.length > 0) {
         suggestionIndex = (suggestionIndex + 1) % currentMatches.length;
         drawSuggestions();
@@ -1012,7 +1025,7 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
         suggestionIndex = -1;
         currentMatches = [];
         drawSuggestions();
-        return; 
+        return;
       }
 
       const text = inputEl.value.trim();
