@@ -441,6 +441,13 @@ class GameScene extends Phaser.Scene {
   private bindWorkerListeners() {
     matchConnection.on("UpdatePlayerUI", (uiData: any) => {
       this.data.set('playerLevel', uiData.level || 1);
+
+      // >>> NEW: Protect the UI by saving the full stats to the cache! <<<
+      // This stops the high-speed physics loop from erasing the UI.
+      if (uiData.stats || uiData.Stats) {
+        this.data.set('latestPlayerStats', uiData.stats || uiData.Stats);
+      }
+
       if (this.shopUIModule) {
         this.shopUIModule.updateUIData(uiData, masterConfigs);
       }
