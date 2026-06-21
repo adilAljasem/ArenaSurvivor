@@ -51,7 +51,7 @@ services:
     image: ghcr.io/adilaljasem/arenasurvivor:latest
     environment:
       - ServerConfig__Role=Master
-      - RedisConfig__ConnectionString=redis:6379
+      - RedisConfig__ConnectionString=redis:6379,abortConnect=false
     networks:
       - arena_network
     depends_on:
@@ -80,7 +80,7 @@ services:
         mode: host 
     environment:
       - ServerConfig__Role=Worker
-      - RedisConfig__ConnectionString=redis:6379
+      - RedisConfig__ConnectionString=redis:6379,abortConnect=false
       - ServerConfig__PublicUrl=http://{{.Node.Hostname}}:8081/matchHub
     networks:
       - arena_network
