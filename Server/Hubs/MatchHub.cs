@@ -46,6 +46,44 @@ public class MatchHub : Hub
         string oldConnectionId = tokenData.Value.OldConnectionId;
 
         var room = _roomManager.GetRoom(roomId);
+
+        // --- NEW: Worker Room Hydration ---
+        if (room == null)
+        {
+            var transferData = await _redisService.GetRoomTransferData(roomId);
+            if (transferData != null)
+            {
+                // Create the room on the Worker!
+                room = _roomManager.GetOrCreateRoom(roomId, _configManager);
+                room.RoomName = transferData.RoomName;
+                room.HostConnectionId = transferData.HostConnectionId;
+                room.CurrentMapId = transferData.CurrentMapId;
+                room.State.CurrentDifficulty = transferData.Difficulty;
+
+                // Rebuild the players in RAM
+                foreach (var pDto in transferData.Players)
+                {
+                    var newPlayer = new Server.Entities.PlayerEntity
+                    {
+                        ConnectionId = pDto.OldConnectionId, // Keep old ID temporarily until stitched
+                        Name = pDto.Name,
+                        Team = "Player",
+                        X = 640,
+                        Y = 360,
+                        ConfigId = pDto.ConfigId
+                    };
+
+                    if (_configManager.Characters.ContainsKey(pDto.ConfigId))
+                        newPlayer.Initialize(_configManager.Characters[pDto.ConfigId], _configManager);
+
+                    GenerateShopForPlayer(newPlayer, _configManager, 1);
+                    room.State.Players.TryAdd(pDto.OldConnectionId, newPlayer);
+                }
+
+                // Start the game loop physics!
+                room.StartMatch();
+            }
+        }
         if (room != null && room.State.Players.TryRemove(oldConnectionId, out var player))
         {
             // 2. Stitch the player to this specific Worker Node's RAM
