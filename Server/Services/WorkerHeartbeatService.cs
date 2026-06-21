@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options; // <-- Add this
 using StackExchange.Redis;
 using Server.Core;
+using Server.Configs; // <-- Add this
 using System;
 using System.Diagnostics;
 using System.Text.Json;
@@ -13,17 +15,20 @@ public class WorkerHeartbeatService : BackgroundService
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly RoomManager _roomManager;
+    private readonly ServerConfig _serverConfig; // <-- Add this
+    
     private readonly string _workerId = Guid.NewGuid().ToString();
-    private readonly string _workerUrl = Environment.GetEnvironmentVariable("WORKER_PUBLIC_URL") ?? "http://localhost:5000/matchHub";
 
     // Used for CPU calculation
     private TimeSpan _lastTotalProcessorTime = new TimeSpan();
     private DateTime _lastCheckTime = DateTime.UtcNow;
 
-    public WorkerHeartbeatService(IConnectionMultiplexer redis, RoomManager roomManager)
+    // Update the constructor to accept IOptions<ServerConfig>
+    public WorkerHeartbeatService(IConnectionMultiplexer redis, RoomManager roomManager, IOptions<ServerConfig> serverConfig)
     {
         _redis = redis;
         _roomManager = roomManager;
+        _serverConfig = serverConfig.Value; // <-- Store the config
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -33,18 +38,15 @@ public class WorkerHeartbeatService : BackgroundService
         
         while (!stoppingToken.IsCancellationRequested)
         {
-            // 1. Get RAM (Working Set in Megabytes)
             currentProcess.Refresh();
             long ramUsageMB = currentProcess.WorkingSet64 / (1024 * 1024);
 
-            // 2. Get CPU % (Delta over the last 5 seconds)
             var currentTotalProcessorTime = currentProcess.TotalProcessorTime;
             var currentTime = DateTime.UtcNow;
             
             double cpuUsedMs = (currentTotalProcessorTime - _lastTotalProcessorTime).TotalMilliseconds;
             double timePassedMs = (currentTime - _lastCheckTime).TotalMilliseconds;
             
-            // Divide by processor count to get a true 0-100% representation
             double cpuUsagePercent = (cpuUsedMs / (Environment.ProcessorCount * timePassedMs)) * 100;
 
             _lastTotalProcessorTime = currentTotalProcessorTime;
@@ -54,14 +56,15 @@ public class WorkerHeartbeatService : BackgroundService
             
             var data = JsonSerializer.Serialize(new { 
                 WorkerId = _workerId, 
-                Url = _workerUrl, 
+                // Use the PublicUrl right from your config system!
+                Url = _serverConfig.PublicUrl, 
                 ActiveRooms = roomCount,
                 CpuUsage = Math.Round(cpuUsagePercent, 2),
-                RamUsageMB = ramUsageMB
+                RamUsageMB = ramUsageMB,
+                LastUpdated = DateTime.UtcNow
             });
 
-            // Write to Redis. Expires in 10 seconds.
-            await db.StringSetAsync($"worker_node:{_workerId}", data, TimeSpan.FromSeconds(10));
+            await db.HashSetAsync("active_workers", _workerId, data);
 
             await Task.Delay(5000, stoppingToken); 
         }
