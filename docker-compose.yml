@@ -9,26 +9,26 @@ services:
   # 1. TRAEFIK (The Load Balancer / Proxy)
   # ==========================================
   traefik:
-    image: traefik:v3.6.1
-    command:
-      - "--api.insecure=true" 
-      - "--providers.swarm=true" # <--- New v3 syntax
-      - "--providers.swarm.exposedbydefault=false" # <--- New v3 syntax
-      - "--entrypoints.web.address=:80"
-    environment:
-      - DOCKER_API_VERSION=1.41  
-    ports:
-      - "80:80"       
-      - "8080:8080"   
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - arena_network
-    deploy:
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
+   image: traefik:v3.6.1
+   command:
+    - "--api.insecure=true"
+    - "--providers.swarm.endpoint=unix:///var/run/docker.sock"  # replaces --providers.swarm=true
+    - "--providers.swarm.exposedByDefault=false"
+    - "--providers.swarm.network=arena_network"                 # tells Traefik which overlay net to use
+    - "--entrypoints.web.address=:80"
+   ports:
+    - "80:80"
+    - "8080:8080"
+   volumes:
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+   networks:
+    - arena_network
+   deploy:
+    replicas: 1
+    placement:
+      constraints:
+        - node.role == manager
+
 
   # ==========================================
   # 2. REDIS (The Central Bulletin Board)
