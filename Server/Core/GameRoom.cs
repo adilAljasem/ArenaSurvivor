@@ -18,6 +18,8 @@ public class GameRoom
     public string Password { get; set; } = string.Empty;
     public string HostConnectionId { get; set; } = string.Empty;
     public string CurrentMapId { get; set; } = "map_forest";
+    public int ExpectedPlayerCount { get; set; } = 0; // NEW: Tracks the Two-Phase Sync
+    public int StitchedPlayerCount { get; set; } = 0; // <-- NEW: Tracks exact arrivals
     public GameState State { get; } = new();
     public EventBus EventBus { get; } = new();
 

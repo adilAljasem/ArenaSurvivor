@@ -45,27 +45,38 @@ public class MatchHub : Hub
 
         string oldConnectionId = tokenData.Value.OldConnectionId;
 
-        var room = _roomManager.GetRoom(roomId);
-
-        // --- NEW: Worker Room Hydration ---
-        if (room == null)
+        // 2. Fetch data from Redis BEFORE locking if the room isn't ready yet
+        var existingRoom = _roomManager.GetRoom(roomId);
+        Server.Services.RoomTransferDto? transferData = null;
+        if (existingRoom == null || existingRoom.State.Players.IsEmpty)
         {
-            var transferData = await _redisService.GetRoomTransferData(roomId);
-            if (transferData != null)
+            transferData = await _redisService.GetRoomTransferData(roomId);
+        }
+
+        // 3. Guarantee the physical room exists in RAM
+        var room = _roomManager.GetOrCreateRoom(roomId, _configManager);
+
+        Server.Entities.PlayerEntity? stitchedPlayer = null;
+        bool isStitched = false;
+
+        // 4. PADLOCK THE ROOM! No race conditions allowed here.
+        // If 4 players join at the exact same millisecond, they will line up one by one.
+        lock (room)
+        {
+            // Hydrate the room ONLY ONCE (The first player through the door does this)
+            if (room.State.Players.IsEmpty && transferData != null)
             {
-                // Create the room on the Worker!
-                room = _roomManager.GetOrCreateRoom(roomId, _configManager);
                 room.RoomName = transferData.RoomName;
                 room.HostConnectionId = transferData.HostConnectionId;
                 room.CurrentMapId = transferData.CurrentMapId;
                 room.State.CurrentDifficulty = transferData.Difficulty;
 
-                // Rebuild the players in RAM
+                // Rebuild everyone's characters in RAM
                 foreach (var pDto in transferData.Players)
                 {
                     var newPlayer = new Server.Entities.PlayerEntity
                     {
-                        ConnectionId = pDto.OldConnectionId, // Keep old ID temporarily until stitched
+                        ConnectionId = pDto.OldConnectionId,
                         Name = pDto.Name,
                         Team = "Player",
                         X = 640,
@@ -80,23 +91,43 @@ public class MatchHub : Hub
                     room.State.Players.TryAdd(pDto.OldConnectionId, newPlayer);
                 }
 
-                // Start the game loop physics!
-                room.StartMatch();
+                room.ExpectedPlayerCount = transferData.Players.Count;
+            }
+
+            // Everyone securely stitches their new websocket to their character data inside the lock
+            if (room.State.Players.TryRemove(oldConnectionId, out stitchedPlayer))
+            {
+                stitchedPlayer.ConnectionId = Context.ConnectionId;
+                room.State.Players.TryAdd(Context.ConnectionId, stitchedPlayer);
+
+                if (room.HostConnectionId == oldConnectionId)
+                    room.HostConnectionId = Context.ConnectionId;
+
+                _roomManager.UpdatePlayerConnectionId(oldConnectionId, Context.ConnectionId, roomId);
+                room.StitchedPlayerCount++;
+                isStitched = true;
             }
         }
-        if (room != null && room.State.Players.TryRemove(oldConnectionId, out var player))
+
+        // 5. Send UI Data safely (Done outside the lock to keep server speeds blazing fast)
+        if (isStitched && stitchedPlayer != null)
         {
-            // 2. Stitch the player to this specific Worker Node's RAM
-            player.ConnectionId = Context.ConnectionId;
-            room.State.Players.TryAdd(Context.ConnectionId, player);
-
-            if (room.HostConnectionId == oldConnectionId)
-                room.HostConnectionId = Context.ConnectionId;
-
-            _roomManager.UpdatePlayerConnectionId(oldConnectionId, Context.ConnectionId, roomId);
-
             Console.WriteLine($"[MATCH] Redis Token Accepted! Player ID: {Context.ConnectionId}");
-            await SendPlayerUI(player, room.State);
+            await SendPlayerUI(stitchedPlayer, room.State);
+
+            // >>> CHANGE THIS TO USE THE NEW STITCHED COUNTER <<<
+            if (room.StitchedPlayerCount == room.ExpectedPlayerCount)
+            {
+                Console.WriteLine($"[MATCH] All {room.ExpectedPlayerCount} players synced! Launching Room {roomId}...");
+                room.StartMatch();
+
+                // Broadcast the "All Clear" to drop the loading screen
+                await Clients.Clients(room.State.Players.Keys).SendAsync("AllPlayersSynced");
+            }
+        }
+        else
+        {
+            Console.WriteLine($"[MATCH] ERROR - Stitching failed for old ID: {oldConnectionId}");
         }
     }
 

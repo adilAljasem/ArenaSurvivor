@@ -214,38 +214,79 @@ class GameScene extends Phaser.Scene {
     });
 
     lobbyConnection.on("MatchStarted", (roomId: string, matchToken: string, workerUrl: string) => {
-      // Set the active worker URL. If in dev, force localhost to avoid Docker IP issues.
       activeWorkerUrl = isDev ? "http://localhost:5000/matchHub" : workerUrl;
 
-      const lobbyWrapper = document.getElementById('lobby-ui-wrapper');
-      if (lobbyWrapper) lobbyWrapper.style.display = 'none';
+      // 1. Show Sync/Loading Screen Overlay
+      let syncOverlay = document.getElementById('sync-overlay');
+      if (!syncOverlay) {
+        syncOverlay = document.createElement('div');
+        syncOverlay.id = 'sync-overlay';
+        syncOverlay.innerHTML = `
+          <style>
+            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            .spinner { width: 50px; height: 50px; border: 5px solid rgba(191, 85, 236, 0.3); border-top-color: #bf55ec; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
+          </style>
+          <div class="spinner"></div>
+          <h2 style="color: white; font-family: 'Segoe UI', sans-serif;">Waiting for other players to join...</h2>
+        `;
+        syncOverlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(20,25,35,0.95);z-index:9999999;display:flex;flex-direction:column;justify-content:center;align-items:center;';
+        document.body.appendChild(syncOverlay);
+      }
+      syncOverlay.style.display = 'flex';
 
-      lobbyConnection.stop().then(() => {
-        // 1. Build the connection dynamically using the IP the Master gave us!
-        matchConnection = new HubConnectionBuilder()
-          .withUrl(activeWorkerUrl)
-          .withAutomaticReconnect()
-          .build();
+      // 2. DO NOT STOP MASTER YET. Connect to Worker in the background.
+      matchConnection = new HubConnectionBuilder()
+        .withUrl(activeWorkerUrl)
+        .withAutomaticReconnect()
+        .build();
 
-        // 2. Bind all the physics and UI listeners
-        this.bindWorkerListeners();
+      this.bindWorkerListeners();
 
-        // 3. Connect and send the Secure Token!
-        matchConnection.start().then(() => {
-          console.log("Successfully connected to MatchHub Worker! Joining Sandbox...");
+      // 3. Set a 15-second fault-tolerance timeout
+      const handoffTimeout = setTimeout(() => {
+        if (matchConnection.state === HubConnectionState.Connected) matchConnection.stop();
+        if (syncOverlay) syncOverlay.style.display = 'none';
 
-          setupChatUI(this, matchConnection);
+        // Show an error toast from the Master UI
+        const toastContainer = document.getElementById('toast-container');
+        if (toastContainer) {
+          const toast = document.createElement('div');
+          toast.className = `toast error`;
+          toast.innerHTML = `<div style="font-size: 12px; color: #aaa; text-transform: uppercase;">Connection Failed</div><div>Worker node failed to synchronize. Match aborted.</div>`;
+          toastContainer.appendChild(toast);
+          setTimeout(() => { toast.style.animation = 'fadeOut 0.3s ease-out forwards'; setTimeout(() => toast.remove(), 300); }, 4000);
+        }
+      }, 15000);
 
-          // Re-bind the ShopUI to the new connection safely
-          if (this.shopUIModule && typeof (this.shopUIModule as any).destroy === 'function') {
-            (this.shopUIModule as any).destroy();
-          }
-          this.shopUIModule = new ShopUI(this, matchConnection);
-          this.shopUIModule.setDepth(1000);
-          this.shopUIModule.setVisible(false);
+      // 4. Listen for the "All Clear" Signal from the Worker
+      matchConnection.on("AllPlayersSynced", () => {
+        clearTimeout(handoffTimeout);
+        if (syncOverlay) syncOverlay.style.display = 'none';
 
-          matchConnection.invoke("JoinLiveMatch", roomId, matchToken).catch((err: any) => console.error(err));
-        });
+        // NOW we hide the Lobby UI and safely drop the Master connection!
+        const lobbyWrapper = document.getElementById('lobby-ui-wrapper');
+        if (lobbyWrapper) lobbyWrapper.style.display = 'none';
+
+        lobbyConnection.stop().then(() => console.log("Safely dropped Master connection. Game On!"));
+
+        setupChatUI(this, matchConnection);
+
+        if (this.shopUIModule && typeof (this.shopUIModule as any).destroy === 'function') {
+          (this.shopUIModule as any).destroy();
+        }
+        this.shopUIModule = new ShopUI(this, matchConnection);
+        this.shopUIModule.setDepth(1000);
+        this.shopUIModule.setVisible(false);
+      });
+
+      // 5. Start the connection and send the secure token!
+      matchConnection.start().then(() => {
+        console.log("Connected to Worker! Waiting for sync...");
+        matchConnection.invoke("JoinLiveMatch", roomId, matchToken).catch((err: any) => console.error(err));
+      }).catch((err: any) => {
+        clearTimeout(handoffTimeout);
+        if (syncOverlay) syncOverlay.style.display = 'none';
+        console.error("Failed to connect to worker:", err);
       });
     });
 

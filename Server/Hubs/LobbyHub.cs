@@ -286,8 +286,11 @@ public class LobbyHub : Hub
         {
             transferDto.Players.Add(new PlayerTransferDto { OldConnectionId = p.ConnectionId, Name = p.Name, ConfigId = p.ConfigId });
         }
-        await _redisService.SaveRoomTransferData(transferDto);
+        
+        room.ExpectedPlayerCount = room.State.Players.Count;
+        room.StitchedPlayerCount = 0;
 
+        await _redisService.SaveRoomTransferData(transferDto);
         // ==========================================
         // 2. SECURE HANDOFF
         // ==========================================
