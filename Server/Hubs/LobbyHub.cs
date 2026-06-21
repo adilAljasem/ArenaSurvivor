@@ -226,20 +226,31 @@ public class LobbyHub : Hub
         // ==========================================
         // 1. DYNAMIC LOAD BALANCING (CPU/RAM Aware)
         // ==========================================
-        var server = _redis.GetServer(_redis.GetEndPoints().First());
         var db = _redis.GetDatabase();
-        var keys = server.Keys(pattern: "worker_node:*").ToList();
 
-        string bestWorkerUrl = "http://localhost:5000/matchHub"; // Fallback
+        // Grab all workers from the Hash in one fast, VIP-safe database call
+        var activeWorkers = await db.HashGetAllAsync("active_workers");
+
+        // The fallback is now your safe, path-routed Traefik worker!
+        string bestWorkerUrl = "http://localhost:5000/matchHub";
         double lowestLoadScore = double.MaxValue;
 
-        foreach (var key in keys)
+        foreach (var worker in activeWorkers)
         {
-            var data = await db.StringGetAsync(key);
+            var data = worker.Value;
             if (!data.IsNullOrEmpty)
             {
                 var doc = System.Text.Json.JsonDocument.Parse(data.ToString());
                 var root = doc.RootElement;
+
+                // NEW: Ignore dead/hung workers that haven't pulsed in 15 seconds
+                DateTime lastUpdated = root.GetProperty("LastUpdated").GetDateTime();
+                if ((DateTime.UtcNow - lastUpdated).TotalSeconds > 15)
+                {
+                    // Clean up dead worker from the hash so it doesn't pile up
+                    await db.HashDeleteAsync("active_workers", worker.Name);
+                    continue;
+                }
 
                 int activeRooms = root.GetProperty("ActiveRooms").GetInt32();
                 double cpuUsage = root.GetProperty("CpuUsage").GetDouble();
@@ -247,11 +258,9 @@ public class LobbyHub : Hub
                 string url = root.GetProperty("Url").GetString();
 
                 // If a server is melting down (>90% CPU), skip it entirely if possible
-                if (cpuUsage > 90.0 && keys.Count > 1) continue;
+                if (cpuUsage > 90.0 && activeWorkers.Length > 1) continue;
 
                 // Calculate a composite load score. 
-                // Example Weighting: CPU is king. RAM is secondary. Rooms are minor.
-                // Lower score is better.
                 double score = (cpuUsage * 10) + (ramUsageMB * 0.1) + (activeRooms * 5);
 
                 if (score < lowestLoadScore)
