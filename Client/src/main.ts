@@ -9,8 +9,14 @@ import { LobbyUI } from './LobbyUI';
 
 // --- SIGNALR CONNECTIONS ---
 // 1. Master Node
+export const isDev = import.meta.env.DEV;
+export const envName = isDev ? "Development (Vite)" : "Production (Traefik)";
+export const masterUrl = isDev ? "http://localhost:5000/lobbyHub" : "/lobbyHub";
+export let activeWorkerUrl = "Waiting for match...";
+
+// 1. Master Node
 export const lobbyConnection = new HubConnectionBuilder()
-  .withUrl("http://localhost:5000/lobbyHub")
+  .withUrl(masterUrl)
   .withAutomaticReconnect()
   .build();
 
@@ -208,14 +214,16 @@ class GameScene extends Phaser.Scene {
     });
 
     lobbyConnection.on("MatchStarted", (roomId: string, matchToken: string, workerUrl: string) => {
-      console.log(`Routing to Dedicated Worker: ${workerUrl}`);
+      // Set the active worker URL. If in dev, force localhost to avoid Docker IP issues.
+      activeWorkerUrl = isDev ? "http://localhost:5000/matchHub" : workerUrl;
+
       const lobbyWrapper = document.getElementById('lobby-ui-wrapper');
       if (lobbyWrapper) lobbyWrapper.style.display = 'none';
 
       lobbyConnection.stop().then(() => {
         // 1. Build the connection dynamically using the IP the Master gave us!
         matchConnection = new HubConnectionBuilder()
-          .withUrl(workerUrl)
+          .withUrl(activeWorkerUrl)
           .withAutomaticReconnect()
           .build();
 
@@ -731,17 +739,18 @@ class GameScene extends Phaser.Scene {
       const renderedSprites = this.cameras.main.renderList.length;
 
       // Grab the URL from the active connection
-      const currentServer = matchConnection?.baseUrl || "Disconnected";
-
       this.perfText.setText(
-        `Server  : ${currentServer}\n` +
-        `FPS     : ${fps}\n` +
-        `Ping    : ${this.pingMs} ms\n` +
-        `Logic   : ${frameTime} ms\n` +
-        `Sprites : ${renderedSprites} (GPU Visuals)\n` +
-        `Entities: ${this.lastNetworkEntitiesCount} (C# Network)\n` +
-        `Draws   : ${this.currentDrawCalls} (Peak: ${this.maxDrawCalls})\n` +
-        `Network : ${this.currentCompressedKbps} kbps (Raw: ${this.currentUncompressedKbps} kbps)`
+        `Environment : ${envName}\n` +
+        `Master Node : ${masterUrl}\n` +
+        `Worker Node : ${activeWorkerUrl}\n` +
+        `==================================\n` +
+        `FPS         : ${fps}\n` +
+        `Ping        : ${this.pingMs} ms\n` +
+        `Logic       : ${frameTime} ms\n` +
+        `Sprites     : ${renderedSprites} (GPU Visuals)\n` +
+        `Entities    : ${this.lastNetworkEntitiesCount} (C# Network)\n` +
+        `Draws       : ${this.currentDrawCalls} (Peak: ${this.maxDrawCalls})\n` +
+        `Network     : ${this.currentCompressedKbps} kbps (Raw: ${this.currentUncompressedKbps} kbps)`
       );
     }
 
