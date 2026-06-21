@@ -43,4 +43,37 @@ public class RedisService
 
         return (oldId, roomId);
     }
+
+    public async Task SaveRoomTransferData(RoomTransferDto dto)
+    {
+        var db = _redis.GetDatabase();
+        var json = JsonSerializer.Serialize(dto);
+        // Worker must claim it within 2 minutes
+        await db.StringSetAsync($"room_transfer:{dto.RoomId}", json, TimeSpan.FromMinutes(2)); 
+    }
+
+    public async Task<RoomTransferDto?> GetRoomTransferData(string roomId)
+    {
+        var db = _redis.GetDatabase();
+        var json = await db.StringGetAsync($"room_transfer:{roomId}");
+        if (json.IsNullOrEmpty) return null;
+        return JsonSerializer.Deserialize<RoomTransferDto>(json.ToString());
+    }
+}
+
+public class RoomTransferDto
+{
+    public string RoomId { get; set; } = string.Empty;
+    public string RoomName { get; set; } = string.Empty;
+    public string HostConnectionId { get; set; } = string.Empty;
+    public string CurrentMapId { get; set; } = string.Empty;
+    public string Difficulty { get; set; } = string.Empty;
+    public List<PlayerTransferDto> Players { get; set; } = new();
+}
+
+public class PlayerTransferDto
+{
+    public string OldConnectionId { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string ConfigId { get; set; } = string.Empty;
 }

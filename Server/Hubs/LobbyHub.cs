@@ -272,7 +272,21 @@ public class LobbyHub : Hub
         }
 
         Console.WriteLine($"[LOBBY] Match starting. Routing players to Worker: {bestWorkerUrl} (Score: {lowestLoadScore})");
-        room.StartMatch();
+
+        // --- NEW: Bundle up the Room and send to Redis ---
+        var transferDto = new RoomTransferDto
+        {
+            RoomId = room.RoomId,
+            RoomName = room.RoomName,
+            HostConnectionId = room.HostConnectionId,
+            CurrentMapId = room.CurrentMapId,
+            Difficulty = room.State.CurrentDifficulty,
+        };
+        foreach (var p in room.State.Players.Values)
+        {
+            transferDto.Players.Add(new PlayerTransferDto { OldConnectionId = p.ConnectionId, Name = p.Name, ConfigId = p.ConfigId });
+        }
+        await _redisService.SaveRoomTransferData(transferDto);
 
         // ==========================================
         // 2. SECURE HANDOFF
