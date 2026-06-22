@@ -34,8 +34,14 @@ public class CombatSystem : IGameSystem
 
     private void ProcessShooting(float dt, GameState state)
     {
-        // Keep players sequential
-        foreach (var player in state.Players.Values)
+        // >>> MASSIVE FIX: Pre-filter for shooting so we don't iterate 1500x1500 times
+        var activePlayers = state.Players.Values.Where(p => p.ActionState != "Dead").ToList();
+        var allActiveEnemies = state.Enemies.Values.Where(e => e.ActionState != "Dead").ToList();
+        var nonEnemyTeam = allActiveEnemies.Where(e => e.Team != "Enemy").ToList();
+        var enemyTeam = allActiveEnemies.Where(e => e.Team == "Enemy").ToList();
+
+        // 1. Keep players sequential
+        foreach (var player in activePlayers)
         {
             foreach (var weapon in player.Weapons)
             {
@@ -65,9 +71,10 @@ public class CombatSystem : IGameSystem
                     float finalRange = config.Range + player.GetTotalStat("range", _configs);
                     float bestDistSq = finalRange * finalRange;
                     EnemyEntity? target = null;
-                    foreach (var enemy in state.Enemies.Values)
+
+                    // Players only scan the "Enemy" horde list
+                    foreach (var enemy in enemyTeam)
                     {
-                        if (enemy.ActionState == "Dead" || enemy.Team == "Player") continue;
                         float distSq = (enemy.X - spawnX) * (enemy.X - spawnX) + (enemy.Y - spawnY) * (enemy.Y - spawnY);
                         if (distSq <= bestDistSq) { bestDistSq = distSq; target = enemy; }
                     }
@@ -103,7 +110,6 @@ public class CombatSystem : IGameSystem
                             if (config.ApplyEffectsOnHit != null) combinedEffects.AddRange(config.ApplyEffectsOnHit);
                             if (projConfig.ApplyEffectsOnHit != null) combinedEffects.AddRange(projConfig.ApplyEffectsOnHit);
 
-
                             var shotDirections = ProjectileFactory.CalculateSpreadDirections(dirX, dirY, config.ProjectileCount, config.SpreadAngle);
                             var allNewBullets = new List<ProjectileEntity>();
 
@@ -124,43 +130,37 @@ public class CombatSystem : IGameSystem
             }
         }
 
-        // FIX: Parallelize enemy shooting
-        System.Threading.Tasks.Parallel.ForEach(state.Enemies.Values, enemy =>
+        var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
+
+        // 2. Parallelize enemy shooting utilizing the filtered lists
+        System.Threading.Tasks.Parallel.ForEach(allActiveEnemies, parallelOptions, enemy =>
         {
-            if (enemy.ActionState == "Dead" || enemy.Weapons.Count == 0) return; // changed continue to return
+            if (enemy.Weapons.Count == 0) return;
 
             float bestDistSq = float.MaxValue, targetX = 0, targetY = 0;
             bool foundTarget = false;
 
-            if (enemy.Team != "Enemy")
+            // Only scan the opposing team
+            var opposingPlayers = enemy.Team == "Enemy" ? activePlayers : new List<PlayerEntity>();
+            foreach (var player in opposingPlayers)
             {
-                foreach (var hostile in state.Enemies.Values)
-                {
-                    if (hostile.Id == enemy.Id || hostile.ActionState == "Dead" || hostile.Team == enemy.Team) continue;
-                    float distSq = (hostile.X - enemy.X) * (hostile.X - enemy.X) + (hostile.Y - enemy.Y) * (hostile.Y - enemy.Y);
-                    if (distSq < bestDistSq) { bestDistSq = distSq; targetX = hostile.X; targetY = hostile.Y; foundTarget = true; }
-                }
-            }
-            else
-            {
-                foreach (var player in state.Players.Values)
-                {
-                    float distSq = (player.X - enemy.X) * (player.X - enemy.X) + (player.Y - enemy.Y) * (player.Y - enemy.Y);
-                    if (distSq < bestDistSq) { bestDistSq = distSq; targetX = player.X; targetY = player.Y; foundTarget = true; }
-                }
-                foreach (var summon in state.Enemies.Values)
-                {
-                    if (summon.ActionState == "Dead" || summon.Id == enemy.Id || summon.Team == "Enemy") continue;
-                    float distSq = (summon.X - enemy.X) * (summon.X - enemy.X) + (summon.Y - enemy.Y) * (summon.Y - enemy.Y);
-                    if (distSq < bestDistSq) { bestDistSq = distSq; targetX = summon.X; targetY = summon.Y; foundTarget = true; }
-                }
+                float distSq = (player.X - enemy.X) * (player.X - enemy.X) + (player.Y - enemy.Y) * (player.Y - enemy.Y);
+                if (distSq < bestDistSq) { bestDistSq = distSq; targetX = player.X; targetY = player.Y; foundTarget = true; }
             }
 
-            if (!foundTarget) return; // changed continue to return
+            var opposingTeam = enemy.Team == "Enemy" ? nonEnemyTeam : enemyTeam;
+            foreach (var summon in opposingTeam)
+            {
+                if (summon.Id == enemy.Id) continue;
+                float distSq = (summon.X - enemy.X) * (summon.X - enemy.X) + (summon.Y - enemy.Y) * (summon.Y - enemy.Y);
+                if (distSq < bestDistSq) { bestDistSq = distSq; targetX = summon.X; targetY = summon.Y; foundTarget = true; }
+            }
+
+            if (!foundTarget) return;
             enemy.AimX = targetX; enemy.AimY = targetY;
 
             float attackRadius = _configs.Enemies.TryGetValue(enemy.ConfigId, out var enemyCfg) ? enemyCfg.AttackRadius : 300f;
-            if (bestDistSq > attackRadius * attackRadius) return; // changed continue to return
+            if (bestDistSq > attackRadius * attackRadius) return;
 
             foreach (var weapon in enemy.Weapons)
             {
@@ -207,21 +207,25 @@ public class CombatSystem : IGameSystem
 
     private void ProcessCollisions(float dt, GameState state)
     {
-        // FIX: Must use thread-safe Bags when inserting from parallel loops!
+        // 1. Thread-safe bags are REQUIRED when multiple threads are destroying things
         var projectilesToRemove = new System.Collections.Concurrent.ConcurrentBag<string>();
         var pickupsToRemove = new System.Collections.Concurrent.ConcurrentBag<string>();
+        var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
 
+        // 2. Pre-filter the target lists ONCE to avoid locking the ConcurrentDictionary 300,000 times
         var hostileEnemies = state.Enemies.Values
-            .Where(e => e.Team == "Enemy")
+            .Where(e => e.Team == "Enemy" && e.ActionState != "Dead")
             .Cast<BaseActorEntity>()
             .ToList();
 
-        var playerTeam = state.Players.Values.Cast<BaseActorEntity>()
-            .Concat(state.Enemies.Values.Where(e => e.Team != "Enemy"))
+        var playerTeam = state.Players.Values.Where(p => p.ActionState != "Dead").Cast<BaseActorEntity>()
+            .Concat(state.Enemies.Values.Where(e => e.Team != "Enemy" && e.ActionState != "Dead"))
             .ToList();
 
-        // FIX: Parallelize the massive Projectile Collision loop
-        System.Threading.Tasks.Parallel.ForEach(state.Projectiles.Values, proj =>
+        // ==========================================
+        // PARALLELIZE PROJECTILE PHYSICS & COLLISIONS
+        // ==========================================
+        System.Threading.Tasks.Parallel.ForEach(state.Projectiles.Values, parallelOptions, proj =>
         {
             float prevX = proj.X, prevY = proj.Y;
             if (proj.MovementBehavior == "Orbital")
@@ -273,24 +277,20 @@ public class CombatSystem : IGameSystem
 
             if (proj.Lifespan <= 0 || (!isOrbital && proj.HitEnemies.Count > proj.PierceCount))
             {
-                if (!projectilesToRemove.Contains(proj.Id))
+                projectilesToRemove.Add(proj.Id);
+                if (!string.IsNullOrEmpty(proj.OnDeathSkillId) && _configs.Skills.TryGetValue(proj.OnDeathSkillId, out var deathSkill))
                 {
-                    projectilesToRemove.Add(proj.Id);
-                    if (!string.IsNullOrEmpty(proj.OnDeathSkillId) && _configs.Skills.TryGetValue(proj.OnDeathSkillId, out var deathSkill))
-                    {
-                        _eventBus.Publish(new RequestSkillCastEvent { Skill = deathSkill, CasterId = proj.OwnerId, StartX = proj.X, StartY = proj.Y, Team = proj.Team, State = state });
-                    }
+                    _eventBus.Publish(new RequestSkillCastEvent { Skill = deathSkill, CasterId = proj.OwnerId, StartX = proj.X, StartY = proj.Y, Team = proj.Team, State = state });
                 }
-                return; // changed continue to return
+                return; // Parallel lambda equivalent of 'continue'
             }
 
             bool isPlayerProj = state.Players.ContainsKey(proj.OwnerId) || (state.Enemies.TryGetValue(proj.OwnerId, out var o) && o.Team != "Enemy");
             var targets = isPlayerProj ? hostileEnemies : playerTeam;
-
+            
             foreach (var target in targets)
             {
                 string tId = target is PlayerEntity pTarget ? pTarget.ConnectionId : ((EnemyEntity)target).Id;
-                if (target.ActionState == "Dead") continue;
 
                 if (isOrbital)
                 {
@@ -307,15 +307,7 @@ public class CombatSystem : IGameSystem
                 }
                 else if (proj.HitEnemies.Contains(tId)) continue;
 
-                float targetHitRadius = 15f;
-                if (target is EnemyEntity e)
-                {
-                    targetHitRadius = e.HitRadius;
-                }
-                else if (target is PlayerEntity p)
-                {
-                    targetHitRadius = _configs.Characters.TryGetValue(p.ConfigId, out var pCfg) ? pCfg.HitRadius : 15f;
-                }
+                float targetHitRadius = target is EnemyEntity e ? e.HitRadius : (_configs.Characters.TryGetValue(((PlayerEntity)target).ConfigId, out var pCfg) ? pCfg.HitRadius : 15f);
 
                 float hitThresholdSq = (proj.HitRadius + targetHitRadius) * (proj.HitRadius + targetHitRadius);
                 bool isHit = false;
@@ -343,34 +335,25 @@ public class CombatSystem : IGameSystem
 
                     _eventBus.Publish(new DamageAppliedEvent
                     {
-                        Target = target,
-                        AttackerId = proj.OwnerId,
-                        State = state,
-                        Amount = finalDamage,
-                        IsCritical = proj.IsCritical,
-                        IsDodge = isDodge,
-                        IsBlock = isBlock
+                        Target = target, AttackerId = proj.OwnerId, State = state, Amount = finalDamage,
+                        IsCritical = proj.IsCritical, IsDodge = isDodge, IsBlock = isBlock
                     });
 
-                    if (isOrbital)
-                        proj.OrbitHitCooldowns[tId] = proj.OrbitHitInterval;
-                    else
-                        proj.HitEnemies.Add(tId);
+                    if (isOrbital) proj.OrbitHitCooldowns[tId] = proj.OrbitHitInterval;
+                    else proj.HitEnemies.Add(tId);
 
                     if (!isDodge && !isBlock)
                     {
                         if (proj.ApplyEffectsOnHit != null)
                         {
                             foreach (var effectId in proj.ApplyEffectsOnHit)
-                            {
                                 _eventBus.Publish(new ApplyEffectEvent { Target = target, EffectConfigId = effectId });
-                            }
                         }
 
-                        // Thread safety lock for concurrent player healing
+                        // THE FIX: Thread-safe locking when modifying player health across multiple bullet impacts
                         if (Random.Shared.NextDouble() < proj.LifeStealChance && state.Players.TryGetValue(proj.OwnerId, out var pHeal))
                         {
-                            lock (pHeal)
+                            lock (pHeal) 
                             {
                                 pHeal.CurrentHp = Math.Min(pHeal.GetTotalStat("maxHp", _configs), pHeal.CurrentHp + 1f);
                             }
@@ -379,31 +362,28 @@ public class CombatSystem : IGameSystem
 
                     if (isBlock || (!isOrbital && proj.HitEnemies.Count > proj.PierceCount))
                     {
-                        if (!projectilesToRemove.Contains(proj.Id))
+                        projectilesToRemove.Add(proj.Id);
+                        if (!string.IsNullOrEmpty(proj.OnDeathSkillId) && _configs.Skills.TryGetValue(proj.OnDeathSkillId, out var deathSkill))
                         {
-                            projectilesToRemove.Add(proj.Id);
-                            if (!string.IsNullOrEmpty(proj.OnDeathSkillId) && _configs.Skills.TryGetValue(proj.OnDeathSkillId, out var deathSkill))
-                            {
-                                _eventBus.Publish(new RequestSkillCastEvent { Skill = deathSkill, CasterId = proj.OwnerId, StartX = proj.X, StartY = proj.Y, Team = proj.Team, State = state });
-                            }
+                            _eventBus.Publish(new RequestSkillCastEvent { Skill = deathSkill, CasterId = proj.OwnerId, StartX = proj.X, StartY = proj.Y, Team = proj.Team, State = state });
                         }
-                        break;
+                        break; 
                     }
                 }
             }
         });
 
+        // ==========================================
+        // SEQUENTIAL PICKUPS (Very fast, low volume)
+        // ==========================================
         if (!_configs.Difficulties.TryGetValue(state.CurrentDifficulty, out var currentDiff)) currentDiff = new DifficultyConfig();
-
-        // Keep players sequential
         foreach (var player in state.Players.Values)
         {
             foreach (var pickup in state.Pickups.Values)
             {
-                if (pickupsToRemove.Contains(pickup.Id)) continue;
                 if ((player.X - pickup.X) * (player.X - pickup.X) + (player.Y - pickup.Y) * (player.Y - pickup.Y) < 625)
                 {
-                    if (pickup.Type == PickupType.Gold)
+                    if (pickup.Type == PickupType.Gold && !pickupsToRemove.Contains(pickup.Id))
                     {
                         player.Gold += (int)Math.Max(1, pickup.Value * currentDiff.GoldMultiplier);
                         player.GainXp((int)Math.Max(1, pickup.Value * currentDiff.XpMultiplier), _configs);
@@ -413,10 +393,14 @@ public class CombatSystem : IGameSystem
             }
         }
 
-        // FIX: Parallelize enemy melee logic
-        System.Threading.Tasks.Parallel.ForEach(state.Enemies.Values, enemy =>
+        // ==========================================
+        // PARALLELIZE ENEMY MELEE ATTACKS
+        // ==========================================
+        var meleeEnemies = state.Enemies.Values.Where(e => e.ActionState != "Dead" && e.Weapons.Count == 0).ToList();
+        
+        System.Threading.Tasks.Parallel.ForEach(meleeEnemies, parallelOptions, enemy =>
         {
-            if (enemy.ActionState == "Dead" || enemy.Weapons.Count > 0 || !_configs.Enemies.TryGetValue(enemy.ConfigId, out var enemyCfg)) return; // changed continue to return
+            if (!_configs.Enemies.TryGetValue(enemy.ConfigId, out var enemyCfg)) return;
 
             float attackSpeedPct = Math.Max(0f, enemy.GetTotalStat("attackSpeedPercent", _configs));
             float scaledDuration = enemyCfg.AttackDuration / (1f + attackSpeedPct);
@@ -425,35 +409,24 @@ public class CombatSystem : IGameSystem
             if (!isRooted && (enemy.ActionState == "Attacking" || enemy.ActionState == "Casting") && Math.Abs(enemy.AttackCooldown - scaledDuration) < (dt * 2))
             {
                 float meleeDmg = enemy.GetTotalStat("meleeDamage", _configs);
-                if (meleeDmg <= 0) return; // changed continue to return
+                if (meleeDmg <= 0) return;
 
-                var targets = enemy.Team == "Enemy" ? state.Players.Values.Cast<BaseActorEntity>().Concat(state.Enemies.Values.Where(e => e.Team != "Enemy")) : state.Enemies.Values.Where(e => e.Team == "Enemy");
+                var targets = enemy.Team == "Enemy" ? playerTeam : hostileEnemies;
                 float attackRadiusSq = enemyCfg.AttackRadius * enemyCfg.AttackRadius;
 
                 foreach (var target in targets)
                 {
-                    if (target.ActionState == "Dead") continue;
-
                     if ((target.X - enemy.X) * (target.X - enemy.X) + (target.Y - enemy.Y) * (target.Y - enemy.Y) <= attackRadiusSq)
                     {
                         float dodgeChance = Math.Clamp(target.GetTotalStat("dodge", _configs), 0f, 0.9f);
                         bool isDodge = dodgeChance > 0 && Random.Shared.NextDouble() <= dodgeChance;
 
-                        float finalDamage = 0f;
-                        if (!isDodge)
-                        {
-                            finalDamage = CalculateMitigatedDamage(meleeDmg, 0f, target, _configs);
-                        }
+                        float finalDamage = isDodge ? 0 : CalculateMitigatedDamage(meleeDmg, 0f, target, _configs);
 
                         _eventBus.Publish(new DamageAppliedEvent
                         {
-                            Target = target,
-                            AttackerId = enemy.Id,
-                            State = state,
-                            Amount = finalDamage,
-                            IsCritical = false,
-                            IsDodge = isDodge,
-                            IsBlock = false
+                            Target = target, AttackerId = enemy.Id, State = state, Amount = finalDamage,
+                            IsCritical = false, IsDodge = isDodge, IsBlock = false
                         });
                     }
                 }
@@ -461,6 +434,7 @@ public class CombatSystem : IGameSystem
             }
         });
 
+        // Clean up thread-safe bags
         foreach (var id in projectilesToRemove) state.Projectiles.TryRemove(id, out _);
         foreach (var id in pickupsToRemove) state.Pickups.TryRemove(id, out _);
     }

@@ -16,7 +16,7 @@ public class EventBus
 {
     private readonly Dictionary<Type, List<Delegate>> _subscribers = new();
 
-    // FIX: Must be ConcurrentQueue to handle simultaneous cross-thread publishing
+    // FIX: Upgraded to ConcurrentQueue to handle simultaneous cross-thread publishing
     private readonly System.Collections.Concurrent.ConcurrentQueue<Action> _eventQueue = new();
 
     public void Subscribe<TEvent>(Action<TEvent> handler)
@@ -33,7 +33,7 @@ public class EventBus
             foreach (var handler in handlers)
             {
                 var action = handler as Action<TEvent>;
-                _eventQueue.Enqueue(() => action!(ev));
+                _eventQueue.Enqueue(() => action!(ev)); // Thread-safe insertion
             }
         }
     }
@@ -43,7 +43,7 @@ public class EventBus
         int maxIterations = 10000;
         int iterations = 0;
 
-        // FIX: Use TryDequeue for thread safety
+        // FIX: TryDequeue is the thread-safe way to pull from the queue
         while (_eventQueue.TryDequeue(out var action) && iterations < maxIterations)
         {
             action.Invoke();
@@ -57,7 +57,6 @@ public class EventBus
         }
     }
 }
-
 public class DamageAppliedEvent
 {
     public BaseActorEntity Target { get; set; } = null!;

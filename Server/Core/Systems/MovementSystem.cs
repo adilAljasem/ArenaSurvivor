@@ -13,7 +13,7 @@ public class MovementSystem : IGameSystem
         _configs = configs;
     }
 
-    public void Update(float dt, GameState state)
+   public void Update(float dt, GameState state)
     {
         float mapW = 4000f, mapH = 4000f;
         if (_configs.Maps != null && _configs.Maps.TryGetValue("map_forest", out var currentMap))
@@ -21,7 +21,7 @@ public class MovementSystem : IGameSystem
             mapW = currentMap.Width; mapH = currentMap.Height;
         }
 
-        // Keep Players sequential (low count, high priority)
+        // 1. Keep Players sequential
         foreach (var player in state.Players.Values)
         {
             bool canMovePlayer = true;
@@ -42,17 +42,19 @@ public class MovementSystem : IGameSystem
             player.Y = Math.Clamp(player.Y, 35, mapH - 35);
         }
 
-        // FIX: Parallelize the massive enemy target calculation
-        System.Threading.Tasks.Parallel.ForEach(state.Enemies.Values, enemy =>
-        {
-            if (!_configs.Enemies.TryGetValue(enemy.ConfigId, out var config)) return; // Changed continue to return
+        // >>> THE MASSIVE FIX: Pre-filter targets ONCE so threads don't hit the ConcurrentDictionary
+        var activePlayers = state.Players.Values.Where(p => p.ActionState != "Dead").ToList();
+        var allActiveEnemies = state.Enemies.Values.Where(e => e.ActionState != "Dead").ToList();
+        
+        var nonEnemyTeam = allActiveEnemies.Where(e => e.Team != "Enemy").ToList(); // Summons/Pets
+        var enemyTeam = allActiveEnemies.Where(e => e.Team == "Enemy").ToList(); // The horde
 
-            if (enemy.ActionState == "Dead")
-            {
-                enemy.DespawnTimer -= dt;
-                if (enemy.DespawnTimer <= 0) state.Enemies.TryRemove(enemy.Id, out _);
-                return; // Changed continue to return
-            }
+        var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
+
+        // 2. Parallelize Enemy Movement using the pre-filtered lists
+        System.Threading.Tasks.Parallel.ForEach(allActiveEnemies, parallelOptions, enemy =>
+        {
+            if (!_configs.Enemies.TryGetValue(enemy.ConfigId, out var config)) return;
 
             bool canMoveEnemy = true;
             if (!string.IsNullOrEmpty(enemy.CurrentCastingSkillId) && enemy.CurrentCastTimer > 0)
@@ -60,12 +62,13 @@ public class MovementSystem : IGameSystem
                 if (_configs.Skills.TryGetValue(enemy.CurrentCastingSkillId, out var eCastCfg) && eCastCfg.StopMoving)
                     canMoveEnemy = false;
             }
-            if (!canMoveEnemy) return; // Changed continue to return
+            if (!canMoveEnemy) return;
 
             if (enemy.AttackCooldown > 0) enemy.AttackCooldown -= dt;
 
             if (config.MovesRandomly)
             {
+                // ... (Keep existing random movement logic) ...
                 bool isOutsideMap = enemy.X < 100 || enemy.X > mapW - 100 || enemy.Y < 100 || enemy.Y > mapH - 100;
                 if (isOutsideMap)
                 {
@@ -82,36 +85,40 @@ public class MovementSystem : IGameSystem
                     }
                 }
 
-                float dx = enemy.WanderTargetX - enemy.X, dy = enemy.WanderTargetY - enemy.Y;
-                float length = (float)Math.Sqrt(dx * dx + dy * dy);
+                float randDx = enemy.WanderTargetX - enemy.X, randDy = enemy.WanderTargetY - enemy.Y;
+                float randLength = (float)Math.Sqrt(randDx * randDx + randDy * randDy);
 
-                if (length > 10f)
+                if (randLength > 10f)
                 {
                     enemy.ActionState = "Moving";
                     float finalSpeed = Math.Max(0f, enemy.GetTotalStat("movementSpeed", _configs));
-                    enemy.X += (dx / length) * finalSpeed * dt;
-                    enemy.Y += (dy / length) * finalSpeed * dt;
+                    enemy.X += (randDx / randLength) * finalSpeed * dt;
+                    enemy.Y += (randDy / randLength) * finalSpeed * dt;
                     enemy.AimX = enemy.WanderTargetX; enemy.AimY = enemy.WanderTargetY;
                 }
                 else enemy.ActionState = "Idle";
 
                 enemy.X = Math.Clamp(enemy.X, 0, mapW);
                 enemy.Y = Math.Clamp(enemy.Y, 0, mapH);
-                return; // Changed continue to return
+                return;
             }
 
             float closestDistSq = float.MaxValue, targetX = 0, targetY = 0;
             bool foundTarget = false;
 
-            foreach (var player in state.Players.Values)
+            // CHECK 1: The players (Usually 1 to 4 checks)
+            var targetPlayers = enemy.Team == "Enemy" ? activePlayers : new List<PlayerEntity>();
+            foreach (var player in targetPlayers)
             {
                 float distSq = (player.X - enemy.X) * (player.X - enemy.X) + (player.Y - enemy.Y) * (player.Y - enemy.Y);
                 if (distSq < closestDistSq) { closestDistSq = distSq; targetX = player.X; targetY = player.Y; foundTarget = true; }
             }
 
-            foreach (var otherEnemy in state.Enemies.Values)
+            // CHECK 2: The opposing team's summons/minions (Usually 0 to 10 checks)
+            var opposingTeam = enemy.Team == "Enemy" ? nonEnemyTeam : enemyTeam;
+            foreach (var otherEnemy in opposingTeam)
             {
-                if (otherEnemy.ActionState == "Dead" || otherEnemy.Id == enemy.Id || otherEnemy.Team == enemy.Team) continue;
+                if (otherEnemy.Id == enemy.Id) continue;
                 float distSq = (otherEnemy.X - enemy.X) * (otherEnemy.X - enemy.X) + (otherEnemy.Y - enemy.Y) * (otherEnemy.Y - enemy.Y);
                 if (distSq < closestDistSq) { closestDistSq = distSq; targetX = otherEnemy.X; targetY = otherEnemy.Y; foundTarget = true; }
             }
@@ -146,5 +153,12 @@ public class MovementSystem : IGameSystem
             enemy.X = Math.Clamp(enemy.X, 0, mapW);
             enemy.Y = Math.Clamp(enemy.Y, 0, mapH);
         });
+        
+        // Despawn dead enemies (Sequential cleanup avoids Concurrent dictionary locking)
+        foreach (var deadEnemy in state.Enemies.Values.Where(e => e.ActionState == "Dead"))
+        {
+            deadEnemy.DespawnTimer -= dt;
+            if (deadEnemy.DespawnTimer <= 0) state.Enemies.TryRemove(deadEnemy.Id, out _);
+        }
     }
 }

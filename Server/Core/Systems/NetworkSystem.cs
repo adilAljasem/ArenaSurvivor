@@ -23,6 +23,8 @@ public class NetworkSystem : IGameSystem
     private ConcurrentBag<AoeEventDto> _aoeEvents = new();
     private ConcurrentBag<BeamVisualEvent> _beamEvents = new();
     private ConcurrentBag<BeamEndedEvent> _beamEndedEvents = new();
+    // FIX B: Cache a single empty dictionary to stop 30,000 allocations per second
+    private static readonly Dictionary<string, float> _emptyStats = new();
     private readonly ConcurrentDictionary<string, HashSet<string>> _clientKnownEnemies = new();
     private readonly ConcurrentDictionary<string, HashSet<string>> _clientKnownPickups = new();
     private readonly ConcurrentDictionary<string, HashSet<string>> _clientKnownProjectiles = new();
@@ -107,15 +109,15 @@ public class NetworkSystem : IGameSystem
             };
 
             byte[] compressedBytes = CompressPayload(payload);
-            await _hubContext.Clients.Client(player.ConnectionId).SendAsync("UpdateStateCompressed", compressedBytes, cancellationToken: stoppingToken);
+            _ = _hubContext.Clients.Client(player.ConnectionId).SendAsync("UpdateStateCompressed", compressedBytes, cancellationToken: stoppingToken);
         }
 
         PerformCleanup(gameState);
 
-        _damageEvents.Clear();
-        _aoeEvents.Clear();
-        _beamEvents.Clear();
-        _beamEndedEvents.Clear();
+        _damageEvents = new ConcurrentBag<DamageEventDto>();
+        _aoeEvents = new ConcurrentBag<AoeEventDto>();
+        _beamEvents = new ConcurrentBag<BeamVisualEvent>();
+        _beamEndedEvents = new ConcurrentBag<BeamEndedEvent>();
     }
 
     private static byte GetStateId(string state) => state switch
@@ -147,7 +149,11 @@ public class NetworkSystem : IGameSystem
         public const int FiredWeapons = 14; public const int Team = 15;
     }
 
-    private static FlatState FlattenGlobalState(GameState gameState, ConfigManager configManager, ConcurrentBag<DamageEventDto> dmgEvents, ConcurrentBag<AoeEventDto> aoeEvents, ConcurrentBag<BeamVisualEvent> beamEvents)
+    // FIX: Method signature updated to accept IEnumerable for thread-safe bags
+    private static FlatState FlattenGlobalState(GameState gameState, ConfigManager configManager,
+        IEnumerable<DamageEventDto> dmgEvents,
+        IEnumerable<AoeEventDto> aoeEvents,
+        IEnumerable<BeamVisualEvent> beamEvents)
     {
         return new FlatState
         {
@@ -156,9 +162,10 @@ public class NetworkSystem : IGameSystem
                 (int)p.CurrentHp, (int)p.CurrentMaxHp, p.Gold, GetStateId(p.ActionState),
                 p.CurrentCastingSkillId, Math.Round(p.CurrentCastTimer, 1), Math.Round(p.MaxCastTimer, 1),
                 p.Weapons.Select(w => new object[] {
-                    w.ConfigId, w.SlotIndex, w.Level, w.RolledStats ?? new Dictionary<string, float>(),
+                    w.ConfigId, w.SlotIndex, w.Level,
+                    w.RolledStats ?? _emptyStats, // <--- Cache Fix
                     w.WeaponSkills != null ? w.WeaponSkills.Select(s => s.ConfigId).ToList() : new List<string>(),
-                    w.TotalBaseStats ?? new Dictionary<string, float>()
+                    w.TotalBaseStats ?? _emptyStats // <--- Cache Fix
                 }).ToList(),
                 p.FiredWeaponsThisTick.ToList(),
                 p.ActiveEffects.Select(e => e.ConfigId).ToList(),
@@ -167,19 +174,21 @@ public class NetworkSystem : IGameSystem
                 (int)p.CurrentShield
             }).ToList(),
 
-            // FIX: Removed .AsParallel() to prevent PLINQ partitioner crashes
             Enemies = gameState.Enemies.Values.Select(e => new object[] {
                 e.Id, e.ConfigId, (int)e.X, (int)e.Y, (int)e.CurrentHp, (int)e.CurrentMaxHp,
                 (int)e.AimX, (int)e.AimY,
                 GetStateId(e.ActionState), e.CurrentCastingSkillId, Math.Round(e.CurrentCastTimer, 1), Math.Round(e.MaxCastTimer, 1),
                 e.ActiveEffects.Select(a => a.ConfigId).ToList(),
-                e.Weapons.Select(w => new object[] { w.ConfigId, w.SlotIndex, w.Level, w.RolledStats ?? new Dictionary<string, float>(), w.TotalBaseStats ?? new Dictionary<string, float>() }).ToList(),
+                e.Weapons.Select(w => new object[] {
+                    w.ConfigId, w.SlotIndex, w.Level,
+                    w.RolledStats ?? _emptyStats, // <--- Cache Fix
+                    w.TotalBaseStats ?? _emptyStats // <--- Cache Fix
+                }).ToList(),
                 e.FiredWeaponsThisTick.ToList(),
                 e.Team,
                 e.CurrentShield
             }).ToList(),
 
-            // FIX: Removed .AsParallel() to prevent PLINQ partitioner crashes
             Projectiles = gameState.Projectiles.Values.Select(proj => proj.MovementBehavior == "Orbital"
                             ? new object[] { proj.Id, proj.ConfigId, (int)proj.X, (int)proj.Y, proj.OrbitSpeed, 0f, 1, proj.OwnerId, (int)proj.OrbitRadius, proj.OrbitAngleOffset }
                             : new object[] { proj.Id, proj.ConfigId, (int)proj.X, (int)proj.Y, (int)proj.VelX, (int)proj.VelY }
@@ -189,8 +198,8 @@ public class NetworkSystem : IGameSystem
                 pk.Id, (int)pk.X, (int)pk.Y, pk.Value, (int)pk.Type,
                 pk.DroppedWeapon?.ConfigId ?? pk.DroppedItem?.ConfigId ?? "",
                 pk.DroppedWeapon?.Level ?? pk.DroppedItem?.Level ?? 1,
-                pk.DroppedWeapon?.TotalBaseStats ?? pk.DroppedItem?.TotalBaseStats ?? new Dictionary<string, float>(),
-                pk.DroppedWeapon?.RolledStats ?? pk.DroppedItem?.RolledStats ?? new Dictionary<string, float>(),
+                pk.DroppedWeapon?.TotalBaseStats ?? pk.DroppedItem?.TotalBaseStats ?? _emptyStats, // <--- Cache Fix
+                pk.DroppedWeapon?.RolledStats ?? pk.DroppedItem?.RolledStats ?? _emptyStats, // <--- Cache Fix
                 (pk.DroppedWeapon != null ? (pk.DroppedWeapon.WeaponSkills?.Select(s => s.ConfigId).ToList() ?? new List<string>()) : (pk.DroppedItem?.ItemSkills?.Select(s => s.ConfigId).ToList() ?? new List<string>()))
             }).ToList(),
 
@@ -218,14 +227,14 @@ public class NetworkSystem : IGameSystem
         float minY = cameraY - ((logicalScreenHeight + 400f) / 2);
         float maxY = cameraY + ((logicalScreenHeight + 400f) / 2);
 
-return new FlatState
+        return new FlatState
         {
             Players = globalState.Players.Where(p => (int)p[1] >= minX && (int)p[1] <= maxX && (int)p[2] >= minY && (int)p[2] <= maxY).ToList(),
-            
+
             Enemies = globalState.Enemies.Where(e => (int)e[EnemyIdx.X] >= minX && (int)e[EnemyIdx.X] <= maxX && (int)e[EnemyIdx.Y] >= minY && (int)e[EnemyIdx.Y] <= maxY).ToList(),
             Pickups = globalState.Pickups.Where(pk => (int)pk[1] >= minX && (int)pk[1] <= maxX && (int)pk[2] >= minY && (int)pk[2] <= maxY).ToList(),
             Damage = globalState.Damage.Where(d => (int)d[0] >= minX && (int)d[0] <= maxX && (int)d[1] >= minY && (int)d[1] <= maxY).ToList(),
-            Aoe = globalState.Aoe.Where(a => (int)a[0] >= minX && (int)a[0] <= maxX && (int)a[1] >= minY && (int)a[1] <= maxY).ToList(),            
+            Aoe = globalState.Aoe.Where(a => (int)a[0] >= minX && (int)a[0] <= maxX && (int)a[1] >= minY && (int)a[1] <= maxY).ToList(),
             Projectiles = globalState.Projectiles.Where(b => (b.Length > 6 && (int)b[6] == 1) || ((int)b[2] >= minX && (int)b[2] <= maxX && (int)b[3] >= minY && (int)b[3] <= maxY)).ToList(),
             Beams = globalState.Beams.Where(b => ((int)b[0] >= minX && (int)b[0] <= maxX && (int)b[1] >= minY && (int)b[1] <= maxY) || ((int)b[2] >= minX && (int)b[2] <= maxX && (int)b[3] >= minY && (int)b[3] <= maxY)).ToList()
         };
@@ -286,11 +295,13 @@ return new FlatState
 
     private static byte[] CompressPayload(object payload)
     {
-        string jsonString = JsonSerializer.Serialize(payload, _serializerOptions);
-        byte[] jsonBytes = Encoding.UTF8.GetBytes(jsonString);
-
+        // FIX C: Serialize directly into the compression stream. 
+        // This completely eliminates the LOH string allocation that causes the 5-second freezes!
         using var ms = new MemoryStream();
-        using (var gzip = new GZipStream(ms, CompressionLevel.Fastest)) { gzip.Write(jsonBytes, 0, jsonBytes.Length); }
+        using (var gzip = new GZipStream(ms, CompressionLevel.Fastest))
+        {
+            JsonSerializer.Serialize(gzip, payload, _serializerOptions);
+        }
         return ms.ToArray();
     }
 

@@ -61,6 +61,9 @@ public class GameRoom
     // Tick is called by the GameLoop metronome
     public async Task TickAsync(float dt, CancellationToken stoppingToken)
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+
         var currentTickTime = DateTime.UtcNow;
         var prevProjectiles = State.Projectiles.Keys.ToHashSet();
 
@@ -78,8 +81,18 @@ public class GameRoom
 
         foreach (var system in _systems)
         {
+            var sysTimer = System.Diagnostics.Stopwatch.StartNew();
+
             system.Update(dt, State);
             EventBus.ProcessQueue(); // Process events immediately between systems
+
+            sysTimer.Stop();
+
+            // LOG SPAM WARNING: Only log if a system takes longer than 15ms!
+            if (sysTimer.ElapsedMilliseconds > 15)
+            {
+                Console.WriteLine($"[LAG SPIKE] {system.GetType().Name} took {sysTimer.ElapsedMilliseconds}ms!");
+            }
         }
 
         EventBus.ProcessQueue();
@@ -89,8 +102,19 @@ public class GameRoom
         var destroyedProjIds = prevProjectiles.Except(currProjectiles).ToList();
         var tickNewProjectiles = newProjIds.Select(id => State.Projectiles[id]).ToList();
 
-        // Broadcast directly to players inside THIS room's State
+
+        var netTimer = System.Diagnostics.Stopwatch.StartNew();
         await _networkSystem.BroadcastFrameAsync(State, _configManager, tickNewProjectiles, destroyedProjIds, stoppingToken);
+        netTimer.Stop();
+
+        if (netTimer.ElapsedMilliseconds > 20)
+        {
+            Console.WriteLine($"[LAG SPIKE] NetworkSystem Serialization/Broadcast took {netTimer.ElapsedMilliseconds}ms!");
+        }
+
+        sw.Stop();
+        if (sw.ElapsedMilliseconds > 50)
+            Console.WriteLine($"[CRITICAL] Total Frame took {sw.ElapsedMilliseconds}ms! (Target: < 50ms)");
     }
 
     // --- GAME LOGIC MOVED FROM OLD GAMELOOP ---
