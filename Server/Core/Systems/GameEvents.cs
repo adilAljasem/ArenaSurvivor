@@ -15,7 +15,9 @@ public interface IGameSystem
 public class EventBus
 {
     private readonly Dictionary<Type, List<Delegate>> _subscribers = new();
-    private readonly Queue<Action> _eventQueue = new();
+
+    // FIX: Must be ConcurrentQueue to handle simultaneous cross-thread publishing
+    private readonly System.Collections.Concurrent.ConcurrentQueue<Action> _eventQueue = new();
 
     public void Subscribe<TEvent>(Action<TEvent> handler)
     {
@@ -24,7 +26,6 @@ public class EventBus
         _subscribers[typeof(TEvent)].Add(handler);
     }
 
-    // Instead of executing now, we add to a queue
     public void Publish<TEvent>(TEvent ev)
     {
         if (_subscribers.TryGetValue(typeof(TEvent), out var handlers))
@@ -37,15 +38,15 @@ public class EventBus
         }
     }
 
-    // Call this at the end of every Frame Tick
     public void ProcessQueue()
     {
         int maxIterations = 10000;
         int iterations = 0;
 
-        while (_eventQueue.Count > 0 && iterations < maxIterations)
+        // FIX: Use TryDequeue for thread safety
+        while (_eventQueue.TryDequeue(out var action) && iterations < maxIterations)
         {
-            _eventQueue.Dequeue().Invoke();
+            action.Invoke();
             iterations++;
         }
 
@@ -56,7 +57,6 @@ public class EventBus
         }
     }
 }
-
 
 public class DamageAppliedEvent
 {

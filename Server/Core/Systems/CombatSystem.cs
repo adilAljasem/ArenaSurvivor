@@ -34,6 +34,7 @@ public class CombatSystem : IGameSystem
 
     private void ProcessShooting(float dt, GameState state)
     {
+        // Keep players sequential
         foreach (var player in state.Players.Values)
         {
             foreach (var weapon in player.Weapons)
@@ -106,19 +107,16 @@ public class CombatSystem : IGameSystem
                             var shotDirections = ProjectileFactory.CalculateSpreadDirections(dirX, dirY, config.ProjectileCount, config.SpreadAngle);
                             var allNewBullets = new List<ProjectileEntity>();
 
-                            // 2. Loop through and create a bullet for each direction
                             foreach (var (spreadDirX, spreadDirY) in shotDirections)
                             {
                                 allNewBullets.AddRange(ProjectileFactory.Create(
                                     projConfig, player.ConnectionId, "Player", spawnX, spawnY,
-                                    spreadDirX, spreadDirY, // Use the fanned-out direction!
+                                    spreadDirX, spreadDirY,
                                     physDmg, magicDmg, finalSpeed, totalLifeSteal, combinedEffects,
-                                    1, // CRITICAL: Pass 1 here because our loop is handling the count now!
-                                    computedLifespan, isCrit
+                                    1, computedLifespan, isCrit
                                 ));
                             }
 
-                            // 3. Publish them all at once
                             _eventBus.Publish(new SpawnProjectileEvent { Projectiles = allNewBullets, State = state });
                         }
                     }
@@ -126,9 +124,10 @@ public class CombatSystem : IGameSystem
             }
         }
 
-        foreach (var enemy in state.Enemies.Values)
+        // FIX: Parallelize enemy shooting
+        System.Threading.Tasks.Parallel.ForEach(state.Enemies.Values, enemy =>
         {
-            if (enemy.ActionState == "Dead" || enemy.Weapons.Count == 0) continue;
+            if (enemy.ActionState == "Dead" || enemy.Weapons.Count == 0) return; // changed continue to return
 
             float bestDistSq = float.MaxValue, targetX = 0, targetY = 0;
             bool foundTarget = false;
@@ -157,11 +156,11 @@ public class CombatSystem : IGameSystem
                 }
             }
 
-            if (!foundTarget) continue;
+            if (!foundTarget) return; // changed continue to return
             enemy.AimX = targetX; enemy.AimY = targetY;
 
             float attackRadius = _configs.Enemies.TryGetValue(enemy.ConfigId, out var enemyCfg) ? enemyCfg.AttackRadius : 300f;
-            if (bestDistSq > attackRadius * attackRadius) continue;
+            if (bestDistSq > attackRadius * attackRadius) return; // changed continue to return
 
             foreach (var weapon in enemy.Weapons)
             {
@@ -203,13 +202,14 @@ public class CombatSystem : IGameSystem
                 var newBullets = ProjectileFactory.Create(pCfg2, enemy.Id, enemy.Team, spawnX, spawnY, summonDirX, summonDirY, physDmg, magicDmg, pCfg2.BaseSpeed, 0f, combined2, 1, computedLifespan, isCrit);
                 _eventBus.Publish(new SpawnProjectileEvent { Projectiles = newBullets, State = state });
             }
-        }
+        });
     }
 
     private void ProcessCollisions(float dt, GameState state)
     {
-        var projectilesToRemove = new List<string>();
-        var pickupsToRemove = new List<string>();
+        // FIX: Must use thread-safe Bags when inserting from parallel loops!
+        var projectilesToRemove = new System.Collections.Concurrent.ConcurrentBag<string>();
+        var pickupsToRemove = new System.Collections.Concurrent.ConcurrentBag<string>();
 
         var hostileEnemies = state.Enemies.Values
             .Where(e => e.Team == "Enemy")
@@ -220,8 +220,8 @@ public class CombatSystem : IGameSystem
             .Concat(state.Enemies.Values.Where(e => e.Team != "Enemy"))
             .ToList();
 
-
-        foreach (var proj in state.Projectiles.Values)
+        // FIX: Parallelize the massive Projectile Collision loop
+        System.Threading.Tasks.Parallel.ForEach(state.Projectiles.Values, proj =>
         {
             float prevX = proj.X, prevY = proj.Y;
             if (proj.MovementBehavior == "Orbital")
@@ -242,18 +242,14 @@ public class CombatSystem : IGameSystem
             }
             proj.Lifespan -= dt;
 
-            // 1. Explicitly declare it first to satisfy the compiler
             SkillConfig? tickSkill = null;
             bool hasTickSkill = false;
 
-            // 2. Safely populate it
             if (!string.IsNullOrEmpty(proj.TickSkillId))
             {
                 hasTickSkill = _configs.Skills.TryGetValue(proj.TickSkillId, out tickSkill);
             }
 
-            // 3. The projectile ticks if it has an explicit TickRate in JSON, OR a TickSkill cooldown.
-            // Because tickSkill could theoretically be null here, we use the ! (null-forgiving) or cast it safely
             float effectiveTickRate = proj.TickRate > 0 ? proj.TickRate : (hasTickSkill && tickSkill != null ? tickSkill.CooldownSeconds : 0f);
 
             if (effectiveTickRate > 0)
@@ -264,11 +260,8 @@ public class CombatSystem : IGameSystem
                 if (proj.TimeSinceLastTick >= safeTickRate)
                 {
                     proj.TimeSinceLastTick %= safeTickRate;
-
-                    // >>> THE FIX: Wipe the collision memory! <<<
                     proj.HitEnemies.Clear();
 
-                    // >>> FIX 1: EventBus <<<
                     if (hasTickSkill && tickSkill != null)
                     {
                         _eventBus.Publish(new RequestSkillCastEvent { Skill = tickSkill, CasterId = proj.OwnerId, StartX = proj.X, StartY = proj.Y, Team = proj.Team, State = state, SourceProjectile = proj });
@@ -285,15 +278,15 @@ public class CombatSystem : IGameSystem
                     projectilesToRemove.Add(proj.Id);
                     if (!string.IsNullOrEmpty(proj.OnDeathSkillId) && _configs.Skills.TryGetValue(proj.OnDeathSkillId, out var deathSkill))
                     {
-                        // >>> FIX 2: EventBus <<<
                         _eventBus.Publish(new RequestSkillCastEvent { Skill = deathSkill, CasterId = proj.OwnerId, StartX = proj.X, StartY = proj.Y, Team = proj.Team, State = state });
                     }
                 }
-                continue;
+                return; // changed continue to return
             }
 
             bool isPlayerProj = state.Players.ContainsKey(proj.OwnerId) || (state.Enemies.TryGetValue(proj.OwnerId, out var o) && o.Team != "Enemy");
             var targets = isPlayerProj ? hostileEnemies : playerTeam;
+
             foreach (var target in targets)
             {
                 string tId = target is PlayerEntity pTarget ? pTarget.ConnectionId : ((EnemyEntity)target).Id;
@@ -301,8 +294,6 @@ public class CombatSystem : IGameSystem
 
                 if (isOrbital)
                 {
-                    // Orbitals use a re-hit cooldown per target instead of permanent pierce memory,
-                    // so they keep damaging anything they circle through indefinitely.
                     if (proj.OrbitHitCooldowns.TryGetValue(tId, out float remainingCooldown))
                     {
                         remainingCooldown -= dt;
@@ -316,7 +307,6 @@ public class CombatSystem : IGameSystem
                 }
                 else if (proj.HitEnemies.Contains(tId)) continue;
 
-                // >>> ABSOLUTE MANUAL CONTROL: No hidden scale multipliers <<<
                 float targetHitRadius = 15f;
                 if (target is EnemyEntity e)
                 {
@@ -324,7 +314,6 @@ public class CombatSystem : IGameSystem
                 }
                 else if (target is PlayerEntity p)
                 {
-                    // >>> THE FIX: Read strictly from the Character Config JSON <<<
                     targetHitRadius = _configs.Characters.TryGetValue(p.ConfigId, out var pCfg) ? pCfg.HitRadius : 15f;
                 }
 
@@ -374,13 +363,18 @@ public class CombatSystem : IGameSystem
                         {
                             foreach (var effectId in proj.ApplyEffectsOnHit)
                             {
-                                // >>> THE FIX: Publish event instead of manual insertion <<<
                                 _eventBus.Publish(new ApplyEffectEvent { Target = target, EffectConfigId = effectId });
                             }
                         }
 
+                        // Thread safety lock for concurrent player healing
                         if (Random.Shared.NextDouble() < proj.LifeStealChance && state.Players.TryGetValue(proj.OwnerId, out var pHeal))
-                            pHeal.CurrentHp = Math.Min(pHeal.GetTotalStat("maxHp", _configs), pHeal.CurrentHp + 1f);
+                        {
+                            lock (pHeal)
+                            {
+                                pHeal.CurrentHp = Math.Min(pHeal.GetTotalStat("maxHp", _configs), pHeal.CurrentHp + 1f);
+                            }
+                        }
                     }
 
                     if (isBlock || (!isOrbital && proj.HitEnemies.Count > proj.PierceCount))
@@ -390,7 +384,6 @@ public class CombatSystem : IGameSystem
                             projectilesToRemove.Add(proj.Id);
                             if (!string.IsNullOrEmpty(proj.OnDeathSkillId) && _configs.Skills.TryGetValue(proj.OnDeathSkillId, out var deathSkill))
                             {
-                                // >>> FIX 3: EventBus <<<
                                 _eventBus.Publish(new RequestSkillCastEvent { Skill = deathSkill, CasterId = proj.OwnerId, StartX = proj.X, StartY = proj.Y, Team = proj.Team, State = state });
                             }
                         }
@@ -398,9 +391,11 @@ public class CombatSystem : IGameSystem
                     }
                 }
             }
-        }
+        });
 
         if (!_configs.Difficulties.TryGetValue(state.CurrentDifficulty, out var currentDiff)) currentDiff = new DifficultyConfig();
+
+        // Keep players sequential
         foreach (var player in state.Players.Values)
         {
             foreach (var pickup in state.Pickups.Values)
@@ -418,9 +413,10 @@ public class CombatSystem : IGameSystem
             }
         }
 
-        foreach (var enemy in state.Enemies.Values)
+        // FIX: Parallelize enemy melee logic
+        System.Threading.Tasks.Parallel.ForEach(state.Enemies.Values, enemy =>
         {
-            if (enemy.ActionState == "Dead" || enemy.Weapons.Count > 0 || !_configs.Enemies.TryGetValue(enemy.ConfigId, out var enemyCfg)) continue;
+            if (enemy.ActionState == "Dead" || enemy.Weapons.Count > 0 || !_configs.Enemies.TryGetValue(enemy.ConfigId, out var enemyCfg)) return; // changed continue to return
 
             float attackSpeedPct = Math.Max(0f, enemy.GetTotalStat("attackSpeedPercent", _configs));
             float scaledDuration = enemyCfg.AttackDuration / (1f + attackSpeedPct);
@@ -429,7 +425,7 @@ public class CombatSystem : IGameSystem
             if (!isRooted && (enemy.ActionState == "Attacking" || enemy.ActionState == "Casting") && Math.Abs(enemy.AttackCooldown - scaledDuration) < (dt * 2))
             {
                 float meleeDmg = enemy.GetTotalStat("meleeDamage", _configs);
-                if (meleeDmg <= 0) continue;
+                if (meleeDmg <= 0) return; // changed continue to return
 
                 var targets = enemy.Team == "Enemy" ? state.Players.Values.Cast<BaseActorEntity>().Concat(state.Enemies.Values.Where(e => e.Team != "Enemy")) : state.Enemies.Values.Where(e => e.Team == "Enemy");
                 float attackRadiusSq = enemyCfg.AttackRadius * enemyCfg.AttackRadius;
@@ -443,11 +439,9 @@ public class CombatSystem : IGameSystem
                         float dodgeChance = Math.Clamp(target.GetTotalStat("dodge", _configs), 0f, 0.9f);
                         bool isDodge = dodgeChance > 0 && Random.Shared.NextDouble() <= dodgeChance;
 
-                        // THE FIX: Route the melee damage through the armor mitigation formula
                         float finalDamage = 0f;
                         if (!isDodge)
                         {
-                            // Treat enemy normal attacks as 100% physical damage
                             finalDamage = CalculateMitigatedDamage(meleeDmg, 0f, target, _configs);
                         }
 
@@ -465,7 +459,7 @@ public class CombatSystem : IGameSystem
                 }
                 enemy.AttackCooldown = scaledDuration - (dt * 3f);
             }
-        }
+        });
 
         foreach (var id in projectilesToRemove) state.Projectiles.TryRemove(id, out _);
         foreach (var id in pickupsToRemove) state.Pickups.TryRemove(id, out _);

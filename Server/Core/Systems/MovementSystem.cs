@@ -21,6 +21,7 @@ public class MovementSystem : IGameSystem
             mapW = currentMap.Width; mapH = currentMap.Height;
         }
 
+        // Keep Players sequential (low count, high priority)
         foreach (var player in state.Players.Values)
         {
             bool canMovePlayer = true;
@@ -41,15 +42,16 @@ public class MovementSystem : IGameSystem
             player.Y = Math.Clamp(player.Y, 35, mapH - 35);
         }
 
-        foreach (var enemy in state.Enemies.Values)
+        // FIX: Parallelize the massive enemy target calculation
+        System.Threading.Tasks.Parallel.ForEach(state.Enemies.Values, enemy =>
         {
-            if (!_configs.Enemies.TryGetValue(enemy.ConfigId, out var config)) continue;
+            if (!_configs.Enemies.TryGetValue(enemy.ConfigId, out var config)) return; // Changed continue to return
 
             if (enemy.ActionState == "Dead")
             {
                 enemy.DespawnTimer -= dt;
                 if (enemy.DespawnTimer <= 0) state.Enemies.TryRemove(enemy.Id, out _);
-                continue;
+                return; // Changed continue to return
             }
 
             bool canMoveEnemy = true;
@@ -58,7 +60,7 @@ public class MovementSystem : IGameSystem
                 if (_configs.Skills.TryGetValue(enemy.CurrentCastingSkillId, out var eCastCfg) && eCastCfg.StopMoving)
                     canMoveEnemy = false;
             }
-            if (!canMoveEnemy) continue;
+            if (!canMoveEnemy) return; // Changed continue to return
 
             if (enemy.AttackCooldown > 0) enemy.AttackCooldown -= dt;
 
@@ -95,7 +97,7 @@ public class MovementSystem : IGameSystem
 
                 enemy.X = Math.Clamp(enemy.X, 0, mapW);
                 enemy.Y = Math.Clamp(enemy.Y, 0, mapH);
-                continue;
+                return; // Changed continue to return
             }
 
             float closestDistSq = float.MaxValue, targetX = 0, targetY = 0;
@@ -143,6 +145,6 @@ public class MovementSystem : IGameSystem
 
             enemy.X = Math.Clamp(enemy.X, 0, mapW);
             enemy.Y = Math.Clamp(enemy.Y, 0, mapH);
-        }
+        });
     }
 }

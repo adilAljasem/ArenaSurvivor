@@ -54,9 +54,10 @@ public class GameLoop : BackgroundService
             float dt = (float)(currentTickTime - lastTickTime).TotalSeconds;
             lastTickTime = currentTickTime;
 
-            // Fetch all active rooms and execute their Ticks concurrently
             var activeRooms = _roomManager.GetAllRooms();
-            var tasks = activeRooms.Select(room => room.TickAsync(dt, stoppingToken));
+
+            // FIX: Force CPU-bound room ticks onto the ThreadPool
+            var tasks = activeRooms.Select(room => Task.Run(() => room.TickAsync(dt, stoppingToken), stoppingToken));
 
             await Task.WhenAll(tasks);
 

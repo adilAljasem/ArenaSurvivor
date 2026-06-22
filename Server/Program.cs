@@ -7,6 +7,15 @@ using Server.Configs;
 
 var builder = WebApplication.CreateBuilder(args);
 
+int workerThreads, ioThreads;
+ThreadPool.GetMinThreads(out workerThreads, out ioThreads);
+
+// Force the ThreadPool to immediately keep at least one thread warm per logical CPU core.
+// Multiply by 2 or 4 if you have hyperthreading, to give it plenty of breathing room.
+int minThreads = Environment.ProcessorCount * 4; 
+ThreadPool.SetMinThreads(Math.Max(workerThreads, minThreads), Math.Max(ioThreads, minThreads));
+Console.WriteLine($"[BOOT] ThreadPool Initialized with Minimum {minThreads} threads.");
+
 // 1. Bind Configurations
 builder.Services.Configure<ServerConfig>(builder.Configuration.GetSection("ServerConfig"));
 builder.Services.Configure<RedisConfig>(builder.Configuration.GetSection("RedisConfig"));

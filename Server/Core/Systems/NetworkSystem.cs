@@ -19,11 +19,10 @@ public class NetworkSystem : IGameSystem
 {
     private EventBus _eventBus = null!;
     private readonly IHubContext<MatchHub> _hubContext;
-    private readonly List<DamageEventDto> _damageEvents = new();
-    private readonly List<AoeEventDto> _aoeEvents = new();
-    private readonly List<BeamVisualEvent> _beamEvents = new();
-    private readonly List<BeamEndedEvent> _beamEndedEvents = new();
-
+    private ConcurrentBag<DamageEventDto> _damageEvents = new();
+    private ConcurrentBag<AoeEventDto> _aoeEvents = new();
+    private ConcurrentBag<BeamVisualEvent> _beamEvents = new();
+    private ConcurrentBag<BeamEndedEvent> _beamEndedEvents = new();
     private readonly ConcurrentDictionary<string, HashSet<string>> _clientKnownEnemies = new();
     private readonly ConcurrentDictionary<string, HashSet<string>> _clientKnownPickups = new();
     private readonly ConcurrentDictionary<string, HashSet<string>> _clientKnownProjectiles = new();
@@ -148,7 +147,7 @@ public class NetworkSystem : IGameSystem
         public const int FiredWeapons = 14; public const int Team = 15;
     }
 
-    private static FlatState FlattenGlobalState(GameState gameState, ConfigManager configManager, List<DamageEventDto> dmgEvents, List<AoeEventDto> aoeEvents, List<BeamVisualEvent> beamEvents)
+    private static FlatState FlattenGlobalState(GameState gameState, ConfigManager configManager, ConcurrentBag<DamageEventDto> dmgEvents, ConcurrentBag<AoeEventDto> aoeEvents, ConcurrentBag<BeamVisualEvent> beamEvents)
     {
         return new FlatState
         {
@@ -168,6 +167,7 @@ public class NetworkSystem : IGameSystem
                 (int)p.CurrentShield
             }).ToList(),
 
+            // FIX: Removed .AsParallel() to prevent PLINQ partitioner crashes
             Enemies = gameState.Enemies.Values.Select(e => new object[] {
                 e.Id, e.ConfigId, (int)e.X, (int)e.Y, (int)e.CurrentHp, (int)e.CurrentMaxHp,
                 (int)e.AimX, (int)e.AimY,
@@ -179,6 +179,7 @@ public class NetworkSystem : IGameSystem
                 e.CurrentShield
             }).ToList(),
 
+            // FIX: Removed .AsParallel() to prevent PLINQ partitioner crashes
             Projectiles = gameState.Projectiles.Values.Select(proj => proj.MovementBehavior == "Orbital"
                             ? new object[] { proj.Id, proj.ConfigId, (int)proj.X, (int)proj.Y, proj.OrbitSpeed, 0f, 1, proj.OwnerId, (int)proj.OrbitRadius, proj.OrbitAngleOffset }
                             : new object[] { proj.Id, proj.ConfigId, (int)proj.X, (int)proj.Y, (int)proj.VelX, (int)proj.VelY }
@@ -217,13 +218,14 @@ public class NetworkSystem : IGameSystem
         float minY = cameraY - ((logicalScreenHeight + 400f) / 2);
         float maxY = cameraY + ((logicalScreenHeight + 400f) / 2);
 
-        return new FlatState
+return new FlatState
         {
             Players = globalState.Players.Where(p => (int)p[1] >= minX && (int)p[1] <= maxX && (int)p[2] >= minY && (int)p[2] <= maxY).ToList(),
+            
             Enemies = globalState.Enemies.Where(e => (int)e[EnemyIdx.X] >= minX && (int)e[EnemyIdx.X] <= maxX && (int)e[EnemyIdx.Y] >= minY && (int)e[EnemyIdx.Y] <= maxY).ToList(),
             Pickups = globalState.Pickups.Where(pk => (int)pk[1] >= minX && (int)pk[1] <= maxX && (int)pk[2] >= minY && (int)pk[2] <= maxY).ToList(),
             Damage = globalState.Damage.Where(d => (int)d[0] >= minX && (int)d[0] <= maxX && (int)d[1] >= minY && (int)d[1] <= maxY).ToList(),
-            Aoe = globalState.Aoe.Where(a => (int)a[0] >= minX && (int)a[0] <= maxX && (int)a[1] >= minY && (int)a[1] <= maxY).ToList(),
+            Aoe = globalState.Aoe.Where(a => (int)a[0] >= minX && (int)a[0] <= maxX && (int)a[1] >= minY && (int)a[1] <= maxY).ToList(),            
             Projectiles = globalState.Projectiles.Where(b => (b.Length > 6 && (int)b[6] == 1) || ((int)b[2] >= minX && (int)b[2] <= maxX && (int)b[3] >= minY && (int)b[3] <= maxY)).ToList(),
             Beams = globalState.Beams.Where(b => ((int)b[0] >= minX && (int)b[0] <= maxX && (int)b[1] >= minY && (int)b[1] <= maxY) || ((int)b[2] >= minX && (int)b[2] <= maxX && (int)b[3] >= minY && (int)b[3] <= maxY)).ToList()
         };
