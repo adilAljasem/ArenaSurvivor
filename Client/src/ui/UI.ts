@@ -1090,14 +1090,24 @@ export class ShopUI {
                     isWeapon = true;
                 }
 
+                
                 const tier = config?.tier ?? config?.Tier ?? 1;
                 const tierColor = isLocked ? 0x888888 : UIHelpers.getTierColorHex(tier);
+
+                // --- NEW: Dynamic Dark Background Color ---
+                let darkBgColor = 0x161920; // Default dark grey
+                if (!isLocked) {
+                    if (tier === 1) darkBgColor = 0x222428;      // Dark Grey/Silver
+                    else if (tier === 2) darkBgColor = 0x132233; // Dark Blue
+                    else if (tier === 3) darkBgColor = 0x241233; // Dark Purple
+                    else if (tier >= 4) darkBgColor = 0x332812;  // Dark Gold
+                }
 
                 // -------------------------------------------------------------
                 // 1. BASE BACKGROUND
                 // -------------------------------------------------------------
                 const cardBg = this.scene.add.graphics();
-                cardBg.fillStyle(0x161920, 1);
+                cardBg.fillStyle(darkBgColor, 1);
                 cardBg.fillRoundedRect(cardX, 0, 240, 480, 12);
                 this.shopCardsContainer.add(cardBg);
 
@@ -1120,7 +1130,8 @@ export class ShopUI {
                     1
                 );
 
-                let currentY = 115;
+                // Start stats immediately below the divider
+                let currentY = 132;
                 blocks.forEach(b => {
                     const t = this.scene.add.text(cardX + 15, currentY, b.text, {
                         fontFamily: UIHelpers.FONT,
@@ -1135,15 +1146,15 @@ export class ShopUI {
                     currentY += t.displayHeight + (b.isHeader ? 2 : 4);
                 });
 
-                const viewHeight = 260;
-                const textHeight = currentY - 115;
+                const viewHeight = 250;
+                const textHeight = currentY - 132;
                 const maxScroll = Math.max(0, textHeight - viewHeight + 10);
                 let updateScrollBar = () => { };
 
                 if (maxScroll > 0) {
                     const scrollBarBg = this.scene.add.graphics();
                     scrollBarBg.fillStyle(0x000000, 0.5);
-                    scrollBarBg.fillRoundedRect(cardX + 225, 115, 4, viewHeight, 2);
+                    scrollBarBg.fillRoundedRect(cardX + 225, 132, 4, viewHeight, 2);
                     this.shopCardsContainer.add(scrollBarBg);
 
                     const scrollBar = this.scene.add.graphics();
@@ -1154,7 +1165,7 @@ export class ShopUI {
                         scrollBar.clear();
                         scrollBar.fillStyle(0x8892a0, 1);
                         const progress = Math.abs(statsContainer.y) / maxScroll;
-                        const barY = 115 + (progress * (viewHeight - barHeight));
+                        const barY = 132 + (progress * (viewHeight - barHeight));
                         scrollBar.fillRoundedRect(cardX + 225, barY, 4, barHeight, 2);
                     };
                     updateScrollBar();
@@ -1164,10 +1175,11 @@ export class ShopUI {
                 // 3. SOLID BLOCKERS (The "Stencil-less Mask")
                 // -------------------------------------------------------------
                 const blockers = this.scene.add.graphics();
-                blockers.fillStyle(0x161920, 1);
+                blockers.fillStyle(darkBgColor, 1); // <-- Now matches the dynamic background!
 
-                blockers.fillRoundedRect(cardX, 0, 240, 115, 12);
-                blockers.fillRect(cardX, 50, 240, 65);
+                // Top blocker pulled up to exactly cover the gap behind the divider
+                blockers.fillRoundedRect(cardX, 0, 240, 128, 12);
+                blockers.fillRect(cardX, 50, 240, 78);
 
                 blockers.fillRoundedRect(cardX, 375, 240, 105, 12);
                 blockers.fillRect(cardX, 375, 240, 60);
@@ -1183,31 +1195,30 @@ export class ShopUI {
                 this.shopCardsContainer.add(cardBorder);
 
                 // -------------------------------------------------------------
-                // 5. HEADER CONTENT 
+                // 5. HEADER CONTENT (Pulled tightly together)
                 // -------------------------------------------------------------
                 const tierTextStr = `Tier ${tier} ${isWeapon ? 'Weapon' : 'Item'}`;
-                const tierTextObj = this.scene.add.text(cardX + 120, 20, tierTextStr, {
+                const tierTextObj = this.scene.add.text(cardX + 120, 14, tierTextStr, {
                     fontFamily: UIHelpers.FONT, fontSize: '12px', color: UIHelpers.getTierColorStr(tier), fontStyle: 'bold', resolution: 3
                 }).setOrigin(0.5);
 
-                const nameText = this.scene.add.text(cardX + 120, 40, item.name ?? item.Name ?? "Unknown", {
+                const nameText = this.scene.add.text(cardX + 120, 32, item.name ?? item.Name ?? "Unknown", {
                     fontFamily: UIHelpers.FONT, fontSize: '20px', color: '#ffffff', fontStyle: 'bold', resolution: 3
                 }).setOrigin(0.5);
 
                 let icon: any = null;
                 const tex = config?.textureKey ?? config?.TextureKey;
                 if (tex && tex.trim() !== "" && this.scene.textures.exists(tex)) {
-                    icon = this.scene.add.sprite(cardX + 120, 75, tex);
+                    icon = this.scene.add.sprite(cardX + 120, 82, tex); // Moved up to close gap
                     const frame = config.iconFrame ?? config.IconFrame;
                     if (frame !== undefined) icon.setFrame(frame);
-                    icon.setScale(Math.min(48 / icon.width, 48 / icon.height));
+                    icon.setScale(Math.min(80 / icon.width, 80 / icon.height));
                 }
 
-                const divider = this.scene.add.rectangle(cardX + 120, 105, 200, 2, 0x3a4454).setOrigin(0.5);
+                const divider = this.scene.add.rectangle(cardX + 120, 126, 200, 2, 0x3a4454).setOrigin(0.5); // Tucked closely under the icon
 
                 this.shopCardsContainer.add([tierTextObj, nameText, divider]);
                 if (icon) this.shopCardsContainer.add(icon);
-
                 // -------------------------------------------------------------
                 // 6. FOOTER CONTENT & BUTTONS 
                 // -------------------------------------------------------------

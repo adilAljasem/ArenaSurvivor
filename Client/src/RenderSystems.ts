@@ -297,9 +297,31 @@ export class ActorRenderer {
       const activeWeaponSlots = new Set<number>();
       const weaponsList = actor.weapons || actor.Weapons || [];
 
+      // --- NEW: Generate a 4-Pointed Magical Star Texture ---
+      if (!scene.textures.exists('fx_spark')) {
+        const g = scene.add.graphics();
+        g.fillStyle(0xffffff, 1);
+
+        // Draw a star shape (16x16 size)
+        g.beginPath();
+        g.moveTo(8, 0);   // Top point
+        g.lineTo(9.5, 6.5); // Inner Top-Right
+        g.lineTo(16, 8);  // Right point
+        g.lineTo(9.5, 9.5); // Inner Bottom-Right
+        g.lineTo(8, 16);  // Bottom point
+        g.lineTo(6.5, 9.5); // Inner Bottom-Left
+        g.lineTo(0, 8);   // Left point
+        g.lineTo(6.5, 6.5); // Inner Top-Left
+        g.closePath();
+        g.fillPath();
+
+        g.generateTexture('fx_spark', 16, 16);
+        g.destroy();
+      }
       weaponsList.forEach((w: any) => {
         const slotIndex = w.slotIndex ?? w.SlotIndex;
         const wConfigId = w.configId || w.ConfigId;
+        const level = w.level ?? w.Level ?? 1; // <--- EXTRACT WEAPON LEVEL
         activeWeaponSlots.add(slotIndex);
 
         let wx = 0, wy = 0;
@@ -321,13 +343,92 @@ export class ActorRenderer {
         }
 
         if (sprite && wConfig) {
+
+          // =======================================================
+          // >>> NEW: WEAPON ENHANCEMENT VFX (Runes of Magic Style)
+          // =======================================================
+          const currentVfxLevel = (sprite as any).__vfxLevel;
+          if (currentVfxLevel !== level) {
+            (sprite as any).__vfxLevel = level;
+
+            // 1. Clean up old FX if level changed
+            if ((sprite as any).__aura) {
+              (sprite as any).__aura.destroy();
+              (sprite as any).__aura = null;
+            }
+            if ((sprite as any).__emitter) {
+              (sprite as any).__emitter.destroy();
+              (sprite as any).__emitter = null;
+            }
+
+            const wScale = wConfig.scale || 1.0;
+
+            // 2. Apply Custom Sprite Aura (Level 7+)
+            // PostFX glow looks blocky on scaled pixel art, so we use a blended duplicate sprite!
+            if (level >= 7) {
+              const aura = scene.add.sprite(wx, wy, wConfig.textureKey);
+              if (wConfig.iconFrame !== undefined) aura.setFrame(wConfig.iconFrame);
+
+              aura.setBlendMode(Phaser.BlendModes.ADD); // Makes it glow like light
+              aura.setAlpha(0.6);
+              aura.setTint(level >= 9 ? 0xff4400 : 0x00ffff); // Mythic Fiery Red vs Epic Cyan
+
+              weaponsContainer.addAt(aura, 0); // Put it perfectly behind the weapon
+              (sprite as any).__aura = aura;
+            }
+
+            // 3. Apply Particle Sparks (Level 3+)
+            if (level >= 3) {
+              const isLvl5 = level >= 5;
+
+              const emitter = scene.add.particles(0, 0, 'fx_spark', {
+                // REMOVED wScale: Fixed spawn box so it always spawns nicely around the weapon
+                x: { min: -25, max: 25 },
+                y: { min: -35, max: 25 },
+
+                // SLOW MOTION MOVEMENT
+                speed: { min: 5, max: 15 },
+                angle: { min: -180, max: 180 },
+
+                // REMOVED wScale: Stars are always a visible, consistent size now
+                scale: { start: 0.8, end: 0 },
+                alpha: { start: 1, end: 0 },
+
+                lifespan: { min: 1200, max: 2500 },
+                tint: [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff, 0xffffff],
+                frequency: isLvl5 ? 400 : 800,
+                blendMode: 'ADD'
+              });
+
+              // >>> FIX: Force the particles to render ABOVE the weapon sprite
+              emitter.setDepth(10);
+
+              weaponsContainer.add(emitter);
+              emitter.startFollow(sprite);
+              (sprite as any).__emitter = emitter;
+            }
+          }
+
+          // >>> UPDATE AURA POSITION & ANIMATION EVERY FRAME <<<
+          if ((sprite as any).__aura) {
+            const aura = (sprite as any).__aura;
+            aura.x = sprite.x;
+            aura.y = sprite.y;
+            aura.rotation = sprite.rotation;
+            aura.setFlipY(sprite.flipY);
+            aura.setFlipX(sprite.flipX);
+
+            // Make the aura pulse slightly so it feels magical
+            const pulseScale = (wConfig.scale || 1.0) * (1.15 + Math.sin(scene.time.now / 150) * 0.08);
+            aura.setScale(pulseScale);
+          }
+          // =======================================================
+
           // Default to player aim (mouse pointer)
           let aimX = actor.aimX ?? actor.AimX ?? targetX;
           let aimY = actor.aimY ?? actor.AimY ?? targetY;
 
           // ✅ AutoShot Visual Rotation Tracking
-          // Same behavior as before (in-range target preferred, else absolute closest),
-          // but merged into a single enemy scan instead of two full passes.
           const isAutoShot = wConfig.autoShot === true || wConfig.AutoShot === true;
           if (isPlayer && isAutoShot && enemyList && enemyList.length > 0) {
             const baseRange = wConfig.range ?? wConfig.Range ?? 300;
@@ -399,12 +500,17 @@ export class ActorRenderer {
         }
       });
 
-      // Remove sprites for slots that are no longer active. Iterating the small
-      // weaponSprites map (almost always 1-4 entries) instead of every container
-      // child avoids a linear scan of the whole container per actor per frame.
+      // Remove sprites & VFX for slots that are no longer active
       if (refs.weaponSprites.size > 0) {
         refs.weaponSprites.forEach((child, slot) => {
           if (!activeWeaponSlots.has(slot)) {
+            // ---> NEW: Destroy Emitter and Aura if weapon is recycled/dropped
+            if ((child as any).__emitter) {
+              (child as any).__emitter.destroy();
+            }
+            if ((child as any).__aura) {
+              (child as any).__aura.destroy();
+            }
             child.destroy();
             refs.weaponSprites.delete(slot);
           }

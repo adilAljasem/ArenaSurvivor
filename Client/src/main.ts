@@ -14,6 +14,9 @@ export const envName = isDev ? "Development (Vite)" : "Production (Traefik)";
 export const masterUrl = isDev ? "http://localhost:5000/lobbyHub" : "/lobbyHub";
 export let activeWorkerUrl = "Waiting for match...";
 
+const SKIP_LOBBY_IN_DEV = isDev && true;
+
+
 // 1. Master Node
 export const lobbyConnection = new HubConnectionBuilder()
   .withUrl(masterUrl)
@@ -399,19 +402,62 @@ class GameScene extends Phaser.Scene {
     if (lobbyConnection.state === HubConnectionState.Disconnected) {
       lobbyConnection.start()
         .then(() => {
-          console.log("SignalR Master Connected! Launching Lobby UI...");
+          console.log("SignalR Master Connected!");
 
-          const getIconBase64 = (textureKey: string, frame: number) => {
-            if (this.textures.exists(textureKey)) {
-              return this.textures.getBase64(textureKey, frame);
-            }
-            return null;
-          };
+          // =======================================================
+          // >>> DEV QUICKSTART FLAG <<<
+          // Set this to true to instantly skip the lobby in Dev Mode
+          // =======================================================
 
-          // Pass the Master connection to the HTML UI
-          new LobbyUI(lobbyConnection, getIconBase64, () => {
-            console.log("Match joined. Entering Game mode!");
-          });
+          if (SKIP_LOBBY_IN_DEV) {
+            console.log("[DEV QUICKSTART] Bypassing Lobby UI...");
+
+            // 1. Instantly create a room
+            lobbyConnection.invoke("CreateRoom", "DevPlayer", "Dev Auto Room", "", "easy");
+
+            // 2. Automate the character selection and readying up
+            let hasSelectedChar = false;
+
+            // We hook into the roster updates just like the UI would
+            lobbyConnection.on("UpdateLobbyRoster", (data: any) => {
+              const me = data.players.find((p: any) => p.id === lobbyConnection.connectionId);
+              if (!me) return;
+
+              if (!hasSelectedChar && masterConfigs?.characters) {
+                hasSelectedChar = true;
+
+                // Grab the very first available character ID from your configs
+                const firstCharId = Object.keys(masterConfigs.characters)[0];
+
+                lobbyConnection.invoke("SelectCharacter", firstCharId).then(() => {
+                  lobbyConnection.invoke("ToggleReady"); // Ready up automatically
+                });
+              }
+              // 3. Once everyone (just us) is ready, launch the game
+              else if (me.isReady && data.hostId === me.id) {
+                const allReady = data.players.every((p: any) => p.isReady);
+                if (allReady) {
+                  lobbyConnection.invoke("StartMatch");
+                }
+              }
+            });
+
+          } else {
+            // ---------------------------------------------------
+            // Normal Production Flow (Loads the Lobby UI)
+            // ---------------------------------------------------
+            console.log("Launching Lobby UI...");
+            const getIconBase64 = (textureKey: string, frame: number) => {
+              if (this.textures.exists(textureKey)) {
+                return this.textures.getBase64(textureKey, frame);
+              }
+              return null;
+            };
+
+            new LobbyUI(lobbyConnection, getIconBase64, () => {
+              console.log("Match joined. Entering Game mode!");
+            });
+          }
         })
         .catch((err: any) => console.error("SignalR Master Connection Error:", err));
     }

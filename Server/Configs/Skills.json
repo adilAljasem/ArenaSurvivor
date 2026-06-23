@@ -293,7 +293,8 @@
         "cooldownSeconds": 10.0,
         "projectileCount": 45,
         "isRepeated": false,
-        "baseDamage": 25
+        "baseDamage": 25,
+        "spreadAngle": 360.0
     },
     "test_laser_beam": {
         "id": "test_laser_beam",

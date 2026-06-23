@@ -31,7 +31,9 @@
     "applyEffectsOnHit": [
       "burning"
     ],
-    "grantedSkills": ["barrier"],
+    "grantedSkills": [
+      "barrier"
+    ],
     "statRollChance": 0.50,
     "maxRandomStats": 2,
     "allowedRandomStats": {
@@ -267,6 +269,7 @@
     "defaultFacingRight": true,
     "attackAnimType": "recoil",
     "soundFire": "sfx_rocket_fire",
+    "maxlevel":9,
     "statBonuses": {
       "armor": -1
     },
@@ -411,6 +414,7 @@
     "defaultFacingRight": true,
     "attackAnimType": "swing",
     "soundFire": "sfx_hammer_swing",
+    "maxLevel": 7,
     "statBonuses": {
       "armor": 2,
       "movementSpeed": -10
