@@ -40,9 +40,21 @@ public class SkillSystem : IGameSystem
         float finalSpellDamage = config.BaseDamage;
         if (caster != null && Math.Abs(finalSpellDamage) > 0)
         {
+            // >>> NEW: Safe Brotato Math for Spells (Preserves Healing Logic) <<<
+            bool isHeal = finalSpellDamage < 0;
+            float rawAbsoluteDamage = Math.Abs(finalSpellDamage);
+
             float magicBonus = caster.GetTotalStat("magicDamage", _configs);
             float damagePercent = caster.GetTotalStat("damagePercent", _configs);
-            finalSpellDamage = (finalSpellDamage + (magicBonus * 0.5f)) * (1f + damagePercent);
+
+            // Add flat magic scaling, then multiply by damage percent
+            rawAbsoluteDamage = (rawAbsoluteDamage + (magicBonus * 0.5f)) * (1f + damagePercent);
+
+            // Safeguard against negative scaling
+            rawAbsoluteDamage = Math.Max(0f, rawAbsoluteDamage);
+
+            // Restore the sign (Negative for heals, Positive for damage)
+            finalSpellDamage = isHeal ? -rawAbsoluteDamage : rawAbsoluteDamage;
         }
 
         // --- ACTION: SELF BUFF ---
@@ -125,7 +137,7 @@ public class SkillSystem : IGameSystem
                 if (config.ChannelDurationSeconds > 0) computedLifespan = config.ChannelDurationSeconds;
                 if (projConfig.Lifespan > 0) computedLifespan = projConfig.Lifespan;
                 if (config.Lifespan > 0) computedLifespan = config.Lifespan;
-                
+
                 int pCount = Math.Max(1, config.ProjectileCount);
                 var shotDirections = ProjectileFactory.CalculateSpreadDirections(dirX, dirY, pCount, config.SpreadAngle);
                 var newBullets = new List<ProjectileEntity>();

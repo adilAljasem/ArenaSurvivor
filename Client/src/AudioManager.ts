@@ -1,120 +1,124 @@
 import * as Phaser from 'phaser';
 
-// ==========================================================================
-// GLOBAL AUDIO MANAGER (Upgraded for Spatial Audio & Anti-Fatigue)
-// ==========================================================================
 export class AudioManager {
-  private static _instance: AudioManager;
+  private static instance: AudioManager;
 
-  masterSfxVolume: number = 1.0;
-  masterMusicVolume: number = 1.0;
+  // Core Volumes
+  public masterVolume: number = 1.0;
+  public sfxVolume: number = 1.0;
+  public musicVolume: number = 1.0;
 
-  private _scene: Phaser.Scene | null = null;
-  private _lastProjectileHitSound: string = '';
-  
-  // Track when a sound was last played to prevent harsh overlapping
-  private _lastPlayedTime: Map<string, number> = new Map();
+  // UI Specific Volume
+  public uiVolume: number = 1.0;
+
+  private scene?: Phaser.Scene;
+  private currentMusic?: Phaser.Sound.BaseSound;
 
   private constructor() {
-    this._loadPreferences();
+    // Load saved volumes from LocalStorage so they persist across reloads
+    const savedMaster = localStorage.getItem('masterVolume');
+    const savedSfx = localStorage.getItem('sfxVolume');
+    const savedMusic = localStorage.getItem('musicVolume');
+    const savedUi = localStorage.getItem('uiVolume'); // <--- NEW
+
+    if (savedMaster !== null) this.masterVolume = parseFloat(savedMaster);
+    if (savedSfx !== null) this.sfxVolume = parseFloat(savedSfx);
+    if (savedMusic !== null) this.musicVolume = parseFloat(savedMusic);
+    if (savedUi !== null) this.uiVolume = parseFloat(savedUi);
+  }
+  // >>> RESTORED PROJECTILE LOGIC <<<
+  private lastProjectileHitSound: string = '';
+
+  public init(scene: Phaser.Scene) {
+    this.setScene(scene);
   }
 
-  static getInstance(): AudioManager {
-    if (!AudioManager._instance) {
-      AudioManager._instance = new AudioManager();
-    }
-    return AudioManager._instance;
+  public setLastProjectileHitSound(key: string) {
+    this.lastProjectileHitSound = key;
   }
 
-  init(scene: Phaser.Scene): void {
-    this._scene = scene;
-  }
-
-  /**
-   * Play an SFX with Spatial Audio and Anti-Fatigue!
-   * @param sourcePos Pass {x, y} to make the sound quieter if it's far from the camera!
-   */
-  playSfx(key: string, baseVolume: number = 1.0, sourcePos?: { x: number, y: number }): void {
-    if (!this._scene || !key) return;
-
-    // 1. ANTI-FATIGUE (Debounce)
-    // Prevent the EXACT same sound from playing more than once every 40ms. 
-    // This stops that harsh, robotic clipping noise when attack speed is very high!
-    const now = this._scene.time.now;
-    const lastPlayed = this._lastPlayedTime.get(key) || 0;
-    if (now - lastPlayed < 40) return; 
-    this._lastPlayedTime.set(key, now);
-
-    // 2. SPATIAL AUDIO (Distance Attenuation)
-    let spatialVolume = 1.0;
-    if (sourcePos) {
-      const cam = this._scene.cameras.main;
-      // Calculate distance from the exact center of the player's screen to the sound
-      const dist = Phaser.Math.Distance.Between(cam.midPoint.x, cam.midPoint.y, sourcePos.x, sourcePos.y);
-      
-      // If the sound is further than 80% of the screen width, it starts fading out
-      const maxAudibleDist = Math.max(cam.width, cam.height) * 0.8; 
-      
-      // Decrease volume linearly as it gets further away
-      spatialVolume = Phaser.Math.Clamp(1.0 - (dist / maxAudibleDist), 0, 1);
-    }
-
-    if (spatialVolume <= 0) return; // Don't play it at all if it's completely off-screen!
-
-    // 3. PITCH VARIATION
-    // Slightly randomize the pitch (-100 to 100 cents) so fast attacks sound organic!
-    const randomDetune = Phaser.Math.Between(-100, 100);
-    const finalVolume = baseVolume * this.masterSfxVolume * spatialVolume;
-
-    try {
-      if (this._scene.cache.audio.has(key)) {
-        this._scene.sound.play(key, { volume: finalVolume, detune: randomDetune });
-      }
-    } catch (_) { }
-  }
-
-  playMusic(key: string, baseVolume: number = 1.0): void {
-    if (!this._scene || !key || this.masterMusicVolume <= 0) return;
-    try {
-      if (this._scene.cache.audio.has(key)) {
-        this._scene.sound.play(key, { volume: baseVolume * this.masterMusicVolume, loop: true });
-      }
-    } catch (_) { }
-  }
-
-  setLastProjectileHitSound(soundKey: string): void {
-    this._lastProjectileHitSound = soundKey;
-  }
-
-  playLastProjectileHitSound(sourcePos?: { x: number, y: number }): void {
-    if (this._lastProjectileHitSound) {
-      this.playSfx(this._lastProjectileHitSound, 1.0, sourcePos);
+  public playLastProjectileHitSound() {
+    if (this.lastProjectileHitSound) {
+      this.playSfx(this.lastProjectileHitSound);
     }
   }
 
-  setSfxVolume(value: number): void {
-    this.masterSfxVolume = Math.max(0, Math.min(1, value));
-    this._savePreferences();
+  public static getInstance(): AudioManager {
+    if (!AudioManager.instance) {
+      AudioManager.instance = new AudioManager();
+    }
+    return AudioManager.instance;
   }
 
-  setMusicVolume(value: number): void {
-    this.masterMusicVolume = Math.max(0, Math.min(1, value));
-    this._savePreferences();
+  public setScene(scene: Phaser.Scene) {
+    this.scene = scene;
   }
 
-  private _savePreferences(): void {
-    try {
-      localStorage.setItem('sfxVolume', this.masterSfxVolume.toString());
-      localStorage.setItem('musicVolume', this.masterMusicVolume.toString());
-    } catch (_) { }
+  // --- VOLUME SETTERS (Saves automatically) ---
+  public setUiVolume(vol: number) {
+    this.uiVolume = Phaser.Math.Clamp(vol, 0, 1);
+    localStorage.setItem('uiVolume', this.uiVolume.toString());
   }
 
-  private _loadPreferences(): void {
-    try {
-      const sfx = localStorage.getItem('sfxVolume');
-      const music = localStorage.getItem('musicVolume');
-      if (sfx !== null) this.masterSfxVolume = Math.max(0, Math.min(1, parseFloat(sfx)));
-      if (music !== null) this.masterMusicVolume = Math.max(0, Math.min(1, parseFloat(music)));
-    } catch (_) { }
+  public setMasterVolume(vol: number) {
+    this.masterVolume = Phaser.Math.Clamp(vol, 0, 1);
+    localStorage.setItem('masterVolume', this.masterVolume.toString());
+    // Update currently playing music
+    if (this.currentMusic && this.currentMusic.isPlaying) {
+      (this.currentMusic as any).setVolume(this.musicVolume * this.masterVolume);
+    }
+  }
+
+  public setSfxVolume(vol: number) {
+    this.sfxVolume = Phaser.Math.Clamp(vol, 0, 1);
+    localStorage.setItem('sfxVolume', this.sfxVolume.toString());
+  }
+
+  public setMusicVolume(vol: number) {
+    this.musicVolume = Phaser.Math.Clamp(vol, 0, 1);
+    localStorage.setItem('musicVolume', this.musicVolume.toString());
+    if (this.currentMusic && this.currentMusic.isPlaying) {
+      (this.currentMusic as any).setVolume(this.musicVolume * this.masterVolume);
+    }
+  }
+
+  // --- PLAYBACK METHODS ---
+  public playUiSfx(key: string) {
+    if (!this.scene || !this.scene.sound) return;
+
+    // Multiply by master volume to ensure master mute works on UI too
+    const finalVolume = this.masterVolume * this.uiVolume;
+
+    if (finalVolume > 0 && (this.scene.sound.get(key) || this.scene.cache.audio.exists(key))) {
+      this.scene.sound.play(key, { volume: finalVolume });
+    }
+  }
+
+  public playSfx(key: string, config?: Phaser.Types.Sound.SoundConfig) {
+    if (!this.scene || !this.scene.sound) return;
+    const finalVolume = this.masterVolume * this.sfxVolume * (config?.volume || 1);
+
+    if (finalVolume > 0 && (this.scene.sound.get(key) || this.scene.cache.audio.exists(key))) {
+      this.scene.sound.play(key, { ...config, volume: finalVolume });
+    }
+  }
+
+  public playMusic(key: string) {
+    if (!this.scene || !this.scene.sound) return;
+
+    if (this.currentMusic && this.currentMusic.key === key && this.currentMusic.isPlaying) {
+      return; // Already playing
+    }
+
+    if (this.currentMusic) {
+      this.currentMusic.stop();
+    }
+
+    const finalVolume = this.masterVolume * this.musicVolume;
+
+    if (this.scene.sound.get(key) || this.scene.cache.audio.exists(key)) {
+      this.currentMusic = this.scene.sound.add(key, { volume: finalVolume, loop: true });
+      this.currentMusic.play();
+    }
   }
 }

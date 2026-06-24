@@ -140,7 +140,7 @@ class GameScene extends Phaser.Scene {
     this.load.spritesheet('effects1', 'assets/Effects/effects1.png', { frameWidth: 64, frameHeight: 64 });
     this.load.spritesheet('characters_sheet1', 'assets/Characters/char1.png', { frameWidth: 32, frameHeight: 32 });
     this.load.spritesheet('ammo_sheet2', '/assets/Weapons/ammo2.png', { frameWidth: 60, frameHeight: 54 });
-    this.load.spritesheet('goblinCavebat_sheet', '/assets/Enemies/goblin-cavbat.png', { frameWidth: 400, frameHeight: 268 });
+    this.load.spritesheet('goblinCavebat_sheet', '/assets/Enemies/goblin-cavbat.png', { frameWidth: 83, frameHeight: 55.8 });
     this.load.spritesheet('spike_enemy', '/assets/Enemies/spike enemy.png', { frameWidth: 47, frameHeight: 38 });
     this.load.spritesheet('spring_enemy', '/assets/Enemies/spring enemy.png', { frameWidth: 48, frameHeight: 48 });
     this.load.spritesheet('effects2', '/assets/Effects/effect2.png', { frameWidth: 64, frameHeight: 96 });
@@ -156,6 +156,12 @@ class GameScene extends Phaser.Scene {
     this.load.audio('sfx_shoot', 'assets/Audio/weapon-fire-1.wav');
     this.load.audio('ball-shoot', 'assets/Audio/ball-tap.wav');
     this.load.audio('sword-shoot', 'assets/Audio/sword-strikes.wav');
+
+    this.load.audio('ui_hover', '/assets/Audio/ui_hover.mp3');
+    this.load.audio('ui_buy', '/assets/Audio/ui_buy.mp3');
+    this.load.audio('ui_recycle', '/assets/Audio/ui_recycle.wav');
+    this.load.audio('ui_levelup', '/assets/audio/ui_levelup.wav');
+    this.load.audio('ui_click', '/assets/Audio/UI/btnclick.mp3');
   }
 
   create() {
@@ -611,6 +617,8 @@ class GameScene extends Phaser.Scene {
           skills: pk[9] || []
         });
       });
+
+      
 
       rawState.me?.forEach((m: any[]) => {
         const cached = this.enemyCache.get(m[0]);

@@ -459,7 +459,7 @@ public class CombatSystem : IGameSystem
         return mitigatedPhys + mitigatedMagic;
     }
 
-    public static (float phys, float magic, bool isCrit) CalculateWeaponDamageSplit(BaseActorEntity actor, WeaponConfig wCfg, EquippedWeapon weapon, ConfigManager configs)
+   public static (float phys, float magic, bool isCrit) CalculateWeaponDamageSplit(BaseActorEntity actor, WeaponConfig wCfg, EquippedWeapon weapon, ConfigManager configs)
     {
         float physDamage = weapon.TotalBaseStats.GetValueOrDefault("meleeDamage", 0f) + weapon.RolledStats.GetValueOrDefault("meleeDamage", 0f) +
                            weapon.TotalBaseStats.GetValueOrDefault("rangedDamage", 0f) + weapon.RolledStats.GetValueOrDefault("rangedDamage", 0f);
@@ -475,9 +475,14 @@ public class CombatSystem : IGameSystem
             }
         }
 
+        // Apply the general damage multiplier
         float damagePercent = actor.GetTotalStat("damagePercent", configs);
         physDamage *= (1f + damagePercent);
         magicDamage *= (1f + damagePercent);
+
+        // >>> THE BROTATO SAFEGUARD: Clamp to 0 so negative stats don't heal enemies! <<<
+        physDamage = Math.Max(0f, physDamage);
+        magicDamage = Math.Max(0f, magicDamage);
 
         bool isCrit = false;
         if (physDamage > 0 && Random.Shared.NextDouble() <= Math.Clamp(actor.GetTotalStat("critChance", configs), 0f, 1f))

@@ -13,7 +13,7 @@ namespace Server.Commands;
 public interface ICheatCommand
 {
     string Description { get; }
-    Task ExecuteAsync(string[] args, GameState state, ConfigManager configs, string playerId, IClientProxy caller);
+    Task ExecuteAsync(string[] args, GameRoom state, ConfigManager configs, string playerId, IClientProxy caller);
 }
 
 // 2. The Dispatcher (The Gatekeeper)
@@ -39,9 +39,12 @@ public static class CommandDispatcher
         _commands["removetime"] = new RemoveTimeCommand();
         _commands["toggleshop"] = new ToggleShopCommand();
         _commands["givestat"] = new GiveStatCommand();
+
+        _commands["debugstats"] = new DebugStatsCommand();
+
     }
 
-    public static async Task ExecuteAsync(string input, GameState state, ConfigManager configs, string playerId, IClientProxy caller)
+    public static async Task ExecuteAsync(string input, GameRoom room, ConfigManager configs, string playerId, IClientProxy caller)
     {
         var parts = input.TrimStart('/').Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0) return;
@@ -51,7 +54,7 @@ public static class CommandDispatcher
         {
             try
             {
-                await command.ExecuteAsync(parts.Skip(1).ToArray(), state, configs, playerId, caller);
+                await command.ExecuteAsync(parts.Skip(1).ToArray(), room, configs, playerId, caller);
             }
             catch (Exception ex)
             {
@@ -65,6 +68,33 @@ public static class CommandDispatcher
     }
 }
 
+
+public class DebugStatsCommand : ICheatCommand
+{
+    public string Description => "Prints stats of all nearby enemies.";
+    public async Task ExecuteAsync(string[] args, GameRoom room, ConfigManager configs, string playerId, IClientProxy caller)
+    {
+        if (!room.State.Players.TryGetValue(playerId, out var player)) return;
+
+        var lines = new System.Text.StringBuilder();
+        foreach (var enemy in room.State.Enemies.Values)
+        {
+            float dx = enemy.X - player.X, dy = enemy.Y - player.Y;
+            if (dx*dx + dy*dy > 600*600) continue; // only nearby
+
+            float maxHp = enemy.CachedStats.GetValueOrDefault("maxHp", -1f);
+            lines.AppendLine($"[{enemy.ConfigId} #{enemy.Id}] " +
+                             $"HP={enemy.CurrentHp}/{enemy.CurrentMaxHp} " +
+                             $"CachedMaxHp={maxHp} " +
+                             $"State={enemy.ActionState}");
+        }
+
+        string output = lines.Length > 0 ? lines.ToString() : "No nearby enemies.";
+        await caller.SendAsync("ReceiveChatMessage", "System", output);
+    }
+}
+
+
 // =====================================================================
 // 3. YOUR SPECIFIC COMMAND CLASSES
 // =====================================================================
@@ -73,7 +103,7 @@ public class SetWaveCommand : ICheatCommand
 {
     public string Description => "Sets the current wave. Usage: /setwave <number>";
 
-    public async Task ExecuteAsync(string[] args, GameState state, ConfigManager configs, string playerId, IClientProxy caller)
+    public async Task ExecuteAsync(string[] args, GameRoom room, ConfigManager configs, string playerId, IClientProxy caller)
     {
         if (args.Length == 0 || !int.TryParse(args[0], out int targetWave))
         {
@@ -81,9 +111,10 @@ public class SetWaveCommand : ICheatCommand
             return;
         }
 
-        state.CurrentWave = targetWave;
+        room.State.CurrentWave = targetWave;
         // End the current phase immediately so the new wave loads cleanly
-        state.PhaseTimer = 0;
+        room.State.PhaseTimer = 0;
+
 
         await caller.SendAsync("ReceiveChatMessage", "System", $"Warped to Wave {targetWave}!");
     }
@@ -93,9 +124,9 @@ public class SkipPhaseCommand : ICheatCommand
 {
     public string Description => "Skips the current phase timer instantly.";
 
-    public async Task ExecuteAsync(string[] args, GameState state, ConfigManager configs, string playerId, IClientProxy caller)
+    public async Task ExecuteAsync(string[] args, GameRoom room, ConfigManager configs, string playerId, IClientProxy caller)
     {
-        state.PhaseTimer = 0;
+        room.State.PhaseTimer = 0;
         await caller.SendAsync("ReceiveChatMessage", "System", "Phase skipped!");
     }
 }
@@ -104,7 +135,7 @@ public class SpawnEnemyCommand : ICheatCommand
 {
     public string Description => "Spawns enemies near you. Usage: /spawnenemy <configId> [count]";
 
-    public async Task ExecuteAsync(string[] args, GameState state, ConfigManager configs, string playerId, IClientProxy caller)
+    public async Task ExecuteAsync(string[] args, GameRoom room, ConfigManager configs, string playerId, IClientProxy caller)
     {
         if (args.Length == 0)
         {
@@ -122,7 +153,7 @@ public class SpawnEnemyCommand : ICheatCommand
         }
 
         // Find the player who called the cheat so we can spawn the enemy near them
-        if (state.Players.TryGetValue(playerId, out var player))
+        if (room.State.Players.TryGetValue(playerId, out var player))
         {
             for (int i = 0; i < count; i++)
             {
@@ -134,7 +165,7 @@ public class SpawnEnemyCommand : ICheatCommand
                 newEnemy.Initialize(eCfg, player.X + ox, player.Y + oy, configs);
                 newEnemy.CurrentHp = newEnemy.GetTotalStat("maxHp", configs);
 
-                state.Enemies.TryAdd(newEnemy.Id, newEnemy);
+                room.State.Enemies.TryAdd(newEnemy.Id, newEnemy);
             }
             await caller.SendAsync("ReceiveChatMessage", "System", $"Spawned {count}x {eCfg.Name}!");
         }
@@ -145,9 +176,9 @@ public class HealCommand : ICheatCommand
 {
     public string Description => "Heals you to full HP. Usage: /heal";
 
-    public async Task ExecuteAsync(string[] args, GameState state, ConfigManager configs, string playerId, IClientProxy caller)
+    public async Task ExecuteAsync(string[] args, GameRoom room, ConfigManager configs, string playerId, IClientProxy caller)
     {
-        if (state.Players.TryGetValue(playerId, out var player))
+        if (room.State.Players.TryGetValue(playerId, out var player))
         {
             player.CurrentHp = player.GetTotalStat("maxHp", configs);
             await caller.SendAsync("ReceiveChatMessage", "System", "Healed to max HP!");
@@ -159,7 +190,7 @@ public class GiveGoldCommand : ICheatCommand
 {
     public string Description => "Gives you gold. Usage: /givegold <amount>";
 
-    public async Task ExecuteAsync(string[] args, GameState state, ConfigManager configs, string playerId, IClientProxy caller)
+    public async Task ExecuteAsync(string[] args, GameRoom room, ConfigManager configs, string playerId, IClientProxy caller)
     {
         if (args.Length == 0 || !int.TryParse(args[0], out int amount))
         {
@@ -167,7 +198,7 @@ public class GiveGoldCommand : ICheatCommand
             return;
         }
 
-        if (state.Players.TryGetValue(playerId, out var player))
+        if (room.State.Players.TryGetValue(playerId, out var player))
         {
             player.Gold += amount;
             await caller.SendAsync("ReceiveChatMessage", "System", $"Added {amount} gold!");
@@ -179,7 +210,7 @@ public class GiveXpCommand : ICheatCommand
 {
     public string Description => "Gives you XP. Usage: /givexp <amount>";
 
-    public async Task ExecuteAsync(string[] args, GameState state, ConfigManager configs, string playerId, IClientProxy caller)
+    public async Task ExecuteAsync(string[] args, GameRoom room, ConfigManager configs, string playerId, IClientProxy caller)
     {
         if (args.Length == 0 || !int.TryParse(args[0], out int amount))
         {
@@ -187,7 +218,7 @@ public class GiveXpCommand : ICheatCommand
             return;
         }
 
-        if (state.Players.TryGetValue(playerId, out var player))
+        if (room.State.Players.TryGetValue(playerId, out var player))
         {
             player.GainXp(amount, configs);
             await caller.SendAsync("ReceiveChatMessage", "System", $"Added {amount} XP!");
@@ -199,10 +230,10 @@ public class KillAllCommand : ICheatCommand
 {
     public string Description => "Kills all enemies on screen. Usage: /killall";
 
-    public async Task ExecuteAsync(string[] args, GameState state, ConfigManager configs, string playerId, IClientProxy caller)
+    public async Task ExecuteAsync(string[] args, GameRoom room, ConfigManager configs, string playerId, IClientProxy caller)
     {
         int count = 0;
-        foreach (var enemy in state.Enemies.Values)
+        foreach (var enemy in room.State.Enemies.Values)
         {
             if (enemy.ActionState != "Dead" && enemy.Team == "Enemy")
             {
@@ -219,7 +250,7 @@ public class GiveWeaponCommand : ICheatCommand
 {
     public string Description => "Forces a weapon into your inventory. Usage: /giveweapon <configId>";
 
-    public async Task ExecuteAsync(string[] args, GameState state, ConfigManager configs, string playerId, IClientProxy caller)
+    public async Task ExecuteAsync(string[] args, GameRoom room, ConfigManager configs, string playerId, IClientProxy caller)
     {
         if (args.Length == 0)
         {
@@ -227,7 +258,7 @@ public class GiveWeaponCommand : ICheatCommand
             return;
         }
 
-        if (state.Players.TryGetValue(playerId, out var player))
+        if (room.State.Players.TryGetValue(playerId, out var player))
         {
             string wId = args[0];
             if (configs.Weapons.TryGetValue(wId, out var wCfg))
@@ -253,7 +284,7 @@ public class AddTimeCommand : ICheatCommand
 {
     public string Description => "Adds seconds to the current phase. Usage: /addtime <seconds>";
 
-    public async Task ExecuteAsync(string[] args, GameState state, ConfigManager configs, string playerId, IClientProxy caller)
+    public async Task ExecuteAsync(string[] args, GameRoom room, ConfigManager configs, string playerId, IClientProxy caller)
     {
         if (args.Length == 0 || !float.TryParse(args[0], out float seconds))
         {
@@ -261,8 +292,8 @@ public class AddTimeCommand : ICheatCommand
             return;
         }
 
-        state.PhaseTimer += seconds;
-        await caller.SendAsync("ReceiveChatMessage", "System", $"Added {seconds} seconds! Timer is now {Math.Round(state.PhaseTimer, 1)}s.");
+        room.State.PhaseTimer += seconds;
+        await caller.SendAsync("ReceiveChatMessage", "System", $"Added {seconds} seconds! Timer is now {Math.Round(room.State.PhaseTimer, 1)}s.");
     }
 }
 
@@ -270,7 +301,7 @@ public class RemoveTimeCommand : ICheatCommand
 {
     public string Description => "Removes seconds from the current phase. Usage: /removetime <seconds>";
 
-    public async Task ExecuteAsync(string[] args, GameState state, ConfigManager configs, string playerId, IClientProxy caller)
+    public async Task ExecuteAsync(string[] args, GameRoom room, ConfigManager configs, string playerId, IClientProxy caller)
     {
         if (args.Length == 0 || !float.TryParse(args[0], out float seconds))
         {
@@ -279,8 +310,8 @@ public class RemoveTimeCommand : ICheatCommand
         }
 
         // Clamp to 0 so we don't break the game logic with negative time
-        state.PhaseTimer = Math.Max(0, state.PhaseTimer - seconds);
-        await caller.SendAsync("ReceiveChatMessage", "System", $"Removed {seconds} seconds! Timer is now {Math.Round(state.PhaseTimer, 1)}s.");
+        room.State.PhaseTimer = Math.Max(0, room.State.PhaseTimer - seconds);
+        await caller.SendAsync("ReceiveChatMessage", "System", $"Removed {seconds} seconds! Timer is now {Math.Round(room.State.PhaseTimer, 1)}s.");
     }
 }
 
@@ -288,16 +319,16 @@ public class ToggleShopCommand : ICheatCommand
 {
     public string Description => "Toggles the shop phase permanently on/off. Usage: /toggleshop";
 
-    public async Task ExecuteAsync(string[] args, GameState state, ConfigManager configs, string playerId, IClientProxy caller)
+    public async Task ExecuteAsync(string[] args, GameRoom room, ConfigManager configs, string playerId, IClientProxy caller)
     {
-        state.SkipShopPhase = !state.SkipShopPhase;
+        room.State.SkipShopPhase = !room.State.SkipShopPhase;
 
-        string status = state.SkipShopPhase ? "DISABLED (Skipping directly to combat)" : "ENABLED (Normal 30s shop phase)";
+        string status = room.State.SkipShopPhase ? "DISABLED (Skipping directly to combat)" : "ENABLED (Normal 30s shop phase)";
 
         // Bonus: If they type it while already IN the shop, skip it immediately!
-        if (state.SkipShopPhase && state.Phase == GamePhase.ShopPhase)
+        if (room.State.SkipShopPhase && room.State.Phase == GamePhase.ShopPhase)
         {
-            state.PhaseTimer = 0;
+            room.State.PhaseTimer = 0;
         }
 
         await caller.SendAsync("ReceiveChatMessage", "System", $"Shop Phase is now {status}!");
@@ -308,7 +339,7 @@ public class GiveStatCommand : ICheatCommand
 {
     public string Description => "Gives you a specific stat bonus. Usage: /givestat <statName> <amount>";
 
-    public async Task ExecuteAsync(string[] args, GameState state, ConfigManager configs, string playerId, IClientProxy caller)
+    public async Task ExecuteAsync(string[] args, GameRoom room, ConfigManager configs, string playerId, IClientProxy caller)
     {
         if (args.Length < 2 || !float.TryParse(args[1], out float amount))
         {
@@ -325,7 +356,7 @@ public class GiveStatCommand : ICheatCommand
             return;
         }
 
-        if (state.Players.TryGetValue(playerId, out var player))
+        if (room.State.Players.TryGetValue(playerId, out var player))
         {
             // Add a permanent flat modifier (0 means flat addition, not multiplier)
             player.Stats.AddModifier(statName, amount, 0);

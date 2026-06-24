@@ -43,7 +43,7 @@ What this looks like in gameplay:
 
 
 
-   =========================================================
+=========================================================
 💀 DIFFICULTY SYSTEM CHEAT SHEET 💀
 =========================================================
 
@@ -69,3 +69,29 @@ What this looks like in gameplay:
 5. EXCLUSIVE ENEMIES (Enemies.json)
    • "AllowedDifficulties": ["hard"] -> This enemy will ONLY spawn on Hard mode.
    • "AllowedDifficulties": [] -> (Empty list) This enemy spawns on all difficulties.
+
+
+=========================================================
+📈 STAT SCALING & MATH CHEAT SHEET 📈
+=========================================================
+
+1. THE TWO STAT BUCKETS (How to assign stats in JSON)
+   • "statBonuses": The FLAT bucket (+). Use this to add raw numbers (e.g., +5 Armor, +20 Ranged Damage).
+     *CRITICAL*: This is ALSO where you place Global percentage stats like "damagePercent" or "xpGainPercent" (e.g., "damagePercent": 0.20 grants exactly +20% global damage).
+   • "statMultipliers": The PERCENTAGE bucket (%). Use this to scale a character's entire flat stat pool. 
+     *Rule*: These stack ADDITIVELY. (e.g., Equipping two items with "armor": 0.50 gives +100% total Armor scale).
+
+2. GLOBAL DAMAGE vs. WEAPON SCALING
+   • "damageScaling" (Weapon Property): Determines how much a specific weapon feeds on your character's stats. 
+     (e.g., "rangedDamage": 1.2 -> The bullet takes 120% of your Ranged Damage stat).
+   • "damagePercent" (Character Stat): The GLOBAL multiplier applied to the final bullet damage at the very end of the math loop.
+
+3. COMMON EXAMPLES (How to write the JSON)
+   • Give a character +20% Ranged Damage globally:
+     Put "rangedDamage": 0.20 inside "statMultipliers".
+   • Give an item +10% Global Damage to ALL weapons:
+     Put "damagePercent": 0.10 inside "statBonuses".
+   • Give exactly +5 flat Magic Damage:
+     Put "magicDamage": 5 inside "statBonuses".
+   • Wipe out a character's Magic Damage completely (-100%):
+     Put "magicDamage": -1.0 inside "statMultipliers".

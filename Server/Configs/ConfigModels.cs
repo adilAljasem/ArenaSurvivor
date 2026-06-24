@@ -49,6 +49,7 @@ public abstract class BaseGearConfig
 
     // --- Fixed Stat Bonuses ---
     public Dictionary<string, float> StatBonuses { get; set; } = new();
+    public Dictionary<string, float> StatMultipliers { get; set; } = new();
 
     // --- Random Roll Properties ---
     public float StatRollChance { get; set; } = 0f;
@@ -96,6 +97,7 @@ public class CharacterConfig
 
     // --- Stats & Mechanics ---
     public Dictionary<string, float> BaseStats { get; set; } = new();
+    public Dictionary<string, float> StatMultipliers { get; set; } = new();
     public List<string> Traits { get; set; } = new();
     public List<DynamicModifier> DynamicModifiers { get; set; } = new();
 
@@ -144,6 +146,7 @@ public class EnemyConfig
     /// <summary>Max distance (px) at which this enemy fires its equipped weapons. Spells always bypass this.</summary>
     public float AttackRadius { get; set; } = 10f;
     public Dictionary<string, float> BaseStats { get; set; } = new();
+    public Dictionary<string, float> StatMultipliers { get; set; } = new();
 
     public List<string> StartingSkills { get; set; } = new();
 
@@ -288,6 +291,7 @@ public class EffectConfig
 
     // --- Stat Changes ---
     public Dictionary<string, float> StatModifiers { get; set; } = new();
+    public Dictionary<string, float> StatMultipliers { get; set; } = new();
 }
 
 

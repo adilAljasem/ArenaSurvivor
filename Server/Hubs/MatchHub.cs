@@ -131,6 +131,8 @@ public class MatchHub : Hub
         }
     }
 
+    
+
     public void SendInput(PlayerInputDto input)
     {
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
@@ -162,7 +164,7 @@ public class MatchHub : Hub
 
         if (message.StartsWith("/"))
         {
-            await Server.Commands.CommandDispatcher.ExecuteAsync(message, room.State, _configManager, Context.ConnectionId, Clients.Caller);
+            await Server.Commands.CommandDispatcher.ExecuteAsync(message, room, _configManager, Context.ConnectionId, Clients.Caller);
         }
         else
         {

@@ -23,13 +23,13 @@
     ],
     "animDeathFrameRate": 12,
     "baseStats": {
-      "maxHp": 300,
+      "maxHp": 3000000,
       "movementSpeed": 200,
       "meleeDamage": 50,
       "rangedDamage": 50,
       "harvesting": 5,
       "luck": 5,
-      "armor": 5,
+      "armor": 100,
       "magicDefense": 5
     },
     "startingWeapons": [],
@@ -40,7 +40,11 @@
     "dynamicModifiers": [],
     "traits": [
       "trait_packrat"
-    ]
+    ],
+    "statMultipliers": {
+    "rangedDamage": 0.20, 
+    "armor": 1.0        
+  }
   },
   "char_chunky": {
     "id": "char_chunky",

@@ -277,6 +277,7 @@ public class PlayerEntity : BaseActorEntity
     public int PendingLevelUps { get; set; }
     public Dictionary<string, float> PendingStatDiff { get; } = new();
     public List<Configs.LevelUpCardConfig> CurrentLevelUpChoices { get; set; } = new();
+    
 
     // The formula for how much XP you need to reach the next level
     public float GetXpRequirement() => 5 + (Level * 3);
