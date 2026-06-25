@@ -268,6 +268,7 @@ public class EnemyEntity : BaseActorEntity
 public class PlayerEntity : BaseActorEntity
 {
     public string ConnectionId { get; set; } = string.Empty;
+    public string PlayerId { get; set; } = string.Empty;
     public string ConfigId { get; set; } = "char_well_rounded";
     public string Name { get; set; } = "Guest";
     public bool IsReady { get; set; } = false;
@@ -277,7 +278,7 @@ public class PlayerEntity : BaseActorEntity
     public int PendingLevelUps { get; set; }
     public Dictionary<string, float> PendingStatDiff { get; } = new();
     public List<Configs.LevelUpCardConfig> CurrentLevelUpChoices { get; set; } = new();
-    
+
 
     // The formula for how much XP you need to reach the next level
     public float GetXpRequirement() => 5 + (Level * 3);

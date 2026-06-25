@@ -54,6 +54,14 @@ public class NetworkSystem : IGameSystem
         _eventBus.Subscribe<AoeVisualEvent>(ev => _aoeEvents.Add(ev.Dto));
         _eventBus.Subscribe<BeamVisualEvent>(ev => _beamEvents.Add(ev));
         _eventBus.Subscribe<BeamEndedEvent>(ev => _beamEndedEvents.Add(ev));
+        _eventBus.Subscribe<ChatMessageEvent>(ev =>
+        {
+            // We use _clientKnownEnemies.Keys because it holds a thread-safe list of all active ConnectionIds in this specific room!
+            if (!_clientKnownEnemies.IsEmpty)
+            {
+                _hubContext.Clients.Clients(_clientKnownEnemies.Keys).SendAsync("ReceiveChatMessage", ev.Sender, ev.Message);
+            }
+        });
     }
 
     public void Update(float dt, GameState state) { }

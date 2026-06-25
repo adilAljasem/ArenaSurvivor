@@ -5,6 +5,11 @@ using System.Threading.Tasks;
 
 namespace Server.Services;
 
+// ─── FIX: Replaced anonymous JSON object with a proper typed record.
+// The old code used an "OldConnectionId" field to secretly hold a PlayerId,
+// which was confusing and caused naming inconsistency across all call sites.
+file record MatchTokenData(string PlayerId, string RoomId);
+
 public class RedisService
 {
     private readonly IConnectionMultiplexer _redis;
@@ -14,42 +19,36 @@ public class RedisService
         _redis = redis;
     }
 
-    // Master Node calls this to stash the VIP ticket
-    public async Task SaveMatchToken(string token, string oldConnectionId, string roomId)
+    // Master Node calls this to issue a secure, one-time-use match ticket.
+    public async Task SaveMatchToken(string token, string playerId, string roomId)
     {
         var db = _redis.GetDatabase();
-        var data = JsonSerializer.Serialize(new { OldConnectionId = oldConnectionId, RoomId = roomId });
-        
-        // Tokens expire after 2 minutes. If the client doesn't connect by then, it's dead.
+        var data = JsonSerializer.Serialize(new MatchTokenData(playerId, roomId));
         await db.StringSetAsync($"match_token:{token}", data, TimeSpan.FromMinutes(2));
     }
 
-    // Worker Node calls this to validate the ticket
-    public async Task<(string OldConnectionId, string RoomId)?> ValidateAndConsumeToken(string token)
+    // Worker Node calls this to validate the ticket.
+    // Returns null if the token is missing, expired, or malformed.
+    public async Task<(string PlayerId, string RoomId)?> ValidateAndConsumeToken(string token)
     {
         var db = _redis.GetDatabase();
-        
-        // 1. Try to get the token
         var data = await db.StringGetAsync($"match_token:{token}");
         if (data.IsNullOrEmpty) return null;
 
-        // 2. CRITICAL: Delete the token immediately so it can never be reused (No replay attacks!)
+        // Delete immediately so the token can never be replayed.
         await db.KeyDeleteAsync($"match_token:{token}");
 
-        // 3. Parse and return the data
-        using var document = JsonDocument.Parse(data.ToString());
-        var oldId = document.RootElement.GetProperty("OldConnectionId").GetString();
-        var roomId = document.RootElement.GetProperty("RoomId").GetString();
+        var tokenData = JsonSerializer.Deserialize<MatchTokenData>(data.ToString());
+        if (tokenData == null) return null;
 
-        return (oldId, roomId);
+        return (tokenData.PlayerId, tokenData.RoomId);
     }
 
     public async Task SaveRoomTransferData(RoomTransferDto dto)
     {
         var db = _redis.GetDatabase();
         var json = JsonSerializer.Serialize(dto);
-        // Worker must claim it within 2 minutes
-        await db.StringSetAsync($"room_transfer:{dto.RoomId}", json, TimeSpan.FromMinutes(2)); 
+        await db.StringSetAsync($"room_transfer:{dto.RoomId}", json, TimeSpan.FromMinutes(2));
     }
 
     public async Task<RoomTransferDto?> GetRoomTransferData(string roomId)
@@ -58,6 +57,41 @@ public class RedisService
         var json = await db.StringGetAsync($"room_transfer:{roomId}");
         if (json.IsNullOrEmpty) return null;
         return JsonSerializer.Deserialize<RoomTransferDto>(json.ToString());
+    }
+
+    public async Task SaveRoomWorkerRoute(string roomId, string workerPublicUrl)
+    {
+        var db = _redis.GetDatabase();
+        await db.StringSetAsync($"room_route:{roomId}", workerPublicUrl, TimeSpan.FromHours(2));
+    }
+
+    public async Task<string?> GetRoomWorkerRoute(string roomId)
+    {
+        var db = _redis.GetDatabase();
+        var data = await db.StringGetAsync($"room_route:{roomId}");
+
+
+        return data.IsNullOrEmpty ? null : data.ToString();
+    }
+
+    public async Task PublishForceLogout(string playerId)
+    {
+        var sub = _redis.GetSubscriber();
+        await sub.PublishAsync("force_logout", playerId);
+    }
+
+    public async Task SetActiveSession(string playerId, string sessionId)
+    {
+        var db = _redis.GetDatabase();
+        // Expires in 7 days (matching your JWT expiration)
+        await db.StringSetAsync($"session:{playerId}", sessionId, TimeSpan.FromDays(7));
+    }
+
+    public async Task<string?> GetActiveSession(string playerId)
+    {
+        var db = _redis.GetDatabase();
+        var val = await db.StringGetAsync($"session:{playerId}");
+        return val.IsNullOrEmpty ? null : val.ToString();
     }
 }
 
@@ -74,6 +108,7 @@ public class RoomTransferDto
 public class PlayerTransferDto
 {
     public string OldConnectionId { get; set; } = string.Empty;
+    public string PlayerId { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string ConfigId { get; set; } = string.Empty;
 }

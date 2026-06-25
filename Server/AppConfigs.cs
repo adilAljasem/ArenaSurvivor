@@ -2,6 +2,7 @@ namespace Server.Configs;
 
 public class ServerConfig
 {
+    public string? FrontendUrl { get; set; }
     public string Role { get; set; } = "Dev";
     public string PublicUrl { get; set; } = string.Empty;
     public string[] AllowedCorsOrigins { get; set; } = new[] { "http://localhost:5173" };

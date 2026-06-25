@@ -6,7 +6,7 @@
     "AttackRadius": 50,
     "tier": 1,
     "isBoss": false,
-    "minWave": 200,
+    "minWave": 1,
     "maxWave": 200,
     "spawnWeight": 100,
     "textureKey": "spring_enemy",

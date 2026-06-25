@@ -20,7 +20,7 @@ export class EscMenu {
   private _elements: VisibleGameObject[] = [];
   private _mainViewElements: VisibleGameObject[] = [];
   private _optionsViewElements: VisibleGameObject[] = [];
-  
+
   private _visible: boolean = false;
   private _activeDrag: ActiveDrag | null = null;
   private readonly scene: Phaser.Scene;
@@ -39,16 +39,16 @@ export class EscMenu {
     this.scene.input.on('pointermove', (ptr: Phaser.Input.Pointer) => {
       if (!this._visible || !this._activeDrag) return;
       const d = this._activeDrag;
-      
+
       const clampedX = Phaser.Math.Clamp(ptr.x, d.trackLeft, d.trackRight);
       const value = (clampedX - d.trackLeft) / d.trackWidth;
-      
+
       d.valueText.setText(`${Math.round(value * 100)}%`);
       d.onChange(value);
 
       // >>> FIX 1: Use d.cy instead of ptr.y so it stays perfectly horizontal
       d.fillGraphics.clear();
-      d.fillGraphics.fillStyle(0xe5b35c, 1); 
+      d.fillGraphics.fillStyle(0xe5b35c, 1);
       d.fillGraphics.fillRoundedRect(d.trackLeft, d.cy - this.TRACK_H / 2, clampedX - d.trackLeft, this.TRACK_H, 5);
 
       d.handleGraphics.clear();
@@ -65,7 +65,7 @@ export class EscMenu {
 
   setVisible(v: boolean): void {
     this._visible = v;
-    
+
     // Always reset to Main View when opened
     if (v) this.switchView('main');
     else {
@@ -87,15 +87,15 @@ export class EscMenu {
   }
 
   private switchView(target: 'main' | 'options') {
-      this._elements.forEach(el => el.setVisible(true)); 
+    this._elements.forEach(el => el.setVisible(true));
 
-      if (target === 'main') {
-          this._optionsViewElements.forEach(el => el.setVisible(false));
-          this._mainViewElements.forEach(el => el.setVisible(true));
-      } else {
-          this._mainViewElements.forEach(el => el.setVisible(false));
-          this._optionsViewElements.forEach(el => el.setVisible(true));
-      }
+    if (target === 'main') {
+      this._optionsViewElements.forEach(el => el.setVisible(false));
+      this._mainViewElements.forEach(el => el.setVisible(true));
+    } else {
+      this._mainViewElements.forEach(el => el.setVisible(false));
+      this._optionsViewElements.forEach(el => el.setVisible(true));
+    }
   }
 
   private _build(): void {
@@ -111,10 +111,10 @@ export class EscMenu {
 
     // 2. Modern Rounded Panel (Mage Arena Theme)
     const panelGraphics = scene.add.graphics().setScrollFactor(0).setDepth(D + 1);
-    
+
     panelGraphics.fillStyle(0x14141c, 1);
     panelGraphics.fillRoundedRect(cx - this.PANEL_W / 2, cy - this.PANEL_H / 2, this.PANEL_W, this.PANEL_H, 12);
-    
+
     panelGraphics.lineStyle(3, 0xe5b35c, 1);
     panelGraphics.strokeRoundedRect(cx - this.PANEL_W / 2, cy - this.PANEL_H / 2, this.PANEL_W, this.PANEL_H, 12);
     this._elements.push(panelGraphics);
@@ -137,21 +137,34 @@ export class EscMenu {
     // ==========================================
     // VIEW 1: MAIN MENU
     // ==========================================
-    this.createButton(cx, cy - 40, "Resume Game", () => this.setVisible(false), this._mainViewElements, false);
-    this.createButton(cx, cy + 30, "Options", () => this.switchView('options'), this._mainViewElements, false);
-    
-    // Quit Button (Red/Danger)
-    this.createButton(cx, cy + 100, "Quit to Lobby", () => {
-        window.location.reload(); 
+
+    // 1. Resume
+    this.createButton(cx, cy - 60, "Resume Game", () => this.setVisible(false), this._mainViewElements, false);
+
+    // 2. Options
+    this.createButton(cx, cy, "Options", () => this.switchView('options'), this._mainViewElements, false);
+
+    // 3. >>> NEW: Toggle Fullscreen
+    this.createButton(cx, cy + 60, "Toggle Fullscreen", () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => console.warn(err));
+      } else {
+        if (document.exitFullscreen) document.exitFullscreen();
+      }
+    }, this._mainViewElements, false);
+
+    // 4. Quit Button (Red/Danger)
+    this.createButton(cx, cy + 120, "Back to Main Menu", () => {
+      this.scene.events.emit('quit_to_main_menu');
     }, this._mainViewElements, true);
 
     // ==========================================
     // VIEW 2: OPTIONS (SLIDERS)
     // ==========================================
     const am = AudioManager.getInstance();
-    
+
     // >>> FIX 2: Even vertical spacing for all elements
-    let optY = cy - 85; 
+    let optY = cy - 85;
     this._buildModernSlider(cx, optY, 'Master Vol', am.masterVolume, D + 2, v => am.setMasterVolume(v));
     this._buildModernSlider(cx, optY + 55, 'Music Vol', am.musicVolume, D + 2, v => am.setMusicVolume(v));
     this._buildModernSlider(cx, optY + 110, 'SFX Vol', am.sfxVolume, D + 2, v => am.setSfxVolume(v));
@@ -163,58 +176,58 @@ export class EscMenu {
   }
 
   private createButton(cx: number, cy: number, text: string, onClick: () => void, targetList: VisibleGameObject[], isDanger: boolean) {
-      const btnGroup = this.scene.add.container(cx, cy).setDepth(this.DEPTH + 5).setScrollFactor(0);
+    const btnGroup = this.scene.add.container(cx, cy).setDepth(this.DEPTH + 5).setScrollFactor(0);
 
-      const bg = this.scene.add.graphics();
-      
-      const bgColor = isDanger ? 0x5c1f1f : 0x2a1f43;
-      const hoverBgColor = isDanger ? 0x7a2929 : 0x4a3b69;
-      const borderColor = isDanger ? 0xff4444 : 0xe5b35c;
-      const hoverBorderColor = isDanger ? 0xff8888 : 0xffcf77;
+    const bg = this.scene.add.graphics();
 
+    const bgColor = isDanger ? 0x5c1f1f : 0x2a1f43;
+    const hoverBgColor = isDanger ? 0x7a2929 : 0x4a3b69;
+    const borderColor = isDanger ? 0xff4444 : 0xe5b35c;
+    const hoverBorderColor = isDanger ? 0xff8888 : 0xffcf77;
+
+    bg.fillStyle(bgColor, 1);
+    bg.fillRoundedRect(-120, -22.5, 240, 45, 8);
+    bg.lineStyle(2, borderColor, 1);
+    bg.strokeRoundedRect(-120, -22.5, 240, 45, 8);
+
+    const txt = this.scene.add.text(0, 0, text, {
+      fontFamily: UIHelpers.FONT, fontSize: '18px', color: '#ffffff', fontStyle: 'bold', resolution: 3
+    }).setOrigin(0.5);
+
+    btnGroup.add([bg, txt]);
+
+    // >>> FIX 3: Hitboxes detached from containers so they don't offset when the camera moves
+    const hitbox = this.scene.add.rectangle(cx, cy, 240, 45, 0x000000, 0)
+      .setScrollFactor(0)
+      .setDepth(this.DEPTH + 6)
+      .setInteractive({ useHandCursor: true });
+
+    hitbox.on('pointerover', () => {
+      // >>> FIX 4: Removed ui_hover sound for Esc Menu
+      bg.clear();
+      bg.fillStyle(hoverBgColor, 1);
+      bg.fillRoundedRect(-120, -22.5, 240, 45, 8);
+      bg.lineStyle(2, hoverBorderColor, 1);
+      bg.strokeRoundedRect(-120, -22.5, 240, 45, 8);
+      this.scene.tweens.add({ targets: btnGroup, scale: 1.05, duration: 100 });
+    });
+
+    hitbox.on('pointerout', () => {
+      bg.clear();
       bg.fillStyle(bgColor, 1);
       bg.fillRoundedRect(-120, -22.5, 240, 45, 8);
       bg.lineStyle(2, borderColor, 1);
       bg.strokeRoundedRect(-120, -22.5, 240, 45, 8);
+      this.scene.tweens.add({ targets: btnGroup, scale: 1.0, duration: 100 });
+    });
 
-      const txt = this.scene.add.text(0, 0, text, {
-          fontFamily: UIHelpers.FONT, fontSize: '18px', color: '#ffffff', fontStyle: 'bold', resolution: 3
-      }).setOrigin(0.5);
+    hitbox.on('pointerdown', () => {
+      AudioManager.getInstance().playUiSfx('ui_click');
+      onClick();
+    });
 
-      btnGroup.add([bg, txt]);
-
-      // >>> FIX 3: Hitboxes detached from containers so they don't offset when the camera moves
-      const hitbox = this.scene.add.rectangle(cx, cy, 240, 45, 0x000000, 0)
-          .setScrollFactor(0)
-          .setDepth(this.DEPTH + 6)
-          .setInteractive({ useHandCursor: true });
-
-      hitbox.on('pointerover', () => {
-          // >>> FIX 4: Removed ui_hover sound for Esc Menu
-          bg.clear();
-          bg.fillStyle(hoverBgColor, 1);
-          bg.fillRoundedRect(-120, -22.5, 240, 45, 8);
-          bg.lineStyle(2, hoverBorderColor, 1);
-          bg.strokeRoundedRect(-120, -22.5, 240, 45, 8);
-          this.scene.tweens.add({ targets: btnGroup, scale: 1.05, duration: 100 });
-      });
-
-      hitbox.on('pointerout', () => {
-          bg.clear();
-          bg.fillStyle(bgColor, 1);
-          bg.fillRoundedRect(-120, -22.5, 240, 45, 8);
-          bg.lineStyle(2, borderColor, 1);
-          bg.strokeRoundedRect(-120, -22.5, 240, 45, 8);
-          this.scene.tweens.add({ targets: btnGroup, scale: 1.0, duration: 100 });
-      });
-
-      hitbox.on('pointerdown', () => {
-          AudioManager.getInstance().playUiSfx('ui_click'); 
-          onClick();
-      });
-
-      targetList.push(btnGroup as any, hitbox as any);
-      this._elements.push(btnGroup as any, hitbox as any);
+    targetList.push(btnGroup as any, hitbox as any);
+    this._elements.push(btnGroup as any, hitbox as any);
   }
 
   private _buildModernSlider(cx: number, cy: number, label: string, initialValue: number, depth: number, onChange: (v: number) => void): void {
@@ -276,7 +289,7 @@ export class EscMenu {
       const value = (clampedX - trackLeft) / this.TRACK_W;
       onChange(value);
       valueText.setText(`${Math.round(value * 100)}%`);
-      
+
       fillGraphics.clear();
       fillGraphics.fillStyle(0xe5b35c, 1);
       fillGraphics.fillRoundedRect(trackLeft, cy - this.TRACK_H / 2, clampedX - trackLeft, this.TRACK_H, 5);

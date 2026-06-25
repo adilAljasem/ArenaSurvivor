@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
 using Server.Configs;
@@ -5,22 +6,21 @@ using Server.Core;
 using Server.Entities;
 using Server.Services;
 using StackExchange.Redis;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+using System.Security.Claims;
 
 namespace Server.Hubs;
 
+[Authorize]
 public class LobbyHub : Hub
 {
     private readonly RoomManager _roomManager;
     private readonly ConfigManager _configManager;
     private readonly RedisService _redisService;
-    private IConnectionMultiplexer _redis;
+    private readonly IConnectionMultiplexer _redis;
     private readonly ServerConfig _serverConfig;
 
-    public LobbyHub(RoomManager roomManager, ConfigManager configManager, RedisService redisService, IConnectionMultiplexer redis, IOptions<ServerConfig> serverConfig)
+    public LobbyHub(RoomManager roomManager, ConfigManager configManager, RedisService redisService,
+        IConnectionMultiplexer redis, IOptions<ServerConfig> serverConfig)
     {
         _roomManager = roomManager;
         _configManager = configManager;
@@ -29,11 +29,31 @@ public class LobbyHub : Hub
         _serverConfig = serverConfig.Value;
     }
 
+    // Reads the PlayerId claim from the validated JWT — the client cannot forge this.
+    private string GetPlayerId() =>
+        Context.User?.FindFirst("PlayerId")?.Value
+        ?? throw new HubException("Not authenticated.");
+
+    private string GetUsername() =>
+        Context.User?.FindFirst("Username")?.Value ?? "Player";
+
     public string GetServerVersion() => _serverConfig.GameVersion;
 
     public override async Task OnConnectedAsync()
     {
-        Console.WriteLine($"[LOBBY] Player {Context.ConnectionId} connected.");
+        string playerId = GetPlayerId();
+        string? jwtSessionId = Context.User?.FindFirst("SessionId")?.Value;
+        string? activeSessionId = await _redisService.GetActiveSession(playerId);
+
+        // If the JWT's session doesn't match the database, kill the connection immediately.
+        if (string.IsNullOrEmpty(jwtSessionId) || jwtSessionId != activeSessionId)
+        {
+            await Clients.Caller.SendAsync("LobbyError", "Logged in from another location.");
+            Context.Abort();
+            return;
+        }
+
+        Console.WriteLine($"[LOBBY] {GetUsername()} ({Context.ConnectionId}) connected.");
         await base.OnConnectedAsync();
     }
 
@@ -41,26 +61,48 @@ public class LobbyHub : Hub
     {
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
 
-        // ONLY remove the player if they leave while waiting in the lobby.
-        // If the phase is WaveActive, they are just transferring to the MatchHub!
         if (room == null || room.State.Phase == GamePhase.WaitingForPlayers)
         {
-            _roomManager.RemovePlayer(Context.ConnectionId);
-            if (room != null) await BroadcastRoster(room);
-            Console.WriteLine($"[LOBBY] Player abandoned match: {Context.ConnectionId}");
+            _roomManager.RemovePlayerFromLobby(Context.ConnectionId);
+            if (room != null && room.State.Players.Count > 0)
+                await BroadcastRoster(room);
+            Console.WriteLine($"[LOBBY] {Context.ConnectionId} left pre-match.");
         }
         else
         {
-            Console.WriteLine($"[LOBBY] Player {Context.ConnectionId} transferring to Match Worker...");
+            Console.WriteLine($"[LOBBY] {Context.ConnectionId} transferring to Match Worker...");
         }
 
         await base.OnDisconnectedAsync(exception);
     }
+
     public async Task<IEnumerable<object>> RequestLobbyData() => _roomManager.GetRoomSummaries();
 
     public async Task CreateRoom(string playerName, string roomName, string password, string difficulty)
     {
-        string roomId = Guid.NewGuid().ToString().Substring(0, 6).ToUpper();
+        string playerId = GetPlayerId();
+
+        // ─── ONE-ROOM RULE ────────────────────────────────────────────────────
+        // If this player already owns a room, handle it:
+        //   - Solo room (only they're in it): auto-delete and allow a fresh start
+        //   - Multiplayer room: block the creation
+        var existingRoom = _roomManager.GetRoomByPlayerId(playerId);
+        if (existingRoom != null)
+        {
+            if (existingRoom.State.Players.Count == 1)
+            {
+                // Solo abandoned room → wipe it so the player can start fresh
+                _roomManager.ForceDeleteRoom(existingRoom.RoomId);
+                Console.WriteLine($"[LOBBY] Solo room {existingRoom.RoomId} cleaned up for player {playerId}.");
+            }
+            else
+            {
+                await Clients.Caller.SendAsync("LobbyError", "You're already in an active game with other players.");
+                return;
+            }
+        }
+
+        string roomId = Guid.NewGuid().ToString()[..6].ToUpper();
         var room = _roomManager.GetOrCreateRoom(roomId, _configManager);
 
         room.RoomName = string.IsNullOrWhiteSpace(roomName) ? $"{playerName}'s Arena" : roomName;
@@ -69,39 +111,70 @@ public class LobbyHub : Hub
         room.State.CurrentDifficulty = string.IsNullOrWhiteSpace(difficulty) ? "normal" : difficulty;
         room.CurrentMapId = "map_forest";
 
+        _roomManager.RegisterPlayerInRoom(playerId, roomId);
+
         await Clients.All.SendAsync("LobbyListUpdated");
-        await InnerJoinRoom(room, playerName);
+        await InnerJoinRoom(room, playerId, playerName);
     }
 
     public async Task JoinRoom(string playerName, string roomId, string password)
     {
+        string playerId = GetPlayerId();
+
         var room = _roomManager.GetRoom(roomId);
         if (room == null) { await Clients.Caller.SendAsync("LobbyError", "Room not found."); return; }
         if (room.State.Phase != GamePhase.WaitingForPlayers) { await Clients.Caller.SendAsync("LobbyError", "Match already in progress."); return; }
         if (!string.IsNullOrEmpty(room.Password) && room.Password != password) { await Clients.Caller.SendAsync("LobbyError", "Incorrect password."); return; }
 
-        await InnerJoinRoom(room, playerName);
+        _roomManager.RegisterPlayerInRoom(playerId, roomId);
+        await InnerJoinRoom(room, playerId, playerName);
     }
 
-    private async Task InnerJoinRoom(GameRoom room, string playerName)
+    private async Task InnerJoinRoom(GameRoom room, string playerId, string playerName)
     {
         _roomManager.AssignPlayerToRoom(Context.ConnectionId, room.RoomId);
 
-        var newPlayer = new PlayerEntity
+        var existingKvp = room.State.Players.FirstOrDefault(p => p.Value.PlayerId == playerId);
+
+        if (existingKvp.Value != null)
         {
-            ConnectionId = Context.ConnectionId,
-            Name = playerName,
-            Team = "Player",
-            X = 640,
-            Y = 360,
-            IsReady = false,
-            ConfigId = string.Empty
-        };
+            // Reconnecting into the lobby — stitch to existing entity
+            var existing = existingKvp.Value;
+            room.State.Players.TryRemove(existingKvp.Key, out _);
+            existing.ConnectionId = Context.ConnectionId;
+            room.State.Players.TryAdd(Context.ConnectionId, existing);
 
-        room.State.Players.TryAdd(Context.ConnectionId, newPlayer);
-        MatchHub.GenerateShopForPlayer(newPlayer, _configManager, room.State.CurrentWave);
+            if (room.HostConnectionId == existingKvp.Key)
+                room.HostConnectionId = Context.ConnectionId;
 
-        var handshakePayload = new
+            if (room.State.Status == RoomStatus.Paused_AwaitingPlayers)
+                room.State.Status = RoomStatus.Active;
+        }
+        else
+        {
+            var newPlayer = new PlayerEntity
+            {
+                PlayerId = playerId,
+                ConnectionId = Context.ConnectionId,
+                Name = playerName,
+                Team = "Player",
+                X = 640,
+                Y = 360,
+                IsReady = false,
+                ConfigId = string.Empty
+            };
+
+            room.State.Players.TryAdd(Context.ConnectionId, newPlayer);
+            MatchHub.GenerateShopForPlayer(newPlayer, _configManager, room.State.CurrentWave);
+
+            if (room.State.Status == RoomStatus.Paused_AwaitingPlayers)
+            {
+                room.State.Status = RoomStatus.Active;
+                room.HostConnectionId = Context.ConnectionId;
+            }
+        }
+
+        await Clients.Caller.SendAsync("ReceiveHandshake", new
         {
             version = _serverConfig.GameVersion,
             enemies = _configManager.Enemies,
@@ -115,8 +188,7 @@ public class LobbyHub : Hub
             maps = _configManager.Maps,
             traits = _configManager.Traits,
             currentMapId = room.CurrentMapId
-        };
-        await Clients.Caller.SendAsync("ReceiveHandshake", handshakePayload);
+        });
 
         await Clients.Caller.SendAsync("RoomSettingsUpdated", new
         {
@@ -132,68 +204,62 @@ public class LobbyHub : Hub
     public async Task UpdateRoomSettings(string roomName, string password, string difficulty, string mapId)
     {
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
+        if (room == null || room.HostConnectionId != Context.ConnectionId || room.State.Phase != GamePhase.WaitingForPlayers) return;
 
-        if (room != null && room.HostConnectionId == Context.ConnectionId && room.State.Phase == GamePhase.WaitingForPlayers)
+        room.RoomName = string.IsNullOrWhiteSpace(roomName) ? "Arena" : roomName;
+        room.Password = password ?? string.Empty;
+        room.State.CurrentDifficulty = difficulty;
+        room.CurrentMapId = mapId;
+
+        await Clients.Clients(room.State.Players.Keys).SendAsync("RoomSettingsUpdated", new
         {
-            room.RoomName = string.IsNullOrWhiteSpace(roomName) ? "Arena" : roomName;
-            room.Password = password ?? string.Empty;
-            room.State.CurrentDifficulty = difficulty;
-            room.CurrentMapId = mapId;
-
-            await Clients.Clients(room.State.Players.Keys).SendAsync("RoomSettingsUpdated", new
-            {
-                roomName = room.RoomName,
-                hasPassword = !string.IsNullOrEmpty(room.Password),
-                difficulty = room.State.CurrentDifficulty,
-                mapId = room.CurrentMapId
-            });
-        }
+            roomName = room.RoomName,
+            hasPassword = !string.IsNullOrEmpty(room.Password),
+            difficulty = room.State.CurrentDifficulty,
+            mapId = room.CurrentMapId
+        });
     }
 
     public async Task SelectCharacter(string characterId)
     {
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
-        if (room != null && room.State.Players.TryGetValue(Context.ConnectionId, out var player) && room.State.Phase == GamePhase.WaitingForPlayers)
-        {
-            if (player.IsReady) return;
+        if (room == null || !room.State.Players.TryGetValue(Context.ConnectionId, out var player)) return;
+        if (room.State.Phase != GamePhase.WaitingForPlayers || player.IsReady) return;
+        if (!_configManager.Characters.ContainsKey(characterId)) return;
 
-            if (_configManager.Characters.ContainsKey(characterId))
-            {
-                player.ConfigId = characterId;
-                player.Initialize(_configManager.Characters[characterId], _configManager);
+        player.ConfigId = characterId;
+        player.Initialize(_configManager.Characters[characterId], _configManager);
+        player.CurrentShop.Clear();
+        MatchHub.GenerateShopForPlayer(player, _configManager, 1);
 
-                player.CurrentShop.Clear();
-                MatchHub.GenerateShopForPlayer(player, _configManager, 1);
-
-                await BroadcastRoster(room);
-            }
-        }
+        await BroadcastRoster(room);
     }
 
     public async Task ToggleReady()
     {
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
-        if (room != null && room.State.Players.TryGetValue(Context.ConnectionId, out var player) && room.State.Phase == GamePhase.WaitingForPlayers)
-        {
-            if (string.IsNullOrEmpty(player.ConfigId))
-            {
-                await Clients.Caller.SendAsync("LobbyError", "Please select a character first!");
-                return;
-            }
+        if (room == null || !room.State.Players.TryGetValue(Context.ConnectionId, out var player)) return;
+        if (room.State.Phase != GamePhase.WaitingForPlayers) return;
 
-            player.IsReady = !player.IsReady;
-            await BroadcastRoster(room);
+        if (string.IsNullOrEmpty(player.ConfigId))
+        {
+            await Clients.Caller.SendAsync("LobbyError", "Please select a character first!");
+            return;
         }
+
+        player.IsReady = !player.IsReady;
+        await BroadcastRoster(room);
     }
 
     public async Task LeaveRoom()
     {
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
-        if (room != null)
-        {
-            _roomManager.RemovePlayer(Context.ConnectionId);
-            if (_roomManager.GetRoom(room.RoomId) != null) await BroadcastRoster(room);
-        }
+        if (room == null) return;
+
+        _roomManager.RemovePlayerFromLobby(Context.ConnectionId);
+
+        if (room.State.Players.Count > 0)
+            await BroadcastRoster(room);
     }
 
     public async Task SendChatMessage(string message)
@@ -202,14 +268,39 @@ public class LobbyHub : Hub
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
         if (room == null) return;
 
-        string senderName = room.State.Players.TryGetValue(Context.ConnectionId, out var player) ? player.Name : "Player";
-        await Clients.Clients(room.State.Players.Keys).SendAsync("ReceiveChatMessage", senderName, message);
+        string sender = room.State.Players.TryGetValue(Context.ConnectionId, out var player) ? player.Name : "Player";
+        await Clients.Clients(room.State.Players.Keys).SendAsync("ReceiveChatMessage", sender, message);
     }
 
     private async Task BroadcastRoster(GameRoom room)
     {
-        var playersData = room.State.Players.Values.Select(p => new { id = p.ConnectionId, name = p.Name, isReady = p.IsReady, characterId = p.ConfigId }).ToList();
-        await Clients.Clients(room.State.Players.Keys).SendAsync("UpdateLobbyRoster", new { roomId = room.RoomId, roomName = room.RoomName, hostId = room.HostConnectionId, players = playersData });
+        var playersData = room.State.Players.Values
+            .Select(p => new { id = p.ConnectionId, name = p.Name, isReady = p.IsReady, characterId = p.ConfigId })
+            .ToList();
+
+        await Clients.Clients(room.State.Players.Keys).SendAsync("UpdateLobbyRoster", new
+        {
+            roomId = room.RoomId,
+            roomName = room.RoomName,
+            hostId = room.HostConnectionId,
+            players = playersData
+        });
+    }
+
+    public async Task RequestReconnect(string roomId)
+    {
+        string playerId = GetPlayerId();
+
+        string? workerUrl = await _redisService.GetRoomWorkerRoute(roomId);
+        if (string.IsNullOrEmpty(workerUrl))
+        {
+            await Clients.Caller.SendAsync("LobbyError", "Room has expired or does not exist.");
+            return;
+        }
+
+        string token = Guid.NewGuid().ToString();
+        await _redisService.SaveMatchToken(token, playerId, roomId);
+        await Clients.Caller.SendAsync("MatchStarted", roomId, token, workerUrl);
     }
 
     public async Task StartMatch()
@@ -223,57 +314,40 @@ public class LobbyHub : Hub
             return;
         }
 
-        // ==========================================
-        // 1. DYNAMIC LOAD BALANCING (CPU/RAM Aware)
-        // ==========================================
+        // ─── DYNAMIC LOAD BALANCING ───────────────────────────────────────────
         var db = _redis.GetDatabase();
-
-        // Grab all workers from the Hash in one fast, VIP-safe database call
         var activeWorkers = await db.HashGetAllAsync("active_workers");
 
-        // The fallback is now your safe, path-routed Traefik worker!
         string bestWorkerUrl = "http://localhost:5000/matchHub";
-        double lowestLoadScore = double.MaxValue;
+        double lowestScore = double.MaxValue;
 
         foreach (var worker in activeWorkers)
         {
-            var data = worker.Value;
-            if (!data.IsNullOrEmpty)
+            if (worker.Value.IsNullOrEmpty) continue;
+
+            var doc = System.Text.Json.JsonDocument.Parse(worker.Value.ToString());
+            var root = doc.RootElement;
+
+            if ((DateTime.UtcNow - root.GetProperty("LastUpdated").GetDateTime()).TotalSeconds > 15)
             {
-                var doc = System.Text.Json.JsonDocument.Parse(data.ToString());
-                var root = doc.RootElement;
+                await db.HashDeleteAsync("active_workers", worker.Name);
+                continue;
+            }
 
-                // NEW: Ignore dead/hung workers that haven't pulsed in 15 seconds
-                DateTime lastUpdated = root.GetProperty("LastUpdated").GetDateTime();
-                if ((DateTime.UtcNow - lastUpdated).TotalSeconds > 15)
-                {
-                    // Clean up dead worker from the hash so it doesn't pile up
-                    await db.HashDeleteAsync("active_workers", worker.Name);
-                    continue;
-                }
+            double cpu = root.GetProperty("CpuUsage").GetDouble();
+            if (cpu > 90.0 && activeWorkers.Length > 1) continue;
 
-                int activeRooms = root.GetProperty("ActiveRooms").GetInt32();
-                double cpuUsage = root.GetProperty("CpuUsage").GetDouble();
-                long ramUsageMB = root.GetProperty("RamUsageMB").GetInt64();
-                string url = root.GetProperty("Url").GetString();
-
-                // If a server is melting down (>90% CPU), skip it entirely if possible
-                if (cpuUsage > 90.0 && activeWorkers.Length > 1) continue;
-
-                // Calculate a composite load score. 
-                double score = (cpuUsage * 10) + (ramUsageMB * 0.1) + (activeRooms * 5);
-
-                if (score < lowestLoadScore)
-                {
-                    lowestLoadScore = score;
-                    bestWorkerUrl = url;
-                }
+            double score = (cpu * 10) + (root.GetProperty("RamUsageMB").GetInt64() * 0.1) + (root.GetProperty("ActiveRooms").GetInt32() * 5);
+            if (score < lowestScore)
+            {
+                lowestScore = score;
+                bestWorkerUrl = root.GetProperty("Url").GetString()!;
             }
         }
 
-        Console.WriteLine($"[LOBBY] Match starting. Routing players to Worker: {bestWorkerUrl} (Score: {lowestLoadScore})");
+        Console.WriteLine($"[LOBBY] Routing to Worker: {bestWorkerUrl} (Score: {lowestScore})");
 
-        // --- NEW: Bundle up the Room and send to Redis ---
+        // ─── BUNDLE + HAND OFF TO WORKER ─────────────────────────────────────
         var transferDto = new RoomTransferDto
         {
             RoomId = room.RoomId,
@@ -281,27 +355,21 @@ public class LobbyHub : Hub
             HostConnectionId = room.HostConnectionId,
             CurrentMapId = room.CurrentMapId,
             Difficulty = room.State.CurrentDifficulty,
+            Players = room.State.Players.Values
+                .Select(p => new PlayerTransferDto { OldConnectionId = p.ConnectionId, PlayerId = p.PlayerId, Name = p.Name, ConfigId = p.ConfigId })
+                .ToList()
         };
-        foreach (var p in room.State.Players.Values)
-        {
-            transferDto.Players.Add(new PlayerTransferDto { OldConnectionId = p.ConnectionId, Name = p.Name, ConfigId = p.ConfigId });
-        }
-        
+
         room.ExpectedPlayerCount = room.State.Players.Count;
         room.StitchedPlayerCount = 0;
 
         await _redisService.SaveRoomTransferData(transferDto);
-        // ==========================================
-        // 2. SECURE HANDOFF
-        // ==========================================
+        await _redisService.SaveRoomWorkerRoute(room.RoomId, bestWorkerUrl);
+
         foreach (var player in room.State.Players.Values)
         {
             string token = Guid.NewGuid().ToString();
-
-            // Assuming you implemented RedisService to save the token!
-            await _redisService.SaveMatchToken(token, player.ConnectionId, room.RoomId);
-
-            // >>> NEW: Pass the bestWorkerUrl to the client! <<<
+            await _redisService.SaveMatchToken(token, player.PlayerId, room.RoomId);
             await Clients.Client(player.ConnectionId).SendAsync("MatchStarted", room.RoomId, token, bestWorkerUrl);
         }
     }

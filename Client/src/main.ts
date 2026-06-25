@@ -5,7 +5,8 @@ import { EscMenu } from './ui/EscMenu';
 import { ActorRenderer, VfxRenderer, WorldRenderer } from './RenderSystems';
 import { AudioManager } from './AudioManager';
 import pako from 'pako';
-import { LobbyUI } from './LobbyUI';
+import { LobbyUI, AuthUI } from './LobbyUI';
+
 
 // --- SIGNALR CONNECTIONS ---
 // 1. Master Node
@@ -14,15 +15,26 @@ export const envName = isDev ? "Development (Vite)" : "Production (Traefik)";
 export const masterUrl = isDev ? "http://localhost:5000/lobbyHub" : "/lobbyHub";
 export let activeWorkerUrl = "Waiting for match...";
 
-const SKIP_LOBBY_IN_DEV = isDev && true;
+const SKIP_LOBBY_IN_DEV = isDev && false;
+
+export const playerId = (() => {
+  let id = localStorage.getItem('arena_playerId');
+  if (!id) {
+    id = crypto.randomUUID ? crypto.randomUUID() : 'p_' + Date.now();
+    localStorage.setItem('arena_playerId', id);
+  }
+  return id;
+})();
 
 
 // 1. Master Node
 export const lobbyConnection = new HubConnectionBuilder()
-  .withUrl(masterUrl)
+  .withUrl(masterUrl, {
+    // JWT is read lazily from localStorage each time a connection is made
+    accessTokenFactory: () => localStorage.getItem('arena_jwt') ?? ''
+  })
   .withAutomaticReconnect()
   .build();
-
 // 2. Worker Node (Starts with fallback, overwritten dynamically during Handoff!)
 export let matchConnection: any = new HubConnectionBuilder()
   .withUrl("http://localhost:5000/matchHub")
@@ -129,6 +141,10 @@ class GameScene extends Phaser.Scene {
   private currentCompressedKbps: string = "0.00";
   private currentUncompressedKbps: string = "0.00";
 
+  private handoffTimeout: ReturnType<typeof setTimeout> | null = null;
+  private syncOverlay: HTMLElement | null = null;
+
+
   private pingIntervalId: ReturnType<typeof setInterval> | null = null;
 
   constructor() { super('GameScene'); }
@@ -165,6 +181,12 @@ class GameScene extends Phaser.Scene {
   }
 
   create() {
+    const jwt = localStorage.getItem('arena_jwt');
+    if (!jwt) {
+      new AuthUI(() => window.location.reload());
+      return; // Nothing else runs until the player logs in
+    }
+
     this.cameras.main.setBackgroundColor('#2d2d2d');
     this.groundTooltip = new Tooltip(this);
     this.skillActionBar = new SkillActionBar(this);
@@ -172,65 +194,35 @@ class GameScene extends Phaser.Scene {
 
     AudioManager.getInstance().init(this);
 
-    const initConfigs = () => {
-      if (this.isMapInitialized) return;
-      if (!masterConfigs || Object.keys(masterConfigs).length === 0) return;
 
-      if (this.anims) this.createAnimations(masterConfigs);
-
-      const mapIdToUse = masterConfigs.currentMapId || masterConfigs.CurrentMapId ||
-        (masterConfigs.maps ? Object.keys(masterConfigs.maps)[0] : null) ||
-        (masterConfigs.Maps ? Object.keys(masterConfigs.Maps)[0] : null);
-
-      if (mapIdToUse) {
-        const currentMap = (masterConfigs.maps && masterConfigs.maps[mapIdToUse]) || (masterConfigs.Maps && masterConfigs.Maps[mapIdToUse]);
-
-        if (currentMap) {
-          this.isMapInitialized = true;
-          this.mapWidth = currentMap.width || currentMap.Width;
-          this.mapHeight = currentMap.height || currentMap.Height;
-
-          const mapTex = currentMap.textureKey || currentMap.TextureKey;
-          const texScale = currentMap.textureScale ?? currentMap.TextureScale ?? 1.0;
-
-          if (mapTex && this.textures.exists(mapTex)) {
-            const groundTile = this.add.tileSprite(this.mapWidth / 2, this.mapHeight / 2, this.mapWidth, this.mapHeight, mapTex).setDepth(-2);
-            groundTile.setTileScale(texScale, texScale);
-          } else {
-            this.add.grid(this.mapWidth / 2, this.mapHeight / 2, this.mapWidth, this.mapHeight, 64, 64, 0x1a1a1a, 1, 0x333333, 1).setDepth(-2);
-          }
-
-          const border = this.add.graphics();
-          border.lineStyle(16, 0xff0000, 1);
-          border.strokeRect(10, 10, this.mapWidth - 20, this.mapHeight - 20);
-          border.setDepth(-1);
-          border.postFX.addGlow(0xff0000, 6, 0, false, 0.1, 15);
-          this.cameras.main.setBounds(0, 0, this.mapWidth, this.mapHeight);
-        }
-      }
-    };
 
     // ==========================================
     // 1. MASTER NODE (LOBBY) LISTENERS
     // ==========================================
     lobbyConnection.on("ReceiveHandshake", (payload: any) => {
-      masterConfigs = payload;
-      console.log("Handshake received. Configs loaded.");
-      if (this.versionText) {
-        this.versionText.setText(payload.version || "v?.?.?");
-      }
-      initConfigs();
+      console.log("Handshake received from Lobby. Configs loaded.");
+      this.applyHandshakePayload(payload);
     });
+
 
     lobbyConnection.on("MatchStarted", (roomId: string, matchToken: string, workerUrl: string) => {
       activeWorkerUrl = isDev ? "http://localhost:5000/matchHub" : workerUrl;
 
-      // 1. Show Sync/Loading Screen Overlay
-      let syncOverlay = document.getElementById('sync-overlay');
-      if (!syncOverlay) {
-        syncOverlay = document.createElement('div');
-        syncOverlay.id = 'sync-overlay';
-        syncOverlay.innerHTML = `
+      const urlParams = new URLSearchParams(window.location.search);
+      const isSpectator = urlParams.get('spectate') === 'true';
+
+      // FIX: Use localStorage so reconnect works even after closing the tab.
+      // sessionStorage survives F5 but not a full tab close.
+      if (!isSpectator) {
+        localStorage.setItem('currentRoomId', roomId);
+      }
+
+      // Show the sync/loading overlay.
+      this.syncOverlay = document.getElementById('sync-overlay');
+      if (!this.syncOverlay) {
+        this.syncOverlay = document.createElement('div');
+        this.syncOverlay.id = 'sync-overlay';
+        this.syncOverlay.innerHTML = `
           <style>
             @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
             .spinner { width: 50px; height: 50px; border: 5px solid rgba(191, 85, 236, 0.3); border-top-color: #bf55ec; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
@@ -238,66 +230,63 @@ class GameScene extends Phaser.Scene {
           <div class="spinner"></div>
           <h2 style="color: white; font-family: 'Segoe UI', sans-serif;">Waiting for other players to join...</h2>
         `;
-        syncOverlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(20,25,35,0.95);z-index:9999999;display:flex;flex-direction:column;justify-content:center;align-items:center;';
-        document.body.appendChild(syncOverlay);
+        this.syncOverlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(20,25,35,0.95);z-index:9999999;display:flex;flex-direction:column;justify-content:center;align-items:center;';
+        document.body.appendChild(this.syncOverlay);
       }
-      syncOverlay.style.display = 'flex';
+      this.syncOverlay.style.display = 'flex';
 
-      // 2. DO NOT STOP MASTER YET. Connect to Worker in the background.
+      // FIX: Stop any existing worker connection before creating a new one.
+      // Without this, the old connection is orphaned and leaks.
+      if (matchConnection && matchConnection.state !== 'Disconnected') {
+        matchConnection.stop().catch(() => { });
+      }
+
       matchConnection = new HubConnectionBuilder()
-        .withUrl(activeWorkerUrl)
+        .withUrl(activeWorkerUrl, {
+          accessTokenFactory: () => localStorage.getItem('arena_jwt') ?? ''
+        })
         .withAutomaticReconnect()
         .build();
 
+
+      // FIX: Register ALL worker listeners here (including MatchError and
+      // AllPlayersSynced). Previously those two were inline below, which meant:
+      //  (a) they were outside bindWorkerListeners, so they wouldn't be re-added
+      //      after a withAutomaticReconnect() reconnection.
+      //  (b) closures captured local variables that aren't accessible in
+      //      bindWorkerListeners — solved by promoting them to class properties.
       this.bindWorkerListeners();
 
-      // 3. Set a 15-second fault-tolerance timeout
-      const handoffTimeout = setTimeout(() => {
+      // 15-second fault-tolerance timeout stored as a class property so
+      // AllPlayersSynced (now in bindWorkerListeners) can clear it.
+      if (this.handoffTimeout !== null) clearTimeout(this.handoffTimeout);
+      this.handoffTimeout = setTimeout(() => {
+        this.handoffTimeout = null;
         if (matchConnection.state === HubConnectionState.Connected) matchConnection.stop();
-        if (syncOverlay) syncOverlay.style.display = 'none';
+        if (this.syncOverlay) this.syncOverlay.style.display = 'none';
 
-        // Show an error toast from the Master UI
         const toastContainer = document.getElementById('toast-container');
         if (toastContainer) {
           const toast = document.createElement('div');
-          toast.className = `toast error`;
+          toast.className = 'toast error';
           toast.innerHTML = `<div style="font-size: 12px; color: #aaa; text-transform: uppercase;">Connection Failed</div><div>Worker node failed to synchronize. Match aborted.</div>`;
           toastContainer.appendChild(toast);
           setTimeout(() => { toast.style.animation = 'fadeOut 0.3s ease-out forwards'; setTimeout(() => toast.remove(), 300); }, 4000);
         }
       }, 15000);
 
-      // 4. Listen for the "All Clear" Signal from the Worker
-      matchConnection.on("AllPlayersSynced", () => {
-        clearTimeout(handoffTimeout);
-        if (syncOverlay) syncOverlay.style.display = 'none';
-
-        // NOW we hide the Lobby UI and safely drop the Master connection!
-        const lobbyWrapper = document.getElementById('lobby-ui-wrapper');
-        if (lobbyWrapper) lobbyWrapper.style.display = 'none';
-
-        lobbyConnection.stop().then(() => console.log("Safely dropped Master connection. Game On!"));
-
-        setupChatUI(this, matchConnection);
-
-        if (this.shopUIModule && typeof (this.shopUIModule as any).destroy === 'function') {
-          (this.shopUIModule as any).destroy();
-        }
-        this.shopUIModule = new ShopUI(this, matchConnection);
-        this.shopUIModule.setDepth(1000);
-        this.shopUIModule.setVisible(false);
-      });
-
-      // 5. Start the connection and send the secure token!
       matchConnection.start().then(() => {
         console.log("Connected to Worker! Waiting for sync...");
-        matchConnection.invoke("JoinLiveMatch", roomId, matchToken).catch((err: any) => console.error(err));
+        const isSpec = new URLSearchParams(window.location.search).get('spectate') === 'true';
+        matchConnection.invoke("JoinLiveMatch", roomId, matchToken, isSpec)
+          .catch((err: any) => console.error(err));
       }).catch((err: any) => {
-        clearTimeout(handoffTimeout);
-        if (syncOverlay) syncOverlay.style.display = 'none';
+        if (this.handoffTimeout !== null) { clearTimeout(this.handoffTimeout); this.handoffTimeout = null; }
+        if (this.syncOverlay) this.syncOverlay.style.display = 'none';
         console.error("Failed to connect to worker:", err);
       });
     });
+
 
     // ==========================================
     // UI & INPUT SETUP
@@ -358,6 +347,23 @@ class GameScene extends Phaser.Scene {
     this.escMenu = new EscMenu(this);
     this.escMenu.setVisible(false);
 
+    // >>> NEW: Listen for the explicit quit event to tell the server to delete the room
+    this.events.on('quit_to_main_menu', () => {
+      if (matchConnection && matchConnection.state === 'Connected') {
+        // Tell the server we are quitting intentionally, then reload the page
+        matchConnection.invoke("LeaveRoom").catch(() => { }).finally(() => {
+          localStorage.removeItem('currentRoomId');
+          const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+          window.location.href = cleanUrl;
+        });
+      } else {
+        // Fallback if already disconnected
+        localStorage.removeItem('currentRoomId');
+        const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+        window.location.href = cleanUrl;
+      }
+    });
+
     this.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
       this.versionText.setPosition(10, gameSize.height - 10);
       this.perfText.setPosition(10, gameSize.height - 35);
@@ -391,6 +397,18 @@ class GameScene extends Phaser.Scene {
       }
     });
 
+    // >>> NEW: The Browser Safety Fallback
+    // If the browser forces an exit from fullscreen, ensure the menu pops up automatically
+    document.addEventListener('fullscreenchange', () => {
+      if (!document.fullscreenElement) {
+        // We just dropped out of fullscreen.
+        // If the shop isn't open, forcefully open the pause menu.
+        if (!this.shopUIModule.visible && !this.escMenu.visible) {
+          this.escMenu.setVisible(true);
+        }
+      }
+    });
+
     this.input.keyboard?.on('keydown-H', () => {
       this.isDebugMode = !this.isDebugMode;
       this.perfText.setVisible(this.isDebugMode);
@@ -404,23 +422,48 @@ class GameScene extends Phaser.Scene {
       this.data.set('showHealthNumbers', !currentState);
     });
 
+    // >>> NEW: Catch silent reconnect errors so we don't get soft-locked! <<<
+    lobbyConnection.on("LobbyError", (msg: string) => {
+      console.warn("Lobby Error Intercepted:", msg);
+
+      // >>> NEW: Wipe credentials if hijacked
+      if (msg.includes("location")) {
+        localStorage.removeItem('arena_jwt');
+        localStorage.removeItem('arena_username');
+        localStorage.removeItem('arena_playerId');
+      }
+
+      if (msg.includes("expired") || msg.includes("not exist") || msg.includes("location")) {
+        localStorage.removeItem('currentRoomId');
+        const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+        window.location.href = cleanUrl;
+      }
+    });
+
     // Initial Boot Sequence (Start the Master Node!)
     if (lobbyConnection.state === HubConnectionState.Disconnected) {
       lobbyConnection.start()
         .then(() => {
           console.log("SignalR Master Connected!");
 
-          // =======================================================
-          // >>> DEV QUICKSTART FLAG <<<
-          // Set this to true to instantly skip the lobby in Dev Mode
-          // =======================================================
+          const urlParams = new URLSearchParams(window.location.search);
+          const urlRoomId = urlParams.get('roomId');
+          const isSpectate = urlParams.get('spectate') === 'true';
+          const reconnectRoom = localStorage.getItem('currentRoomId');
 
-          if (SKIP_LOBBY_IN_DEV) {
+          if (urlRoomId && isSpectate) {
+            console.log("Joining as spectator...");
+            lobbyConnection.invoke("RequestReconnect", urlRoomId);
+          }
+          else if (reconnectRoom) {
+            console.log("Attempting to reconnect to match worker...");
+            lobbyConnection.invoke("RequestReconnect", reconnectRoom);
+          }
+          else if (SKIP_LOBBY_IN_DEV) {
             console.log("[DEV QUICKSTART] Bypassing Lobby UI...");
 
             // 1. Instantly create a room
             lobbyConnection.invoke("CreateRoom", "DevPlayer", "Dev Auto Room", "", "easy");
-
             // 2. Automate the character selection and readying up
             let hasSelectedChar = false;
 
@@ -454,15 +497,22 @@ class GameScene extends Phaser.Scene {
             // ---------------------------------------------------
             console.log("Launching Lobby UI...");
             const getIconBase64 = (textureKey: string, frame: number) => {
-              if (this.textures.exists(textureKey)) {
-                return this.textures.getBase64(textureKey, frame);
-              }
+              if (this.textures.exists(textureKey)) return this.textures.getBase64(textureKey, frame);
               return null;
             };
 
+            // 1. Build the UI
             new LobbyUI(lobbyConnection, getIconBase64, () => {
               console.log("Match joined. Entering Game mode!");
-            });
+            }, playerId);
+
+            // 2. >>> NEW: If a roomId is in the URL, instantly auto-join it! <<<
+            if (urlRoomId) {
+              console.log("Auto-joining lobby room from URL...");
+              // It will bypass the login screen and jump straight into the room
+              lobbyConnection.invoke("JoinRoom", "Traveler", urlRoomId, "");
+            }
+
           }
         })
         .catch((err: any) => console.error("SignalR Master Connection Error:", err));
@@ -487,15 +537,120 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  private applyHandshakePayload(payload: any): void {
+    masterConfigs = payload;
+
+    if (this.versionText) {
+      this.versionText.setText(payload.version || 'v?.?.?');
+    }
+
+    // Guard: nothing to do if configs are empty or map already built.
+    if (!masterConfigs || Object.keys(masterConfigs).length === 0) return;
+    if (this.isMapInitialized) return;
+
+    // Rebuild animations from fresh config data.
+    if (this.anims) this.createAnimations(masterConfigs);
+
+    const mapIdToUse =
+      masterConfigs.currentMapId ||
+      masterConfigs.CurrentMapId ||
+      (masterConfigs.maps ? Object.keys(masterConfigs.maps)[0] : null) ||
+      (masterConfigs.Maps ? Object.keys(masterConfigs.Maps)[0] : null);
+
+    if (!mapIdToUse) return;
+
+    const currentMap =
+      masterConfigs.maps?.[mapIdToUse] ||
+      masterConfigs.Maps?.[mapIdToUse];
+
+    if (!currentMap) return;
+
+    this.isMapInitialized = true;
+    this.mapWidth = currentMap.width || currentMap.Width;
+    this.mapHeight = currentMap.height || currentMap.Height;
+
+    const mapTex = currentMap.textureKey || currentMap.TextureKey;
+    const texScale = currentMap.textureScale ?? currentMap.TextureScale ?? 1.0;
+
+    if (mapTex && this.textures.exists(mapTex)) {
+      const groundTile = this.add
+        .tileSprite(this.mapWidth / 2, this.mapHeight / 2, this.mapWidth, this.mapHeight, mapTex)
+        .setDepth(-2);
+      groundTile.setTileScale(texScale, texScale);
+    } else {
+      this.add.grid(
+        this.mapWidth / 2, this.mapHeight / 2, this.mapWidth, this.mapHeight,
+        64, 64, 0x1a1a1a, 1, 0x333333, 1
+      ).setDepth(-2);
+    }
+
+    const border = this.add.graphics();
+    border.lineStyle(16, 0xff0000, 1);
+    border.strokeRect(10, 10, this.mapWidth - 20, this.mapHeight - 20);
+    border.setDepth(-1);
+    border.postFX.addGlow(0xff0000, 6, 0, false, 0.1, 15);
+    this.cameras.main.setBounds(0, 0, this.mapWidth, this.mapHeight);
+  }
+
+
   // ==========================================
   // 2. WORKER NODE (MATCH) LISTENERS
   // ==========================================
   private bindWorkerListeners() {
+    // .off() before .on() makes this method safe to call multiple times
+    // (e.g., if withAutomaticReconnect fires and the connection is reused).
+
+    matchConnection.off("MatchError");
+    matchConnection.on("MatchError", (msg: string) => {
+      console.warn("[MatchHub] MatchError:", msg);
+
+      // >>> NEW: Wipe credentials if hijacked mid-game
+      if (msg.includes("location")) {
+        localStorage.removeItem('arena_jwt');
+        localStorage.removeItem('arena_username');
+        localStorage.removeItem('arena_playerId');
+      }
+
+      localStorage.removeItem('currentRoomId');
+      if (this.syncOverlay) this.syncOverlay.style.display = 'none';
+      const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+      window.location.href = cleanUrl;
+    });
+
+    matchConnection.off("AllPlayersSynced");
+    matchConnection.on("AllPlayersSynced", () => {
+      // FIX: Previously inline inside MatchStarted — moved here for the same reason.
+      if (this.handoffTimeout !== null) { clearTimeout(this.handoffTimeout); this.handoffTimeout = null; }
+      if (this.syncOverlay) this.syncOverlay.style.display = 'none';
+
+      const lobbyWrapper = document.getElementById('lobby-ui-wrapper');
+      if (lobbyWrapper) lobbyWrapper.style.display = 'none';
+
+      lobbyConnection.stop().then(() => console.log("Safely dropped Master connection. Game On!"));
+
+      setupChatUI(this, matchConnection);
+
+      if (this.shopUIModule && typeof (this.shopUIModule as any).destroy === 'function') {
+        (this.shopUIModule as any).destroy();
+      }
+      this.shopUIModule = new ShopUI(this, matchConnection);
+      this.shopUIModule.setDepth(1000);
+      this.shopUIModule.setVisible(false);
+    });
+
+    matchConnection.off("ReceiveHandshake");
+    matchConnection.on("ReceiveHandshake", (payload: any) => {
+      // This fires when the Worker re-sends configs on mid-match reconnect (F5).
+      // Without this listener, masterConfigs stays empty → green boxes + gray map.
+      console.log("Handshake received from Worker. Rebuilding configs...");
+      this.applyHandshakePayload(payload);
+    });
+
+
+    matchConnection.off("UpdatePlayerUI");
     matchConnection.on("UpdatePlayerUI", (uiData: any) => {
       this.data.set('playerLevel', uiData.level || 1);
 
-      // >>> NEW: Protect the UI by saving the full stats to the cache! <<<
-      // This stops the high-speed physics loop from erasing the UI.
       if (uiData.stats || uiData.Stats) {
         this.data.set('latestPlayerStats', uiData.stats || uiData.Stats);
       }
@@ -504,6 +659,8 @@ class GameScene extends Phaser.Scene {
         this.shopUIModule.updateUIData(uiData, masterConfigs);
       }
     });
+
+    matchConnection.off("UpdateStateCompressed");
 
     matchConnection.on("UpdateStateCompressed", (compressedBase64: string) => {
       const compressedSize = compressedBase64.length + 50;
@@ -618,7 +775,7 @@ class GameScene extends Phaser.Scene {
         });
       });
 
-      
+
 
       rawState.me?.forEach((m: any[]) => {
         const cached = this.enemyCache.get(m[0]);

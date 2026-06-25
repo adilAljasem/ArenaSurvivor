@@ -1,69 +1,164 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Options;
 using Server.Configs;
 using Server.Core;
+using Server.Core.Systems;
 using Server.DTOs;
 using Server.Entities;
 using Server.Services;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+using System.Security.Claims;
 
 namespace Server.Hubs;
 
+[Authorize]
 public class MatchHub : Hub
 {
     private readonly RoomManager _roomManager;
     private readonly ConfigManager _configManager;
     private readonly RedisService _redisService;
+    private readonly ServerConfig _serverConfig;
 
-    public MatchHub(RoomManager roomManager, ConfigManager configManager, RedisService redisService)
+public MatchHub(RoomManager roomManager, ConfigManager configManager, RedisService redisService, IOptions<ServerConfig> serverConfig)
     {
         _roomManager = roomManager;
         _configManager = configManager;
         _redisService = redisService;
+        _serverConfig = serverConfig.Value;
     }
+
+    public override async Task OnConnectedAsync()
+    {
+        string? playerId = Context.User?.FindFirst("PlayerId")?.Value;
+        if (!string.IsNullOrEmpty(playerId))
+        {
+            string? jwtSessionId = Context.User?.FindFirst("SessionId")?.Value;
+            string? activeSessionId = await _redisService.GetActiveSession(playerId);
+
+            if (string.IsNullOrEmpty(jwtSessionId) || jwtSessionId != activeSessionId)
+            {
+                await Clients.Caller.SendAsync("MatchError", "Logged in from another location.");
+                Context.Abort();
+                return;
+            }
+        }
+        await base.OnConnectedAsync();
+    }
+
+    // Reads the PlayerId claim from the validated JWT — the client cannot forge this.
+    private string GetPlayerId() =>
+        Context.User?.FindFirst("PlayerId")?.Value
+        ?? throw new HubException("Not authenticated.");
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
+        var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
+
+        if (room != null && room.State.Players.TryGetValue(Context.ConnectionId, out var player))
+        {
+            room.EventBus.Publish(new ChatMessageEvent
+            {
+                Sender = "System",
+                Message = $"{player.Name} disconnected. Their slot is held for 3 minutes."
+            });
+        }
+
         _roomManager.RemovePlayer(Context.ConnectionId);
+
+        // >>> REVERTED: ALWAYS give the grace period on an unexpected disconnect (Refresh)
+        if (room != null && room.State.Phase != GamePhase.WaitingForPlayers)
+        {
+            int onlineCount = room.State.Players.Values.Count(p => _roomManager.GetRoomForPlayer(p.ConnectionId) != null);
+
+            if (onlineCount == 0)
+            {
+                room.State.Status = RoomStatus.GracePeriod;
+                room.State.GracePeriodTimer = 180f;
+                Console.WriteLine($"[MATCH] Room {room.RoomId} is empty. 3-minute deletion timer started.");
+            }
+            else if (room.State.Status == RoomStatus.Active)
+            {
+                room.State.Status = RoomStatus.Paused_AwaitingPlayers;
+                room.State.PauseTimer = 600f;
+
+                room.EventBus.Publish(new ChatMessageEvent
+                {
+                    Sender = "System",
+                    Message = $"Match paused for up to 10 minutes waiting for players to reconnect."
+                });
+            }
+        }
+
         await base.OnDisconnectedAsync(exception);
     }
 
-    // Called automatically by the client when switching from Lobby to Game
-    // Expect the secure token from the client
-    public async Task JoinLiveMatch(string roomId, string matchToken)
+    // >>> NEW: Add this explicit quit method anywhere inside MatchHub
+    public async Task LeaveRoom()
     {
-        // 1. Ask Redis to validate the token (Cross-server verification!)
-        var tokenData = await _redisService.ValidateAndConsumeToken(matchToken);
+        var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
+        if (room == null) return;
 
-        if (tokenData == null || tokenData.Value.RoomId != roomId)
+        // Permanently remove their entity from the room state
+        if (room.State.Players.TryRemove(Context.ConnectionId, out var player))
         {
-            Console.WriteLine($"[SECURITY] Invalid or expired Match Token rejected for {Context.ConnectionId}");
+            room.EventBus.Publish(new ChatMessageEvent
+            {
+                Sender = "System",
+                Message = $"{player.Name} permanently abandoned the match."
+            });
+        }
+
+        _roomManager.RemovePlayer(Context.ConnectionId);
+
+        int onlineCount = room.State.Players.Values.Count(p => _roomManager.GetRoomForPlayer(p.ConnectionId) != null);
+        if (onlineCount == 0)
+        {
+            // The last player explicitly quit, delete immediately.
+            room.State.Status = RoomStatus.ScheduledForDeletion;
+            Console.WriteLine($"[MATCH] All players explicitly abandoned Room {room.RoomId}. Scheduled for immediate deletion.");
+        }
+    }
+
+    public async Task JoinLiveMatch(string roomId, string matchToken, bool isSpectator)
+    {
+        // ─── 1. TOKEN VALIDATION ─────────────────────────────────────────────
+        string playerId = GetPlayerId(); // From JWT — cannot be spoofed
+
+        var tokenData = await _redisService.ValidateAndConsumeToken(matchToken);
+        if (tokenData == null || tokenData.Value.RoomId != roomId || tokenData.Value.PlayerId != playerId)
+        {
+            Console.WriteLine($"[SECURITY] Invalid token for PlayerId={playerId}, Connection={Context.ConnectionId}");
+            await Clients.Caller.SendAsync("MatchError", "Invalid or expired match token. Please return to the lobby.");
             return;
         }
 
-        string oldConnectionId = tokenData.Value.OldConnectionId;
-
-        // 2. Fetch data from Redis BEFORE locking if the room isn't ready yet
+        // ─── 2. FETCH TRANSFER DATA BEFORE ACQUIRING LOCK ────────────────────
         var existingRoom = _roomManager.GetRoom(roomId);
-        Server.Services.RoomTransferDto? transferData = null;
+        RoomTransferDto? transferData = null;
         if (existingRoom == null || existingRoom.State.Players.IsEmpty)
-        {
             transferData = await _redisService.GetRoomTransferData(roomId);
-        }
 
-        // 3. Guarantee the physical room exists in RAM
         var room = _roomManager.GetOrCreateRoom(roomId, _configManager);
 
-        Server.Entities.PlayerEntity? stitchedPlayer = null;
+        PlayerEntity? stitchedPlayer = null;
         bool isStitched = false;
 
-        // 4. PADLOCK THE ROOM! No race conditions allowed here.
-        // If 4 players join at the exact same millisecond, they will line up one by one.
+        // ─── 3. CRITICAL SECTION ─────────────────────────────────────────────
         lock (room)
         {
-            // Hydrate the room ONLY ONCE (The first player through the door does this)
+            // --- A. SPECTATOR PATH ---
+            if (isSpectator)
+            {
+                if (room.State.AllowSpectators)
+                {
+                    room.State.Spectators.TryAdd(Context.ConnectionId, new SpectatorEntity { ConnectionId = Context.ConnectionId });
+                    _roomManager.AssignPlayerToRoom(Context.ConnectionId, roomId);
+                    isStitched = true;
+                }
+                goto AfterLock;
+            }
+
+            // --- B. HYDRATION (first player spins up the room on this Worker) ---
             if (room.State.Players.IsEmpty && transferData != null)
             {
                 room.RoomName = transferData.RoomName;
@@ -71,89 +166,156 @@ public class MatchHub : Hub
                 room.CurrentMapId = transferData.CurrentMapId;
                 room.State.CurrentDifficulty = transferData.Difficulty;
 
-                // Rebuild everyone's characters in RAM
-                foreach (var pDto in transferData.Players)
+                foreach (var dto in transferData.Players)
                 {
-                    var newPlayer = new Server.Entities.PlayerEntity
+                    var entity = new PlayerEntity
                     {
-                        ConnectionId = pDto.OldConnectionId,
-                        Name = pDto.Name,
+                        PlayerId = dto.PlayerId,
+                        ConnectionId = dto.OldConnectionId, // Temp key, replaced on stitch
+                        Name = dto.Name,
                         Team = "Player",
                         X = 640,
                         Y = 360,
-                        ConfigId = pDto.ConfigId
+                        ConfigId = dto.ConfigId
                     };
+                    if (_configManager.Characters.ContainsKey(dto.ConfigId))
+                        entity.Initialize(_configManager.Characters[dto.ConfigId], _configManager);
 
-                    if (_configManager.Characters.ContainsKey(pDto.ConfigId))
-                        newPlayer.Initialize(_configManager.Characters[pDto.ConfigId], _configManager);
-
-                    GenerateShopForPlayer(newPlayer, _configManager, 1);
-                    room.State.Players.TryAdd(pDto.OldConnectionId, newPlayer);
+                    GenerateShopForPlayer(entity, _configManager, 1);
+                    room.State.Players.TryAdd(dto.OldConnectionId, entity);
                 }
-
                 room.ExpectedPlayerCount = transferData.Players.Count;
+                room.StitchedPlayerCount = 0;
             }
 
-            // Everyone securely stitches their new websocket to their character data inside the lock
-            if (room.State.Players.TryRemove(oldConnectionId, out stitchedPlayer))
+            // --- C. STITCH: bind this live connection to the player's entity ---
+            var existingKvp = room.State.Players.FirstOrDefault(p => p.Value.PlayerId == playerId);
+            if (existingKvp.Value != null)
             {
+                stitchedPlayer = existingKvp.Value;
+                room.State.Players.TryRemove(existingKvp.Key, out _);
                 stitchedPlayer.ConnectionId = Context.ConnectionId;
                 room.State.Players.TryAdd(Context.ConnectionId, stitchedPlayer);
 
-                if (room.HostConnectionId == oldConnectionId)
+                if (room.HostConnectionId == existingKvp.Key)
                     room.HostConnectionId = Context.ConnectionId;
 
-                _roomManager.UpdatePlayerConnectionId(oldConnectionId, Context.ConnectionId, roomId);
-                room.StitchedPlayerCount++;
+                _roomManager.AssignPlayerToRoom(Context.ConnectionId, roomId);
+                _roomManager.RegisterPlayerInRoom(playerId, roomId); // Keep one-room rule enforced
+
+                if (room.State.Phase == GamePhase.WaitingForPlayers)
+                    room.StitchedPlayerCount++;
+
+                // --- D. HANDLE UNPAUSE OR CONTINUED PAUSE ---
+                if (room.State.Phase != GamePhase.WaitingForPlayers)
+                {
+                    int reconnectedCount = room.State.Players.Values
+                        .Count(p => _roomManager.GetRoomForPlayer(p.ConnectionId) != null);
+
+                    // 1. If everyone is back, unpause immediately!
+                    if (reconnectedCount >= room.State.Players.Count)
+                    {
+                        room.State.Status = RoomStatus.Active;
+                        room.EventBus.Publish(new ChatMessageEvent
+                        {
+                            Sender = "System",
+                            Message = $"{stitchedPlayer.Name} reconnected. All players present. Match resumed!"
+                        });
+                    }
+                    else
+                    {
+                        // 2. Some players are still missing. 
+                        // If the room was completely empty (GracePeriod), convert it to Paused state.
+                        if (room.State.Status == RoomStatus.GracePeriod)
+                        {
+                            room.State.Status = RoomStatus.Paused_AwaitingPlayers;
+                            room.State.PauseTimer = 600f; // Start the 10-minute wait
+                        }
+
+                        // Calculate remaining time to show in chat
+                        int timeRemaining = (int)room.State.PauseTimer;
+                        int minutes = timeRemaining / 60;
+                        int seconds = timeRemaining % 60;
+
+                        room.EventBus.Publish(new ChatMessageEvent
+                        {
+                            Sender = "System",
+                            Message = $"{stitchedPlayer.Name} joined! Game paused for {minutes}m {seconds}s or until everyone returns."
+                        });
+                    }
+                }
+
                 isStitched = true;
             }
         }
 
-        // 5. Send UI Data safely (Done outside the lock to keep server speeds blazing fast)
-        if (isStitched && stitchedPlayer != null)
-        {
-            Console.WriteLine($"[MATCH] Redis Token Accepted! Player ID: {Context.ConnectionId}");
-            await SendPlayerUI(stitchedPlayer, room.State);
+    AfterLock:
 
-            // >>> CHANGE THIS TO USE THE NEW STITCHED COUNTER <<<
+        // ─── 4. RESPOND (outside the lock) ───────────────────────────────────
+
+        if (isSpectator)
+        {
+            if (!room.State.AllowSpectators)
+            {
+                await Clients.Caller.SendAsync("MatchError", "Spectators are not allowed in this room.");
+                return;
+            }
+            await Clients.Caller.SendAsync("AllPlayersSynced");
+            return;
+        }
+
+        if (!isStitched)
+        {
+            Console.WriteLine($"[MATCH] No entity found for PlayerId={playerId} in Room {roomId}. Session expired.");
+            await Clients.Caller.SendAsync("MatchError", "Session expired. The room no longer exists.");
+            return;
+        }
+
+        // Re-send handshake so reconnecting clients get fresh configs
+        await Clients.Caller.SendAsync("ReceiveHandshake", new
+        {
+            version = _serverConfig.GameVersion,
+            enemies = _configManager.Enemies,
+            weapons = _configManager.Weapons,
+            items = _configManager.Items,
+            characters = _configManager.Characters,
+            statsList = _configManager.AllStats,
+            effects = _configManager.Effects,
+            projectiles = _configManager.Projectiles,
+            skills = _configManager.Skills,
+            maps = _configManager.Maps,
+            traits = _configManager.Traits,
+            currentMapId = room.CurrentMapId
+        });
+
+        await SendPlayerUI(stitchedPlayer!, room.State);
+
+        if (room.State.Phase == GamePhase.WaitingForPlayers)
+        {
             if (room.StitchedPlayerCount == room.ExpectedPlayerCount)
             {
-                Console.WriteLine($"[MATCH] All {room.ExpectedPlayerCount} players synced! Launching Room {roomId}...");
+                Console.WriteLine($"[MATCH] All {room.ExpectedPlayerCount} player(s) synced! Launching Room {roomId}.");
                 room.StartMatch();
-
-                // Broadcast the "All Clear" to drop the loading screen
                 await Clients.Clients(room.State.Players.Keys).SendAsync("AllPlayersSynced");
             }
         }
         else
         {
-            Console.WriteLine($"[MATCH] ERROR - Stitching failed for old ID: {oldConnectionId}");
+            // Mid-match reconnect — drop the loading screen immediately
+            await Clients.Caller.SendAsync("AllPlayersSynced");
         }
     }
-
-    
 
     public void SendInput(PlayerInputDto input)
     {
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
-        if (room == null) return;
+        if (room == null || !room.State.Players.TryGetValue(Context.ConnectionId, out var player)) return;
 
-        if (room.State.Players.TryGetValue(Context.ConnectionId, out var player))
-        {
-            float length = (float)Math.Sqrt(input.DirX * input.DirX + input.DirY * input.DirY);
-            player.AimX = input.AimX;
-            player.AimY = input.AimY;
-            if (length > 0)
-            {
-                player.InputX = input.DirX / length;
-                player.InputY = input.DirY / length;
-            }
-            else
-            {
-                player.InputX = 0;
-                player.InputY = 0;
-            }
-        }
+        float length = (float)Math.Sqrt(input.DirX * input.DirX + input.DirY * input.DirY);
+        player.AimX = input.AimX;
+        player.AimY = input.AimY;
+        player.InputX = length > 0 ? input.DirX / length : 0;
+        player.InputY = length > 0 ? input.DirY / length : 0;
     }
 
     public async Task SendChatMessage(string message)
@@ -163,42 +325,36 @@ public class MatchHub : Hub
         if (room == null) return;
 
         if (message.StartsWith("/"))
-        {
             await Server.Commands.CommandDispatcher.ExecuteAsync(message, room, _configManager, Context.ConnectionId, Clients.Caller);
-        }
         else
         {
-            string senderName = room.State.Players.TryGetValue(Context.ConnectionId, out var player) ? player.Name : "Player";
-            await Clients.Clients(room.State.Players.Keys).SendAsync("ReceiveChatMessage", senderName, message);
+            string sender = room.State.Players.TryGetValue(Context.ConnectionId, out var player) ? player.Name : "Player";
+            await Clients.Clients(room.State.Players.Keys).SendAsync("ReceiveChatMessage", sender, message);
         }
     }
 
     public void Ping() { }
 
-    // =========================================================
-    // UI & SHOP LOGIC
-    // =========================================================
-
     public async Task RequestUIUpdate()
     {
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
         if (room != null && room.State.Players.TryGetValue(Context.ConnectionId, out var player))
-        {
-            lock (player) { _ = SendPlayerUI(player, room.State); }
-        }
+            await SendPlayerUI(player, room.State);
     }
+
+    // ─── SHOP & PROGRESSION ──────────────────────────────────────────────────
 
     private async Task SendPlayerUI(PlayerEntity player, GameState state)
     {
         if (player.PendingLevelUps > 0 && player.CurrentLevelUpChoices.Count == 0)
         {
             player.CurrentLevelUpChoices = _configManager.LevelUpCards.Values
-                .OrderBy(x => Random.Shared.Next())
+                .OrderBy(_ => Random.Shared.Next())
                 .Take(3)
                 .ToList();
         }
 
-        var uiData = new
+        await Clients.Caller.SendAsync("UpdatePlayerUI", new
         {
             player.Gold,
             player.CurrentShop,
@@ -214,58 +370,52 @@ public class MatchHub : Hub
             MaxItemSlots = player.GetMaxItemSlots(_configManager),
             Stats = _configManager.AllStats.ToDictionary(k => k, k => player.GetTotalStat(k, _configManager)),
             Phase = state.Phase.ToString()
-        };
-        await Clients.Caller.SendAsync("UpdatePlayerUI", uiData);
+        });
     }
 
     public static int RollRarityTier(float luck, int maxPossibleTier = 4)
     {
-        float weightT1 = Math.Max(10f, 100f - luck);
-        float weightT2 = Math.Max(0f, 20f + (luck * 1.5f));
-        float weightT3 = Math.Max(0f, (luck - 10f) * 1.0f);
-        float weightT4 = Math.Max(0f, (luck - 30f) * 0.5f);
-
-        if (maxPossibleTier < 4) weightT4 = 0;
-        if (maxPossibleTier < 3) weightT3 = 0;
-        if (maxPossibleTier < 2) weightT2 = 0;
-
-        float totalWeight = weightT1 + weightT2 + weightT3 + weightT4;
-        float roll = (float)(Random.Shared.NextDouble() * totalWeight);
-
-        if (weightT4 > 0 && roll <= weightT4) return 4; roll -= weightT4;
-        if (weightT3 > 0 && roll <= weightT3) return 3; roll -= weightT3;
-        if (weightT2 > 0 && roll <= weightT2) return 2;
+        float w1 = Math.Max(10f, 100f - luck);
+        float w2 = Math.Max(0f, 20f + (luck * 1.5f));
+        float w3 = Math.Max(0f, (luck - 10f) * 1.0f);
+        float w4 = Math.Max(0f, (luck - 30f) * 0.5f);
+        if (maxPossibleTier < 4) w4 = 0;
+        if (maxPossibleTier < 3) w3 = 0;
+        if (maxPossibleTier < 2) w2 = 0;
+        float total = w1 + w2 + w3 + w4;
+        float roll = (float)(Random.Shared.NextDouble() * total);
+        if (w4 > 0 && roll <= w4) return 4; roll -= w4;
+        if (w3 > 0 && roll <= w3) return 3; roll -= w3;
+        if (w2 > 0 && roll <= w2) return 2;
         return 1;
     }
 
     public static void GenerateShopForPlayer(PlayerEntity player, ConfigManager configManager, int currentWave)
     {
-        float playerLuck = player.GetTotalStat("luck", configManager);
-        player.CurrentShop = player.CurrentShop.Where(item => item.IsLocked).ToList();
-        int slotsNeeded = 3 - player.CurrentShop.Count;
+        float luck = player.GetTotalStat("luck", configManager);
+        player.CurrentShop = player.CurrentShop.Where(i => i.IsLocked).ToList();
+        int slots = 3 - player.CurrentShop.Count;
 
-        for (int i = 0; i < slotsNeeded; i++)
+        for (int i = 0; i < slots; i++)
         {
-            int targetTier = RollRarityTier(playerLuck, 4);
-            var tierWeapons = configManager.Weapons.Values.Where(w => w.Tier == targetTier && w.AvailableInShop).ToList();
-            var tierItems = configManager.Items.Values.Where(itm => itm.Tier == targetTier && itm.AvailableInShop).ToList();
+            int tier = RollRarityTier(luck, 4);
+            var weapons = configManager.Weapons.Values.Where(w => w.Tier == tier && w.AvailableInShop).ToList();
+            var items = configManager.Items.Values.Where(it => it.Tier == tier && it.AvailableInShop).ToList();
+            if (!weapons.Any()) weapons = configManager.Weapons.Values.Where(w => w.Tier <= tier && w.AvailableInShop).ToList();
+            if (!items.Any()) items = configManager.Items.Values.Where(it => it.Tier <= tier && it.AvailableInShop).ToList();
 
-            if (!tierWeapons.Any()) tierWeapons = configManager.Weapons.Values.Where(w => w.Tier <= targetTier && w.AvailableInShop).ToList();
-            if (!tierItems.Any()) tierItems = configManager.Items.Values.Where(itm => itm.Tier <= targetTier && itm.AvailableInShop).ToList();
-
-            bool spawnWeapon = Random.Shared.Next(0, 2) == 0 || !tierItems.Any();
-
-            if (spawnWeapon && tierWeapons.Any())
+            bool spawnWeapon = Random.Shared.Next(2) == 0 || !items.Any();
+            if (spawnWeapon && weapons.Any())
             {
-                var w = tierWeapons[Random.Shared.Next(tierWeapons.Count)];
-                var previewWeapon = Server.Core.Systems.WeaponGenerator.GenerateWeapon(w.Id, player, configManager, 1);
-                player.CurrentShop.Add(new Server.DTOs.ShopItemDto { ConfigId = w.Id, Name = w.Name, Price = w.Price, TotalBaseStats = previewWeapon.TotalBaseStats, RolledStats = previewWeapon.RolledStats, WeaponSkills = previewWeapon.WeaponSkills.Select(s => s.ConfigId).ToList() });
+                var w = weapons[Random.Shared.Next(weapons.Count)];
+                var p = WeaponGenerator.GenerateWeapon(w.Id, player, configManager, 1);
+                player.CurrentShop.Add(new Server.DTOs.ShopItemDto { ConfigId = w.Id, Name = w.Name, Price = w.Price, TotalBaseStats = p.TotalBaseStats, RolledStats = p.RolledStats, WeaponSkills = p.WeaponSkills.Select(s => s.ConfigId).ToList() });
             }
-            else if (tierItems.Any())
+            else if (items.Any())
             {
-                var item = tierItems[Random.Shared.Next(tierItems.Count)];
-                var previewItem = Server.Core.Systems.ItemGenerator.GenerateItem(item.Id, player, configManager, 1);
-                player.CurrentShop.Add(new Server.DTOs.ShopItemDto { ConfigId = item.Id, Name = item.Name, Price = item.Price, TotalBaseStats = previewItem.TotalBaseStats, RolledStats = previewItem.RolledStats, WeaponSkills = previewItem.ItemSkills.Select(s => s.ConfigId).ToList() });
+                var it = items[Random.Shared.Next(items.Count)];
+                var p = ItemGenerator.GenerateItem(it.Id, player, configManager, 1);
+                player.CurrentShop.Add(new Server.DTOs.ShopItemDto { ConfigId = it.Id, Name = it.Name, Price = it.Price, TotalBaseStats = p.TotalBaseStats, RolledStats = p.RolledStats, WeaponSkills = p.ItemSkills.Select(s => s.ConfigId).ToList() });
             }
         }
     }
@@ -274,82 +424,28 @@ public class MatchHub : Hub
     {
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
         if (room == null || !room.State.Players.TryGetValue(Context.ConnectionId, out var player)) return;
-
         lock (player)
         {
             var shopItem = player.CurrentShop.FirstOrDefault(i => i.ConfigId == configId && !i.IsLocked);
             if (shopItem == null || player.Gold < shopItem.Price) return;
-
             bool success = false;
-
-            if (_configManager.Weapons.TryGetValue(configId, out var weaponConfig))
+            if (_configManager.Weapons.TryGetValue(configId, out _))
             {
-                var newWeapon = new Server.Entities.EquippedWeapon
-                {
-                    ConfigId = shopItem.ConfigId,
-                    Level = 1,
-                    RolledStats = shopItem.RolledStats ?? new Dictionary<string, float>(),
-                    TotalBaseStats = shopItem.TotalBaseStats ?? new Dictionary<string, float>()
-                };
-
-                newWeapon.MergedConfigIds.Add(configId);
-
-                if (shopItem.WeaponSkills != null)
-                {
-                    foreach (var skillId in shopItem.WeaponSkills)
-                    {
-                        if (_configManager.Skills.TryGetValue(skillId, out var skillCfg))
-                            newWeapon.WeaponSkills.Add(new Server.Entities.ActiveSkill { ConfigId = skillId, CurrentCooldown = skillCfg.CooldownSeconds });
-                    }
-                }
-
-                success = player.TryAddOrMergeWeapon(newWeapon, _configManager);
+                var w = new EquippedWeapon { ConfigId = shopItem.ConfigId, Level = 1, RolledStats = shopItem.RolledStats ?? new(), TotalBaseStats = shopItem.TotalBaseStats ?? new() };
+                w.MergedConfigIds.Add(configId);
+                if (shopItem.WeaponSkills != null) foreach (var sid in shopItem.WeaponSkills) if (_configManager.Skills.TryGetValue(sid, out var sc)) w.WeaponSkills.Add(new ActiveSkill { ConfigId = sid, CurrentCooldown = sc.CooldownSeconds });
+                success = player.TryAddOrMergeWeapon(w, _configManager);
             }
             else if (_configManager.Items.TryGetValue(configId, out var itemConfig))
             {
-                var newItem = new Server.Entities.EquippedItem
-                {
-                    ConfigId = shopItem.ConfigId,
-                    Level = 1,
-                    RolledStats = shopItem.RolledStats ?? new Dictionary<string, float>(),
-                    TotalBaseStats = shopItem.TotalBaseStats ?? new Dictionary<string, float>()
-                };
-
-                newItem.MergedConfigIds.Add(configId);
-
-                if (shopItem.WeaponSkills != null)
-                {
-                    foreach (var skillId in shopItem.WeaponSkills)
-                    {
-                        if (_configManager.Skills.TryGetValue(skillId, out var skillCfg))
-                            newItem.ItemSkills.Add(new Server.Entities.ActiveSkill { ConfigId = skillId, CurrentCooldown = skillCfg.CooldownSeconds });
-                    }
-                }
-
-                success = player.TryAddOrMergeItem(newItem, _configManager);
-
-                if (success && itemConfig.Traits != null)
-                {
-                    bool gainedNewTrait = false;
-                    foreach (var trait in itemConfig.Traits)
-                    {
-                        if (!player.Traits.Contains(trait))
-                        {
-                            player.Traits.Add(trait);
-                            gainedNewTrait = true;
-                        }
-                    }
-                    if (gainedNewTrait) player.StatsNeedRecalculation = true;
-                }
+                var it = new EquippedItem { ConfigId = shopItem.ConfigId, Level = 1, RolledStats = shopItem.RolledStats ?? new(), TotalBaseStats = shopItem.TotalBaseStats ?? new() };
+                it.MergedConfigIds.Add(configId);
+                if (shopItem.WeaponSkills != null) foreach (var sid in shopItem.WeaponSkills) if (_configManager.Skills.TryGetValue(sid, out var sc)) it.ItemSkills.Add(new ActiveSkill { ConfigId = sid, CurrentCooldown = sc.CooldownSeconds });
+                success = player.TryAddOrMergeItem(it, _configManager);
+                if (success && itemConfig.Traits != null) { bool g = false; foreach (var t in itemConfig.Traits) if (!player.Traits.Contains(t)) { player.Traits.Add(t); g = true; } if (g) player.StatsNeedRecalculation = true; }
             }
-
-            if (success)
-            {
-                player.Gold -= shopItem.Price;
-                player.CurrentShop.Remove(shopItem);
-            }
+            if (success) { player.Gold -= shopItem.Price; player.CurrentShop.Remove(shopItem); }
         }
-
         await SendPlayerUI(player, room.State);
     }
 
@@ -357,29 +453,19 @@ public class MatchHub : Hub
     {
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
         if (room == null || !room.State.Players.TryGetValue(Context.ConnectionId, out var player)) return;
-
         lock (player)
         {
             if (player.PendingLevelUps > 0 && player.CurrentLevelUpChoices.Any(c => c.Id == cardId))
             {
                 var card = player.CurrentLevelUpChoices.First(c => c.Id == cardId);
-
                 player.Stats.AddModifier(card.StatName, card.Amount, 0);
                 player.StatsNeedRecalculation = true;
-
                 player.PendingLevelUps--;
                 player.CurrentLevelUpChoices.Clear();
-
                 if (player.PendingLevelUps > 0)
-                {
-                    player.CurrentLevelUpChoices = _configManager.LevelUpCards.Values
-                        .OrderBy(x => Random.Shared.Next())
-                        .Take(3)
-                        .ToList();
-                }
+                    player.CurrentLevelUpChoices = _configManager.LevelUpCards.Values.OrderBy(_ => Random.Shared.Next()).Take(3).ToList();
             }
         }
-
         await SendPlayerUI(player, room.State);
     }
 
@@ -387,19 +473,13 @@ public class MatchHub : Hub
     {
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
         if (room == null || !room.State.Players.TryGetValue(Context.ConnectionId, out var player)) return;
-
-        if (!_configManager.Difficulties.TryGetValue(room.State.CurrentDifficulty, out var diffConfig))
-            diffConfig = new DifficultyConfig();
-
+        if (!_configManager.Difficulties.TryGetValue(room.State.CurrentDifficulty, out var diff)) diff = new DifficultyConfig();
         lock (player)
         {
-            if (player.Gold >= player.CurrentRerollCost)
-            {
-                player.Gold -= player.CurrentRerollCost;
-                player.CurrentRerollCost += diffConfig.RerollInflation;
-
-                GenerateShopForPlayer(player, _configManager, room.State.CurrentWave);
-            }
+            if (player.Gold < player.CurrentRerollCost) return;
+            player.Gold -= player.CurrentRerollCost;
+            player.CurrentRerollCost += diff.RerollInflation;
+            GenerateShopForPlayer(player, _configManager, room.State.CurrentWave);
         }
         await SendPlayerUI(player, room.State);
     }
@@ -408,51 +488,24 @@ public class MatchHub : Hub
     {
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
         if (room == null || !room.State.Players.TryGetValue(Context.ConnectionId, out var player)) return;
-
         var item = player.CurrentShop.FirstOrDefault(i => i.ConfigId == configId);
-        if (item != null)
-        {
-            item.IsLocked = !item.IsLocked;
-            await SendPlayerUI(player, room.State);
-        }
+        if (item != null) { item.IsLocked = !item.IsLocked; await SendPlayerUI(player, room.State); }
     }
 
     public async Task TryPickupLoot(string pickupId)
     {
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
         if (room == null || !room.State.Players.TryGetValue(Context.ConnectionId, out var player)) return;
-
         lock (player)
         {
-            if (room.State.Pickups.TryGetValue(pickupId, out var pickup))
-            {
-                float distSq = (player.X - pickup.X) * (player.X - pickup.X) + (player.Y - pickup.Y) * (player.Y - pickup.Y);
-                if (distSq > 2500) return;
-
-                bool success = false;
-
-                if (pickup.Type == Server.Entities.PickupType.Weapon && pickup.DroppedWeapon != null)
-                {
-                    pickup.DroppedWeapon.Level = 1;
-                    pickup.DroppedWeapon.MergedConfigIds.Clear();
-                    pickup.DroppedWeapon.MergedConfigIds.Add(pickup.DroppedWeapon.ConfigId);
-                    success = player.TryAddOrMergeWeapon(pickup.DroppedWeapon, _configManager);
-                }
-                else if (pickup.Type == Server.Entities.PickupType.Item && pickup.DroppedItem != null)
-                {
-                    pickup.DroppedItem.Level = 1;
-                    pickup.DroppedItem.MergedConfigIds.Clear();
-                    pickup.DroppedItem.MergedConfigIds.Add(pickup.DroppedItem.ConfigId);
-                    success = player.TryAddOrMergeItem(pickup.DroppedItem, _configManager);
-                }
-
-                if (success)
-                {
-                    room.State.Pickups.TryRemove(pickupId, out _);
-                }
-            }
+            if (!room.State.Pickups.TryGetValue(pickupId, out var pickup)) return;
+            float dx = player.X - pickup.X, dy = player.Y - pickup.Y;
+            if (dx * dx + dy * dy > 2500) return;
+            bool success = false;
+            if (pickup.Type == PickupType.Weapon && pickup.DroppedWeapon != null) { pickup.DroppedWeapon.Level = 1; pickup.DroppedWeapon.MergedConfigIds.Clear(); pickup.DroppedWeapon.MergedConfigIds.Add(pickup.DroppedWeapon.ConfigId); success = player.TryAddOrMergeWeapon(pickup.DroppedWeapon, _configManager); }
+            else if (pickup.Type == PickupType.Item && pickup.DroppedItem != null) { pickup.DroppedItem.Level = 1; pickup.DroppedItem.MergedConfigIds.Clear(); pickup.DroppedItem.MergedConfigIds.Add(pickup.DroppedItem.ConfigId); success = player.TryAddOrMergeItem(pickup.DroppedItem, _configManager); }
+            if (success) room.State.Pickups.TryRemove(pickupId, out _);
         }
-
         await SendPlayerUI(player, room.State);
     }
 
@@ -460,37 +513,18 @@ public class MatchHub : Hub
     {
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
         if (room == null || !room.State.Players.TryGetValue(Context.ConnectionId, out var player)) return;
-
+        if (!_configManager.Difficulties.TryGetValue(room.State.CurrentDifficulty, out var diff)) diff = new DifficultyConfig();
         lock (player)
         {
-            if (!_configManager.Difficulties.TryGetValue(room.State.CurrentDifficulty, out var currentDiff))
-                currentDiff = new DifficultyConfig();
-
             int basePrice = 0;
-            if (isWeapon)
-            {
-                var w = player.Weapons.FirstOrDefault(x => x.SlotIndex == slotIndex);
-                if (w != null && _configManager.Weapons.TryGetValue(w.ConfigId, out var wCfg)) basePrice = wCfg.Price;
-            }
-            else
-            {
-                var i = player.OwnedItems.FirstOrDefault(x => x.SlotIndex == slotIndex);
-                if (i != null && _configManager.Items.TryGetValue(i.ConfigId, out var iCfg)) basePrice = iCfg.Price;
-            }
-
-            if (basePrice >= 0)
-            {
-                int payout = (int)Math.Floor(basePrice * 0.10f * currentDiff.RecycleValueMultiplier);
-
-                if (payout < 0 && player.Gold < Math.Abs(payout)) return;
-
-                player.Gold += Math.Max(0, payout);
-
-                if (isWeapon) player.RemoveWeapon(slotIndex, _configManager);
-                else player.RemoveItem(slotIndex, _configManager);
-            }
+            if (isWeapon) { var w = player.Weapons.FirstOrDefault(x => x.SlotIndex == slotIndex); if (w != null && _configManager.Weapons.TryGetValue(w.ConfigId, out var wc)) basePrice = wc.Price; }
+            else { var it = player.OwnedItems.FirstOrDefault(x => x.SlotIndex == slotIndex); if (it != null && _configManager.Items.TryGetValue(it.ConfigId, out var ic)) basePrice = ic.Price; }
+            int payout = (int)Math.Floor(basePrice * 0.10f * diff.RecycleValueMultiplier);
+            if (payout < 0 && player.Gold < Math.Abs(payout)) return;
+            player.Gold += Math.Max(0, payout);
+            if (isWeapon) player.RemoveWeapon(slotIndex, _configManager);
+            else player.RemoveItem(slotIndex, _configManager);
         }
-
         await SendPlayerUI(player, room.State);
     }
 }

@@ -139,3 +139,9 @@ public class BeamEndedEvent
     public string CasterId { get; set; } = string.Empty;
     public string SkillId { get; set; } = string.Empty;
 }
+
+public class ChatMessageEvent
+{
+    public string Sender { get; set; } = "System";
+    public string Message { get; set; } = string.Empty;
+}

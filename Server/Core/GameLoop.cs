@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.SignalR;
 using Server.Configs;
 using Server.Hubs;
@@ -24,7 +23,6 @@ public class GameLoop : BackgroundService
 
         _configManager.LoadConfigs();
 
-        // Push global JSON updates to ALL players if a reload occurs
         _configManager.OnConfigsReloaded += async () =>
         {
             var payload = new
@@ -54,16 +52,18 @@ public class GameLoop : BackgroundService
             float dt = (float)(currentTickTime - lastTickTime).TotalSeconds;
             lastTickTime = currentTickTime;
 
-            var activeRooms = _roomManager.GetAllRooms();
-
-            // FIX: Force CPU-bound room ticks onto the ThreadPool
-            var tasks = activeRooms.Select(room => Task.Run(() => room.TickAsync(dt, stoppingToken), stoppingToken));
+            // Tick all rooms in parallel on the ThreadPool.
+            var tasks = _roomManager.GetAllRooms()
+                .Select(room => Task.Run(() => room.TickAsync(dt, stoppingToken), stoppingToken));
 
             await Task.WhenAll(tasks);
 
-            var executionTime = DateTime.UtcNow - currentTickTime;
-            var delay = _tickRateMs - (int)executionTime.TotalMilliseconds;
+            // FIX: Evict rooms that expired or were abandoned after every cycle.
+            // Without this, ScheduledForDeletion rooms accumulate in memory forever.
+            _roomManager.CleanupDeletedRooms();
 
+            var elapsed = (int)(DateTime.UtcNow - currentTickTime).TotalMilliseconds;
+            var delay = _tickRateMs - elapsed;
             if (delay > 0)
                 await Task.Delay(delay, stoppingToken);
         }
