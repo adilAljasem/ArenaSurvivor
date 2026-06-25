@@ -78,7 +78,6 @@ services:
       # Set up public access rules matching production
       - ServerConfig__FrontendUrl=http://adel.giize.com
       - ServerConfig__AllowedCorsOrigins__0=http://adel.giize.com
-      - ServerConfig__GameVersion=v1.0.4 Alpha
     networks:
       - arena_network
     depends_on:
@@ -108,7 +107,6 @@ services:
       - ServerConfig__PublicUrl=http://adel.giize.com/w1/matchHub
       - ServerConfig__FrontendUrl=http://adel.giize.com
       - ServerConfig__AllowedCorsOrigins__0=http://adel.giize.com
-      - ServerConfig__GameVersion=v1.0.4 Alpha
     networks:
       - arena_network
     depends_on:
@@ -141,7 +139,6 @@ services:
       - ServerConfig__PublicUrl=http://adel.giize.com/w2/matchHub
       - ServerConfig__FrontendUrl=http://adel.giize.com
       - ServerConfig__AllowedCorsOrigins__0=http://adel.giize.com
-      - ServerConfig__GameVersion=v1.0.4 Alpha
     networks:
       - arena_network
     depends_on:

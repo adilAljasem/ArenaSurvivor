@@ -147,7 +147,12 @@ export class EscMenu {
     // 3. >>> NEW: Toggle Fullscreen
     this.createButton(cx, cy + 60, "Toggle Fullscreen", () => {
       if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(err => console.warn(err));
+        document.documentElement.requestFullscreen().then(() => {
+          // Lock the ESC key to prevent it from closing fullscreen on a single press
+          if ('keyboard' in navigator && (navigator as any).keyboard && (navigator as any).keyboard.lock) {
+            (navigator as any).keyboard.lock(['Escape']).catch((e: any) => console.warn(e));
+          }
+        }).catch(err => console.warn(err));
       } else {
         if (document.exitFullscreen) document.exitFullscreen();
       }
