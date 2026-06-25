@@ -28,6 +28,8 @@ export class AuthUI {
     private wrapper: HTMLDivElement;
     private onSuccess: () => void;
     private audioClick = new Audio(LOBBY_ASSETS.sfxClick);
+    private pendingResendEmail: string = '';
+    private resendCooldownTimer: ReturnType<typeof setInterval> | null = null;
 
     constructor(onSuccess: () => void) {
         this.onSuccess = onSuccess;
@@ -132,6 +134,15 @@ export class AuthUI {
                 .auth-notice { padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 20px; display: none; text-align: center; font-weight: bold; }
                 .auth-notice.success { background: rgba(76, 175, 80, 0.2); color: #81c784; border: 1px solid #4caf50; }
                 .auth-notice.error   { background: rgba(244, 67, 54, 0.2); color: #e57373; border: 1px solid #f44336; }
+                .resend-btn {
+    width:100%; padding:10px; margin-top:8px;
+    background:transparent; border:2px solid ${LOBBY_ASSETS.colorPrimary};
+    border-radius:6px; font-size:13px; color:${LOBBY_ASSETS.colorPrimary};
+    cursor:pointer; transition:all 0.2s; text-transform:uppercase; letter-spacing:1px;
+}
+.resend-btn:hover:not(:disabled) { background:rgba(229,179,92,0.12); }
+.resend-btn:disabled { opacity:0.45; cursor:not-allowed; }
+
             </style>
 
             <video autoplay muted loop playsinline id="bg-video">
@@ -148,7 +159,11 @@ export class AuthUI {
 
                 <div class="auth-panel">
                     <div class="auth-subtitle">Save your progress & join the realm</div>
-                    <div class="auth-notice" id="auth-notice"></div>
+                   <div class="auth-notice" id="auth-notice"></div>
+<div id="resend-container" style="display:none; margin-top:6px;">
+    <button class="resend-btn" id="btn-resend">📧 Resend Verification Email</button>
+</div>
+
 
                     <div class="auth-tabs">
                         <div class="auth-tab active" id="tab-login"  onclick="authShowTab('login')">Login</div>
@@ -221,6 +236,8 @@ export class AuthUI {
         document.getElementById('btn-register')!.addEventListener('click', () => this.handleRegister());
         document.getElementById('btn-forgot')!.addEventListener('click', () => this.handleForgotPassword());
         document.getElementById('btn-reset')!.addEventListener('click', () => this.handleResetPassword());
+        document.getElementById('btn-resend')!.addEventListener('click', () => this.handleResendVerification());
+
 
         ['login-email', 'login-password'].forEach(id => document.getElementById(id)!.addEventListener('keydown', e => { if (e.key === 'Enter') this.handleLogin(); }));
         ['reg-email', 'reg-username', 'reg-password'].forEach(id => document.getElementById(id)!.addEventListener('keydown', e => { if (e.key === 'Enter') this.handleRegister(); }));
@@ -254,6 +271,8 @@ export class AuthUI {
         (document.querySelector('.auth-tabs') as HTMLElement).style.display = (isForgot || isReset) ? 'none' : 'flex';
 
         this.hideNotice();
+        const resendEl = document.getElementById('resend-container');
+        if (resendEl) resendEl.style.display = 'none';
     }
 
     private showNotice(msg: string, type: 'success' | 'error' | 'info') {
@@ -287,14 +306,20 @@ export class AuthUI {
             });
             const data = await res.json();
             if (res.ok) {
-                localStorage.setItem('arena_jwt', data.token);
-                localStorage.setItem('arena_username', data.username);
-                localStorage.setItem('arena_playerId', data.playerId);
-                this.wrapper.remove();
-                this.onSuccess();
+                this.pendingResendEmail = email;
+                this.showNotice('✅ ' + data.message + " Didn't get it? Click below.", 'success');
+                const c = document.getElementById('resend-container');
+                if (c) c.style.display = 'block';
+                // Removed auto-redirect so the player can resend before switching tabs.
             } else {
                 this.showNotice('❌ ' + data.error, 'error');
+                if (data.error?.includes('verify')) {
+                    this.pendingResendEmail = email;
+                    const c = document.getElementById('resend-container');
+                    if (c) c.style.display = 'block';
+                }
             }
+
         } catch {
             this.showNotice('❌ Connection error.', 'error');
         } finally {
@@ -381,6 +406,45 @@ export class AuthUI {
             this.setLoading('btn-reset', false);
         }
     }
+
+    private async handleResendVerification() {
+        if (!this.pendingResendEmail) return;
+        const btn = document.getElementById('btn-resend') as HTMLButtonElement;
+
+        try {
+            btn.disabled = true;
+            btn.textContent = 'SENDING...';
+
+            const res = await fetch('/api/auth/resend-verification', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: this.pendingResendEmail })
+            });
+            const data = await res.json();
+
+            if (res.status === 429) this.showNotice('⏳ ' + data.error, 'error');
+            else if (res.ok) this.showNotice('✅ ' + data.message, 'success');
+            else this.showNotice('❌ ' + data.error, 'error');
+        } catch {
+            this.showNotice('❌ Connection error.', 'error');
+        }
+
+        // 60-second client-side cooldown (mirrors the server rate limit)
+        let seconds = 60;
+        btn.textContent = `Resend in ${seconds}s`;
+        if (this.resendCooldownTimer) clearInterval(this.resendCooldownTimer);
+        this.resendCooldownTimer = setInterval(() => {
+            seconds--;
+            if (seconds <= 0) {
+                clearInterval(this.resendCooldownTimer!);
+                this.resendCooldownTimer = null;
+                btn.disabled = false;
+                btn.textContent = '📧 Resend Verification Email';
+            } else {
+                btn.textContent = `Resend in ${seconds}s`;
+            }
+        }, 1000);
+    }
 }
 
 
@@ -402,6 +466,8 @@ export class LobbyUI {
     private lastPlayerCount: number = 0;
 
     private audioClick = new Audio(LOBBY_ASSETS.sfxClick);
+    private pendingResendEmail: string = '';
+    private resendCooldownTimer: ReturnType<typeof setInterval> | null = null;
     private audioJoin = new Audio(LOBBY_ASSETS.sfxJoin);
     private audioMessage = new Audio(LOBBY_ASSETS.sfxMessage);
 
