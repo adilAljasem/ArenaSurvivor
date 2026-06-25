@@ -257,9 +257,51 @@ public class AuthController : ControllerBase
             return StatusCode(500, new { error = "Internal server error." });
         }
     }
+
+    // ─── RESEND VERIFICATION ─────────────────────────────────────────────────────
+    [HttpPost("resend-verification")]
+    public async Task<IActionResult> ResendVerification([FromBody] ResendVerificationRequest req)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(req.Email))
+                return BadRequest(new { error = "Email is required." });
+
+            var redisService = HttpContext.RequestServices.GetRequiredService<RedisService>();
+            bool allowed = await redisService.CheckResendRateLimit(req.Email);
+            if (!allowed)
+                return StatusCode(429, new { error = "Please wait 60 seconds before requesting another email." });
+
+            var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == req.Email.ToLower().Trim());
+
+            // Return the same vague message regardless (prevents email enumeration).
+            if (user == null || user.IsEmailVerified)
+                return Ok(new { message = "If that email is pending verification, a new link was sent." });
+
+            user.VerificationToken = Guid.NewGuid().ToString("N");
+            user.VerificationTokenExpiresAt = DateTime.UtcNow.AddHours(24);
+            await _db.SaveChangesAsync();
+
+            string frontendUrl = _serverConfig.FrontendUrl ?? $"{Request.Scheme}://{Request.Host}";
+            string verifyUrl = $"{frontendUrl}/?verify_token={user.VerificationToken}";
+
+            try { await _emailService.SendVerificationEmailAsync(user.Email, user.Username, verifyUrl); }
+            catch (Exception ex) { Console.WriteLine($"[AUTH] Resend email failed: {ex.Message}"); }
+
+            return Ok(new { message = "If that email is pending verification, a new link was sent." });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[AUTH CRITICAL] Resend Verification Exception: {ex}");
+            return StatusCode(500, new { error = "Internal server error." });
+        }
+    }
+
 }
 
 public record RegisterRequest(string Email, string Username, string Password);
 public record LoginRequest(string Email, string Password);
 public record ForgotPasswordRequest(string Email);
 public record ResetPasswordRequest(string Token, string NewPassword);
+public record ResendVerificationRequest(string Email);
+

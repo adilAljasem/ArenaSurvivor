@@ -305,13 +305,22 @@ export class AuthUI {
                 body: JSON.stringify({ email, password })
             });
             const data = await res.json();
+
             if (res.ok) {
-                this.pendingResendEmail = email;
-                this.showNotice('✅ ' + data.message + " Didn't get it? Click below.", 'success');
-                const c = document.getElementById('resend-container');
-                if (c) c.style.display = 'block';
-                // Removed auto-redirect so the player can resend before switching tabs.
+                // 1. Save the credentials sent by the backend to localStorage
+                localStorage.setItem('arena_jwt', data.token);
+                localStorage.setItem('arena_username', data.username);
+                localStorage.setItem('arena_playerId', data.playerId);
+
+                // 2. Show a proper success message
+                this.showNotice('✅ Login successful! Entering the arena...', 'success');
+
+                // 3. Trigger the onSuccess callback to close the UI and start the game
+                if (this.onSuccess) {
+                    this.onSuccess();
+                }
             } else {
+                // Keep your existing error handling for unauthorized/unverified users
                 this.showNotice('❌ ' + data.error, 'error');
                 if (data.error?.includes('verify')) {
                     this.pendingResendEmail = email;
@@ -342,8 +351,13 @@ export class AuthUI {
             });
             const data = await res.json();
             if (res.ok) {
-                this.showNotice('✅ ' + data.message, 'success');
-                setTimeout(() => this.showTab('login'), 2000);
+                this.pendingResendEmail = email;
+                const msg = data.message ?? 'Account created! Check your email to verify.';
+                this.showNotice('✅ ' + msg, 'success');
+                const c = document.getElementById('resend-container');
+                if (c) c.style.display = 'block';
+                // Redirect to login after 5 s — enough time to hit Resend if needed.
+                setTimeout(() => this.showTab('login'), 5000);
             } else {
                 this.showNotice('❌ ' + data.error, 'error');
             }

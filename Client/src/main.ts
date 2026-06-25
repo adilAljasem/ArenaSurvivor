@@ -17,6 +17,18 @@ export let activeWorkerUrl = "Waiting for match...";
 
 const SKIP_LOBBY_IN_DEV = isDev && false;
 
+// Mobile detection: touch device without a fine (mouse) pointer.
+// This correctly distinguishes phones/tablets from touch-screen laptops (Surface, etc.).
+export const isMobile = (() => {
+  const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  const hasFinePointer = window.matchMedia('(pointer:fine)').matches;
+  return hasTouch && !hasFinePointer;
+})();
+
+// Written by setupMobileUI() joystick, read by handleInput().
+export const mobileDir = { x: 0, y: 0 };
+
+
 export const playerId = (() => {
   let id = localStorage.getItem('arena_playerId');
   if (!id) {
@@ -129,6 +141,7 @@ class GameScene extends Phaser.Scene {
   private lastSentInput: string = "";
 
   private isDebugMode: boolean = false;
+  private mobileUIInitialized: boolean = false;
   private debugGraphics!: Phaser.GameObjects.Graphics;
   private lastBandwidthTime: number = 0;
   private currentDrawCalls: number = 0;
@@ -630,7 +643,14 @@ class GameScene extends Phaser.Scene {
 
       setupChatUI(this, matchConnection);
 
+      // Mobile HUD: joystick + ⚙️ + 🐛 — created once, after the lobby disappears.
+      if (isMobile && !this.mobileUIInitialized) {
+        this.mobileUIInitialized = true;
+        this.setupMobileUI();
+      }
+
       if (this.shopUIModule && typeof (this.shopUIModule as any).destroy === 'function') {
+
         (this.shopUIModule as any).destroy();
       }
       this.shopUIModule = new ShopUI(this, matchConnection);
@@ -935,7 +955,8 @@ class GameScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number) {
-    this.handleInput(time);
+    if (!this.debugGraphics) return;
+     this.handleInput(time);
     this.smoothInterpolateSprites(this.playerSprites, 0.2);
     this.smoothInterpolateSprites(this.enemySprites, 0.2);
     const dtSeconds = delta / 1000;
@@ -1044,30 +1065,188 @@ class GameScene extends Phaser.Scene {
   }
 
   private handleInput(time: number) {
-    if (!this.cursors || !this.wasd || !matchConnection || matchConnection.state !== HubConnectionState.Connected) return;
+    if (!matchConnection || matchConnection.state !== HubConnectionState.Connected) return;
 
     let dirX = 0, dirY = 0;
-    if (this.cursors.left.isDown || this.wasd.A.isDown) dirX = -1;
-    if (this.cursors.right.isDown || this.wasd.D.isDown) dirX = 1;
-    if (this.cursors.up.isDown || this.wasd.W.isDown) dirY = -1;
-    if (this.cursors.down.isDown || this.wasd.S.isDown) dirY = 1;
 
-    const pointer = this.input.activePointer;
-    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    // Keyboard input — still works on mobile via Bluetooth keyboard.
+    if (this.cursors && this.wasd) {
+      if (this.cursors.left.isDown || this.wasd.A.isDown) dirX = -1;
+      if (this.cursors.right.isDown || this.wasd.D.isDown) dirX = 1;
+      if (this.cursors.up.isDown || this.wasd.W.isDown) dirY = -1;
+      if (this.cursors.down.isDown || this.wasd.S.isDown) dirY = 1;
+    }
 
-    const inputData = {
-      DirX: dirX,
-      DirY: dirY,
-      AimX: Math.round(worldPoint.x),
-      AimY: Math.round(worldPoint.y)
-    };
+    // Mobile virtual joystick overrides keyboard when the stick is pushed.
+    if (isMobile && (mobileDir.x !== 0 || mobileDir.y !== 0)) {
+      dirX = mobileDir.x;
+      dirY = mobileDir.y;
+    }
 
+    // Aim: auto-aim on mobile, pointer on desktop.
+    let aimX: number, aimY: number;
+    if (isMobile) {
+      const aim = this.getMobileAutoAim(dirX, dirY);
+      aimX = aim.x; aimY = aim.y;
+    } else {
+      const wp = this.cameras.main.getWorldPoint(this.input.activePointer.x, this.input.activePointer.y);
+      aimX = Math.round(wp.x); aimY = Math.round(wp.y);
+    }
+
+    const inputData = { DirX: dirX, DirY: dirY, AimX: aimX, AimY: aimY };
     const inputString = JSON.stringify(inputData);
     if (inputString !== this.lastSentInput || time - this.lastInputSendTime > 100) {
       matchConnection.invoke("SendInput", inputData).catch((err: any) => console.error(err));
       this.lastSentInput = inputString;
       this.lastInputSendTime = time;
     }
+  }
+
+  // Auto-aim at the nearest visible enemy; falls back to aiming ahead in the movement direction.
+  private getMobileAutoAim(dirX: number, dirY: number): { x: number, y: number } {
+    const mySprite = this.playerSprites.get(matchConnection.connectionId || '');
+    if (!mySprite) return { x: 0, y: 0 };
+
+    // Default: aim 300 px ahead in the movement direction.
+    let aimX = Math.round(mySprite.x + dirX * 300);
+    let aimY = Math.round(mySprite.y + dirY * 300);
+    let nearestSq = Infinity;
+
+    this.enemyCache.forEach(enemy => {
+      const dx = enemy.x - mySprite.x;
+      const dy = enemy.y - mySprite.y;
+      const sq = dx * dx + dy * dy;
+      if (sq < nearestSq) {
+        nearestSq = sq;
+        aimX = Math.round(enemy.x);
+        aimY = Math.round(enemy.y);
+      }
+    });
+
+    return { x: aimX, y: aimY };
+  }
+
+  private setupMobileUI(): void {
+    const hud = document.createElement('div');
+    hud.id = 'mobile-hud';
+    hud.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:5000;';
+    hud.innerHTML = `
+        <style>
+            .m-icon-btn {
+                position: absolute; top: 20px;
+                width: 52px; height: 52px; border-radius: 50%;
+                pointer-events: auto; cursor: pointer;
+                display: flex; align-items: center; justify-content: center;
+                font-size: 24px; -webkit-tap-highlight-color: transparent;
+                transition: transform 0.1s; border: none; outline: none;
+            }
+            .m-icon-btn:active { transform: scale(0.88); }
+            #mobile-settings-btn { right: 20px;  background: rgba(0,0,0,0.75); border: 2px solid #e5b35c; }
+            #mobile-debug-btn    { right: 82px; background: rgba(0,0,0,0.75); border: 2px solid #00ff88; }
+
+            #joystick-zone {
+                position: absolute; bottom: 40px; left: 40px;
+                width: 150px; height: 150px;
+                pointer-events: auto; touch-action: none;
+            }
+            #joystick-base {
+                position: absolute; inset: 0; border-radius: 50%;
+                background: rgba(0,0,0,0.45); border: 3px solid rgba(229,179,92,0.4);
+            }
+            #joystick-thumb {
+                position: absolute; width: 64px; height: 64px;
+                top: 50%; left: 50%; transform: translate(-50%, -50%);
+                border-radius: 50%;
+                background: radial-gradient(circle, rgba(229,179,92,0.9) 0%, rgba(229,179,92,0.5) 100%);
+                border: 2px solid #e5b35c;
+                box-shadow: 0 0 12px rgba(229,179,92,0.35);
+            }
+        </style>
+
+        <button id="mobile-settings-btn" class="m-icon-btn">⚙️</button>
+        <button id="mobile-debug-btn"    class="m-icon-btn">🐛</button>
+
+        <div id="joystick-zone">
+            <div id="joystick-base"></div>
+            <div id="joystick-thumb"></div>
+        </div>
+    `;
+    document.body.appendChild(hud);
+
+    // Push the chat history right so it doesn't sit behind the joystick.
+    const chatWrap = document.getElementById('chat-wrapper');
+    if (chatWrap) {
+      chatWrap.style.left = '210px';
+      chatWrap.style.width = 'calc(100vw - 230px)';
+    }
+
+    // ── Settings button → toggle ESC menu ────────────────────────────────────
+    document.getElementById('mobile-settings-btn')!.addEventListener('click', () => {
+      this.escMenu.toggle();
+    });
+
+    // ── Debug button → same as pressing H ────────────────────────────────────
+    document.getElementById('mobile-debug-btn')!.addEventListener('click', () => {
+      this.isDebugMode = !this.isDebugMode;
+      this.perfText.setVisible(this.isDebugMode);
+    });
+
+    // ── Virtual joystick ─────────────────────────────────────────────────────
+    const zone = document.getElementById('joystick-zone')!;
+    const thumb = document.getElementById('joystick-thumb')!;
+    const ZONE_R = 75; // px — half the zone width (150)
+
+    let activeTouchId: number | null = null;
+    let zoneRect: DOMRect = zone.getBoundingClientRect();
+    window.addEventListener('resize', () => { zoneRect = zone.getBoundingClientRect(); });
+
+    zone.addEventListener('touchstart', (e: TouchEvent) => {
+      e.preventDefault();
+      if (activeTouchId !== null) return;
+      activeTouchId = e.changedTouches[0].identifier;
+      zoneRect = zone.getBoundingClientRect(); // refresh in case of layout shift
+    }, { passive: false });
+
+    zone.addEventListener('touchmove', (e: TouchEvent) => {
+      e.preventDefault();
+      if (activeTouchId === null) return;
+
+      let touch: Touch | null = null;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === activeTouchId) { touch = e.changedTouches[i]; break; }
+      }
+      if (!touch) return;
+
+      const cx = zoneRect.left + ZONE_R;
+      const cy = zoneRect.top + ZONE_R;
+      let dx = touch.clientX - cx;
+      let dy = touch.clientY - cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > ZONE_R) { dx = dx / dist * ZONE_R; dy = dy / dist * ZONE_R; }
+
+      // thumb center = (ZONE_R + dx, ZONE_R + dy) inside the zone
+      // CSS transform:translate(-50%,-50%) handles the -32px centering offset
+      thumb.style.left = `${ZONE_R + dx}px`;
+      thumb.style.top = `${ZONE_R + dy}px`;
+
+      mobileDir.x = dx / ZONE_R;
+      mobileDir.y = dy / ZONE_R;
+    }, { passive: false });
+
+    const releaseJoystick = (e: TouchEvent) => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === activeTouchId) {
+          activeTouchId = null;
+          mobileDir.x = 0;
+          mobileDir.y = 0;
+          thumb.style.left = '50%';
+          thumb.style.top = '50%';
+          break;
+        }
+      }
+    };
+    zone.addEventListener('touchend', releaseJoystick, { passive: false });
+    zone.addEventListener('touchcancel', releaseJoystick, { passive: false });
   }
 
   private smoothInterpolateSprites(map: Map<string, any>, speed: number = 0.2) {

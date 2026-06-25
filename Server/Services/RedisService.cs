@@ -93,6 +93,17 @@ public class RedisService
         var val = await db.StringGetAsync($"session:{playerId}");
         return val.IsNullOrEmpty ? null : val.ToString();
     }
+
+    // Rate-limiter for resend-verification: returns true if allowed, false if the caller should back off.
+    // Uses atomic SetNX so concurrent requests are handled correctly.
+    public async Task<bool> CheckResendRateLimit(string email)
+    {
+        var db = _redis.GetDatabase();
+        var key = $"resend_rl:{email.ToLower().Trim()}";
+        // StringSetAsync with When.NotExists only writes the key when absent.
+        // If it already exists the request was made within the last 60 s → deny.
+        return await db.StringSetAsync(key, "1", TimeSpan.FromSeconds(60), When.NotExists);
+    }
 }
 
 public class RoomTransferDto

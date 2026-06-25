@@ -17,6 +17,7 @@ public class EmailService
         _settings = settings.Value;
     }
 
+
     public async Task SendVerificationEmailAsync(string toEmail, string username, string verifyUrl)
     {
         var message = new MimeMessage();
