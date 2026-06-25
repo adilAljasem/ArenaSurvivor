@@ -4,6 +4,10 @@ networks:
   arena_network:
     driver: overlay
 
+volumes:
+  # Persistent volume for safe PostgreSQL data storage
+  postgres_data:
+
 services:
   # ==========================================
   # 1. TRAEFIK (The Load Balancer / Proxy)
@@ -43,17 +47,43 @@ services:
           - node.role == manager 
 
   # ==========================================
-  # 3. MASTER NODE (Lobby, Matchmaking, UI)
+  # 3. POSTGRESQL (The Persistent Account Database)
+  # ==========================================
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=arena_survivor
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=aa123456
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - arena_network
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+
+  # ==========================================
+  # 4. MASTER NODE (Lobby, Matchmaking, UI)
   # ==========================================
   master:
     image: ghcr.io/adilaljasem/arenasurvivor:latest
     environment:
       - ServerConfig__Role=Master
       - RedisConfig__ConnectionString=redis:6379,abortConnect=false
+      # Database string pointing to our internal container name "postgres"
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=arena_survivor;Username=postgres;Password=aa123456
+      # Set up public access rules matching production
+      - ServerConfig__FrontendUrl=http://adel.giize.com
+      - ServerConfig__AllowedCorsOrigins__0=http://adel.giize.com
+      - ServerConfig__GameVersion=v1.0.4 Alpha
     networks:
       - arena_network
     depends_on:
       - redis
+      - postgres
     deploy:
       replicas: 1
       placement:
@@ -66,19 +96,24 @@ services:
         - "traefik.http.services.master.loadbalancer.server.port=8080"
 
   # ==========================================
-  # 4A. WORKER NODE 1 (/w1)
+  # 5A. WORKER NODE 1 (/w1)
   # ==========================================
   worker-1:
     image: ghcr.io/adilaljasem/arenasurvivor:latest
     environment:
       - ServerConfig__Role=Worker
       - RedisConfig__ConnectionString=redis:6379,abortConnect=false
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=arena_survivor;Username=postgres;Password=aa123456
       # Redis registers THIS specific path for Worker 1
       - ServerConfig__PublicUrl=http://adel.giize.com/w1/matchHub
+      - ServerConfig__FrontendUrl=http://adel.giize.com
+      - ServerConfig__AllowedCorsOrigins__0=http://adel.giize.com
+      - ServerConfig__GameVersion=v1.0.4 Alpha
     networks:
       - arena_network
     depends_on:
       - redis
+      - postgres
     deploy:
       replicas: 1
       placement:
@@ -94,19 +129,24 @@ services:
         - "traefik.http.services.w1.loadbalancer.server.port=8080"
 
   # ==========================================
-  # 4B. WORKER NODE 2 (/w2)
+  # 5B. WORKER NODE 2 (/w2)
   # ==========================================
   worker-2:
     image: ghcr.io/adilaljasem/arenasurvivor:latest
     environment:
       - ServerConfig__Role=Worker
       - RedisConfig__ConnectionString=redis:6379,abortConnect=false
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=arena_survivor;Username=postgres;Password=aa123456
       # Redis registers THIS specific path for Worker 2
       - ServerConfig__PublicUrl=http://adel.giize.com/w2/matchHub
+      - ServerConfig__FrontendUrl=http://adel.giize.com
+      - ServerConfig__AllowedCorsOrigins__0=http://adel.giize.com
+      - ServerConfig__GameVersion=v1.0.4 Alpha
     networks:
       - arena_network
     depends_on:
       - redis
+      - postgres
     deploy:
       replicas: 1
       placement:
