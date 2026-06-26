@@ -17,13 +17,16 @@ public class MatchHub : Hub
     private readonly RoomManager _roomManager;
     private readonly ConfigManager _configManager;
     private readonly RedisService _redisService;
+    private readonly RoomConfig _roomConfig;
     private readonly ServerConfig _serverConfig;
 
-public MatchHub(RoomManager roomManager, ConfigManager configManager, RedisService redisService, IOptions<ServerConfig> serverConfig)
+    public MatchHub(RoomManager roomManager, ConfigManager configManager, RedisService redisService, IOptions<RoomConfig> roomConfig,
+                      IOptions<ServerConfig> serverConfig)
     {
         _roomManager = roomManager;
         _configManager = configManager;
         _redisService = redisService;
+        _roomConfig = roomConfig.Value;
         _serverConfig = serverConfig.Value;
     }
 
@@ -49,43 +52,41 @@ public MatchHub(RoomManager roomManager, ConfigManager configManager, RedisServi
     private string GetPlayerId() =>
         Context.User?.FindFirst("PlayerId")?.Value
         ?? throw new HubException("Not authenticated.");
-
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
+        string? disconnectName = null;
 
         if (room != null && room.State.Players.TryGetValue(Context.ConnectionId, out var player))
         {
-            room.EventBus.Publish(new ChatMessageEvent
-            {
-                Sender = "System",
-                Message = $"{player.Name} disconnected. Their slot is held for 3 minutes."
-            });
+            disconnectName = player.Name;
         }
 
         _roomManager.RemovePlayer(Context.ConnectionId);
 
-        // >>> REVERTED: ALWAYS give the grace period on an unexpected disconnect (Refresh)
         if (room != null && room.State.Phase != GamePhase.WaitingForPlayers)
         {
-            int onlineCount = room.State.Players.Values.Count(p => _roomManager.GetRoomForPlayer(p.ConnectionId) != null);
+            // Find players who are ACTUALLY still connected
+            var activeConnections = room.State.Players.Values
+                .Select(p => p.ConnectionId)
+                .Where(cid => _roomManager.GetRoomForPlayer(cid) != null)
+                .ToList();
 
-            if (onlineCount == 0)
+            if (activeConnections.Count == 0)
             {
-                room.State.Status = RoomStatus.GracePeriod;
-                room.State.GracePeriodTimer = 180f;
-                Console.WriteLine($"[MATCH] Room {room.RoomId} is empty. 3-minute deletion timer started.");
-            }
-            else if (room.State.Status == RoomStatus.Active)
-            {
+                // NO ONE IS LEFT - Pause the game
                 room.State.Status = RoomStatus.Paused_AwaitingPlayers;
-                room.State.PauseTimer = 600f;
 
-                room.EventBus.Publish(new ChatMessageEvent
-                {
-                    Sender = "System",
-                    Message = $"Match paused for up to 10 minutes waiting for players to reconnect."
-                });
+                // Safely grab the 3 minutes from your config
+                float timeoutMinutes = _roomConfig.PauseTimeoutMinutes;
+                room.State.PauseTimer = timeoutMinutes * 60f;
+
+                Console.WriteLine($"[MATCH] Room {room.RoomId} is empty. Paused for {timeoutMinutes} minutes.");
+            }
+            else if (!string.IsNullOrEmpty(disconnectName))
+            {
+                // SOMEONE IS LEFT - Send the message ONLY to the people still online
+                await Clients.Clients(activeConnections).SendAsync("ReceiveChatMessage", "System", $"{disconnectName} disconnected.");
             }
         }
 
@@ -144,6 +145,7 @@ public MatchHub(RoomManager roomManager, ConfigManager configManager, RedisServi
         bool isStitched = false;
 
         // ─── 3. CRITICAL SECTION ─────────────────────────────────────────────
+        string? systemAnnouncement = null;
         lock (room)
         {
             // --- A. SPECTATOR PATH ---
@@ -212,36 +214,21 @@ public MatchHub(RoomManager roomManager, ConfigManager configManager, RedisServi
                     int reconnectedCount = room.State.Players.Values
                         .Count(p => _roomManager.GetRoomForPlayer(p.ConnectionId) != null);
 
-                    // 1. If everyone is back, unpause immediately!
                     if (reconnectedCount >= room.State.Players.Count)
                     {
                         room.State.Status = RoomStatus.Active;
-                        room.EventBus.Publish(new ChatMessageEvent
-                        {
-                            Sender = "System",
-                            Message = $"{stitchedPlayer.Name} reconnected. All players present. Match resumed!"
-                        });
+                        systemAnnouncement = $"{stitchedPlayer.Name} reconnected. All players present. Match resumed!";
                     }
-                    else
+                    else if (room.State.Status == RoomStatus.Paused_AwaitingPlayers)
                     {
-                        // 2. Some players are still missing. 
-                        // If the room was completely empty (GracePeriod), convert it to Paused state.
-                        if (room.State.Status == RoomStatus.GracePeriod)
-                        {
-                            room.State.Status = RoomStatus.Paused_AwaitingPlayers;
-                            room.State.PauseTimer = 600f; // Start the 10-minute wait
-                        }
-
-                        // Calculate remaining time to show in chat
                         int timeRemaining = (int)room.State.PauseTimer;
                         int minutes = timeRemaining / 60;
                         int seconds = timeRemaining % 60;
-
-                        room.EventBus.Publish(new ChatMessageEvent
-                        {
-                            Sender = "System",
-                            Message = $"{stitchedPlayer.Name} joined! Game paused for {minutes}m {seconds}s or until everyone returns."
-                        });
+                        systemAnnouncement = $"{stitchedPlayer.Name} joined! Game remains paused for {minutes}m {seconds}s waiting for others.";
+                    }
+                    else
+                    {
+                        systemAnnouncement = $"{stitchedPlayer.Name} reconnected to the active match!";
                     }
                 }
 
@@ -303,6 +290,13 @@ public MatchHub(RoomManager roomManager, ConfigManager configManager, RedisServi
         {
             // Mid-match reconnect — drop the loading screen immediately
             await Clients.Caller.SendAsync("AllPlayersSynced");
+
+            // Give the frontend 1.5 seconds to fully build the Chat UI before sending the message!
+            if (!string.IsNullOrEmpty(systemAnnouncement))
+            {
+                await Task.Delay(1500);
+                await Clients.Clients(room.State.Players.Keys).SendAsync("ReceiveChatMessage", "System", systemAnnouncement);
+            }
         }
     }
 
@@ -348,10 +342,7 @@ public MatchHub(RoomManager roomManager, ConfigManager configManager, RedisServi
     {
         if (player.PendingLevelUps > 0 && player.CurrentLevelUpChoices.Count == 0)
         {
-            player.CurrentLevelUpChoices = _configManager.LevelUpCards.Values
-                .OrderBy(_ => Random.Shared.Next())
-                .Take(3)
-                .ToList();
+            GenerateLevelUpChoicesForPlayer(player, _configManager);
         }
 
         await Clients.Caller.SendAsync("UpdatePlayerUI", new
@@ -378,16 +369,36 @@ public MatchHub(RoomManager roomManager, ConfigManager configManager, RedisServi
         float w1 = Math.Max(10f, 100f - luck);
         float w2 = Math.Max(0f, 20f + (luck * 1.5f));
         float w3 = Math.Max(0f, (luck - 10f) * 1.0f);
-        float w4 = Math.Max(0f, (luck - 30f) * 0.5f);
+
+        // Tier 4 now requires > 100 Luck to even have a chance of appearing
+        float w4 = Math.Max(0f, (luck - 100f) * 0.5f);
+
         if (maxPossibleTier < 4) w4 = 0;
         if (maxPossibleTier < 3) w3 = 0;
         if (maxPossibleTier < 2) w2 = 0;
+
         float total = w1 + w2 + w3 + w4;
         float roll = (float)(Random.Shared.NextDouble() * total);
+
         if (w4 > 0 && roll <= w4) return 4; roll -= w4;
         if (w3 > 0 && roll <= w3) return 3; roll -= w3;
         if (w2 > 0 && roll <= w2) return 2;
         return 1;
+    }
+
+    public static void GenerateLevelUpChoicesForPlayer(PlayerEntity player, ConfigManager configManager)
+    {
+        float luck = player.GetTotalStat("luck", configManager);
+        player.CurrentLevelUpChoices = new List<Configs.LevelUpCardConfig>();
+        int maxTier = configManager.LevelUpCards.Values.Any() ? configManager.LevelUpCards.Values.Max(c => c.Tier) : 1;
+
+        for (int i = 0; i < 3; i++)
+        {
+            int tier = RollRarityTier(luck, maxTier);
+            var cards = configManager.LevelUpCards.Values.Where(c => c.Tier == tier).ToList();
+            if (!cards.Any()) cards = configManager.LevelUpCards.Values.Where(c => c.Tier <= tier).ToList();
+            if (cards.Any()) player.CurrentLevelUpChoices.Add(cards[Random.Shared.Next(cards.Count)]);
+        }
     }
 
     public static void GenerateShopForPlayer(PlayerEntity player, ConfigManager configManager, int currentWave)
@@ -463,7 +474,7 @@ public MatchHub(RoomManager roomManager, ConfigManager configManager, RedisServi
                 player.PendingLevelUps--;
                 player.CurrentLevelUpChoices.Clear();
                 if (player.PendingLevelUps > 0)
-                    player.CurrentLevelUpChoices = _configManager.LevelUpCards.Values.OrderBy(_ => Random.Shared.Next()).Take(3).ToList();
+                    GenerateLevelUpChoicesForPlayer(player, _configManager);
             }
         }
         await SendPlayerUI(player, room.State);
@@ -514,17 +525,51 @@ public MatchHub(RoomManager roomManager, ConfigManager configManager, RedisServi
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
         if (room == null || !room.State.Players.TryGetValue(Context.ConnectionId, out var player)) return;
         if (!_configManager.Difficulties.TryGetValue(room.State.CurrentDifficulty, out var diff)) diff = new DifficultyConfig();
+
         lock (player)
         {
             int basePrice = 0;
-            if (isWeapon) { var w = player.Weapons.FirstOrDefault(x => x.SlotIndex == slotIndex); if (w != null && _configManager.Weapons.TryGetValue(w.ConfigId, out var wc)) basePrice = wc.Price; }
-            else { var it = player.OwnedItems.FirstOrDefault(x => x.SlotIndex == slotIndex); if (it != null && _configManager.Items.TryGetValue(it.ConfigId, out var ic)) basePrice = ic.Price; }
-            int payout = (int)Math.Floor(basePrice * 0.10f * diff.RecycleValueMultiplier);
-            if (payout < 0 && player.Gold < Math.Abs(payout)) return;
-            player.Gold += Math.Max(0, payout);
-            if (isWeapon) player.RemoveWeapon(slotIndex, _configManager);
-            else player.RemoveItem(slotIndex, _configManager);
+
+            if (isWeapon)
+            {
+                // 1. Safely find the actual weapon matching the SlotIndex
+                var w = player.Weapons.FirstOrDefault(x => x.SlotIndex == slotIndex);
+                if (w != null)
+                {
+                    if (_configManager.Weapons.TryGetValue(w.ConfigId, out var wc)) basePrice = wc.Price;
+
+                    // 2. EXPLICITLY remove the object from the list to bypass internal bugs
+                    player.Weapons.Remove(w);
+
+                    // 3. Wrap original method in try/catch so if it crashes, the server survives
+                    try { player.RemoveWeapon(slotIndex, _configManager); } catch { }
+                }
+            }
+            else
+            {
+                // 1. Safely find the actual item matching the SlotIndex
+                var it = player.OwnedItems.FirstOrDefault(x => x.SlotIndex == slotIndex);
+                if (it != null)
+                {
+                    if (_configManager.Items.TryGetValue(it.ConfigId, out var ic)) basePrice = ic.Price;
+
+                    // 2. EXPLICITLY remove the object from the list
+                    player.OwnedItems.Remove(it);
+
+                    // 3. Wrap original method in try/catch
+                    try { player.RemoveItem(slotIndex, _configManager); } catch { }
+                }
+            }
+
+            // 4. Grant the gold payout (Guaranteed minimum of 1 gold)
+            int payout = (int)Math.Floor(basePrice * 0.25f * diff.RecycleValueMultiplier);
+            player.Gold += Math.Max(1, payout);
+
+            // 5. Force stats to completely recalculate without the gear equipped
+            player.StatsNeedRecalculation = true;
         }
+
+        // 6. Because we didn't crash, the UI will successfully update!
         await SendPlayerUI(player, room.State);
     }
 }

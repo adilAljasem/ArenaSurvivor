@@ -15,3 +15,10 @@ public class RedisConfig
     public string ChannelPrefix { get; set; } = "ArenaSurvivor";
     public int TokenExpirationMinutes { get; set; } = 2;
 }
+
+public class RoomConfig
+{
+    public int PauseTimeoutMinutes { get; set; } = 3;
+    public bool AllowSpectators { get; set; }= false;
+
+}

@@ -26,7 +26,6 @@ public class GameState
     // --- NEW ROOM LIFECYCLE PROPERTIES ---
     public RoomStatus Status { get; set; } = RoomStatus.Active;
     public float PauseTimer { get; set; } = 0f;
-    public float GracePeriodTimer { get; set; } = 0f;
     
 
     public int CurrentWave { get; set; } = 1;

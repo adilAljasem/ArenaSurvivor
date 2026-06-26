@@ -110,7 +110,7 @@ class GameScene extends Phaser.Scene {
   private enemySprites: Map<string, Phaser.GameObjects.Container> = new Map();
   private projectileSprites: Map<string, Phaser.GameObjects.Rectangle | Phaser.GameObjects.Sprite> = new Map();
   private pickupSprites: Map<string, Phaser.GameObjects.Sprite | Phaser.GameObjects.Rectangle> = new Map();
-  private activeBeams: Map<string, { beam: Phaser.GameObjects.Rectangle, core: Phaser.GameObjects.Rectangle }> = new Map();
+  private activeBeams: Map<string, any> = new Map();
   private targetPositions: Map<string, { x: number, y: number }> = new Map();
   private skillActionBar!: SkillActionBar;
   private enemyCache: Map<string, ServerEnemy> = new Map();
@@ -545,7 +545,12 @@ class GameScene extends Phaser.Scene {
       this.game.events.off(Phaser.Core.Events.PRE_RENDER);
       this.game.events.off(Phaser.Core.Events.POST_RENDER);
 
-      this.activeBeams.forEach(entry => { entry.beam.destroy(); entry.core.destroy(); });
+      this.activeBeams.forEach(entry => {
+        entry.beam.destroy();
+        entry.core.destroy();
+        if (entry.startGlow) entry.startGlow.destroy();
+        if (entry.impactGlow) entry.impactGlow.destroy();
+      });
       this.activeBeams.clear();
     });
   }
@@ -956,7 +961,7 @@ class GameScene extends Phaser.Scene {
 
   update(time: number, delta: number) {
     if (!this.debugGraphics) return;
-     this.handleInput(time);
+    this.handleInput(time);
     this.smoothInterpolateSprites(this.playerSprites, 0.2);
     this.smoothInterpolateSprites(this.enemySprites, 0.2);
     const dtSeconds = delta / 1000;

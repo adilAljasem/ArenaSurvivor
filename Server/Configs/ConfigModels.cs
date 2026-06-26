@@ -188,7 +188,7 @@ public class WeaponConfig : BaseGearConfig
     public string WeaponFamily { get; set; } = string.Empty;
     public bool DefaultFacingRight { get; set; } = true;
     public string AttackAnimType { get; set; } = "recoil"; // Can be: "recoil", "stab", "swing", or "none"
-    public bool AutoShot { get; set; } = false;
+    public bool AutoShot { get; set; } = true;
 
     // --- Core Combat Stats ---
     public float CooldownSeconds { get; set; }

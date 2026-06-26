@@ -279,6 +279,7 @@
         "castTimeSeconds": 1.5,
         "channelDurationSeconds": 25.0,
         "cooldownSeconds": 2.0,
+        "IsIndependent": true,
         "isRepeated": false,
         "projectileCount": 30,
         "baseDamage": 20,
@@ -298,6 +299,7 @@
     },
     "test_laser_beam": {
         "id": "test_laser_beam",
+        "name": "Lasser beam",
         "actionType": "Beam",
         "range": 800,
         "beamWidth": 25,
@@ -350,13 +352,14 @@
         "range": 500,
         "beamWidth": 10,
         "baseDamage": 20,
-        "cooldownSeconds": 10.0,
-        "castTimeSeconds": 5.0,
+        "cooldownSeconds": 30.0,
+        "castTimeSeconds": 2.0,
         "channelDurationSeconds": 4.0,
         "colorTint": "0xff4400"
     },
     "laser_sweep_2": {
         "id": "laser_sweep_2",
+        "name": "Sweeping Laser Lv2",
         "actionType": "Beam",
         "targetType": "Sweep",
         "sweepAngleSpeed": 0.08,
@@ -413,6 +416,7 @@
     },
     "boss_cast_sweeper": {
         "id": "boss_cast_sweeper",
+        "name": "Boos Sweeper",
         "actionType": "SelfBuff",
         "targetType": "Self",
         "cooldownSeconds": 8.0,
@@ -423,6 +427,7 @@
     },
     "fier_foom": {
         "id": "fier_foom",
+        "name": "Fire Boom",
         "actionType": "Projectile",
         "cooldownSeconds": 8.0,
         "castTimeSeconds": 2.0,
@@ -441,5 +446,19 @@
         "applyEffects": [
             "holy_barrier"
         ]
+    },
+    "fire_zone_cast": {
+        "id": "fire_zone_cast",
+        "name": "Fire Zone",
+        "actionType": "Projectile",
+        "projectileId": "fire_zone_entity",
+        "cooldownSeconds": 5.0,
+        "targetType": "AimDirection"
+    },
+    "fire_zone_tick": {
+        "id": "fire_zone_tick",
+        "actionType": "AoE",
+        "radius": 150,
+        "baseDamage": 15
     }
 }

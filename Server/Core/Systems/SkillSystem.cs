@@ -463,13 +463,25 @@ public class SkillSystem : IGameSystem
             if (enemy.ActionState == "Dead") continue;
             if (enemy.SkillWaitTimer > 0) { enemy.SkillWaitTimer -= dt; continue; }
 
-            bool isCasting = false;
             float hasteMult = (100f + Math.Max(0f, enemy.GetTotalStat("haste", _configs))) / 100f;
 
+            // 1. Process all active timers (Cooldowns & Channels)
             foreach (var skill in enemy.Skills)
             {
                 if (!_configs.Skills.TryGetValue(skill.ConfigId, out var config)) continue;
                 if (skill.CurrentCooldown > 0) skill.CurrentCooldown -= dt;
+
+                if (skill.CurrentChannelTimer > 0)
+                {
+                    skill.CurrentChannelTimer -= dt;
+                    if (config.IsRepeated) ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus);
+
+                    if (skill.CurrentChannelTimer <= 0)
+                    {
+                        skill.CurrentCooldown = config.CooldownSeconds / hasteMult;
+                        _eventBus.Publish(new BeamEndedEvent { CasterId = enemy.Id, SkillId = config.Id });
+                    }
+                }
 
                 if (config.IsIndependent && skill.CurrentCastTimer > 0)
                 {
@@ -480,78 +492,65 @@ public class SkillSystem : IGameSystem
                         else { ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus); skill.CurrentCooldown = config.CooldownSeconds / hasteMult; }
                     }
                 }
-
-                if (skill.CurrentChannelTimer > 0)
-                {
-                    skill.CurrentChannelTimer -= dt;
-                    if (config.IsRepeated) ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus);
-                    if (skill.CurrentChannelTimer <= 0)
-                    {
-                        skill.CurrentCooldown = config.CooldownSeconds / hasteMult;
-                        _eventBus.Publish(new BeamEndedEvent { CasterId = enemy.Id, SkillId = config.Id });
-                    }
-                }
             }
 
-            var activeCast = enemy.Skills.FirstOrDefault(s => s.CurrentCastTimer > 0 && (!_configs.Skills.TryGetValue(s.ConfigId, out var c) || !c.IsIndependent));
-            if (activeCast != null && _configs.Skills.TryGetValue(activeCast.ConfigId, out var activeConfig))
+            // 2. Lock Casting State if BUSY
+            var busySkill = enemy.Skills.FirstOrDefault(s => (s.CurrentCastTimer > 0 || s.CurrentChannelTimer > 0) && (_configs.Skills.TryGetValue(s.ConfigId, out var c) && !c.IsIndependent));
+            bool isCasting = false;
+
+            if (busySkill != null && _configs.Skills.TryGetValue(busySkill.ConfigId, out var busyConfig))
             {
                 isCasting = true;
-                enemy.CurrentCastingSkillId = activeCast.ConfigId;
-                enemy.CurrentCastTimer = activeCast.CurrentCastTimer;
-                enemy.MaxCastTimer = activeConfig.CastTimeSeconds / hasteMult;
+                enemy.CurrentCastingSkillId = busySkill.ConfigId;
 
-                activeCast.CurrentCastTimer -= dt;
-                if (activeCast.CurrentCastTimer <= 0)
+                if (busySkill.CurrentCastTimer > 0)
                 {
-                    if (activeConfig.ChannelDurationSeconds > 0) { activeCast.CurrentChannelTimer = activeConfig.ChannelDurationSeconds; if (!activeConfig.IsRepeated) ExecuteSkill(activeConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus); }
-                    else { ExecuteSkill(activeConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus); activeCast.CurrentCooldown = activeConfig.CooldownSeconds / hasteMult; }
+                    enemy.CurrentCastTimer = busySkill.CurrentCastTimer;
+                    enemy.MaxCastTimer = busyConfig.CastTimeSeconds / hasteMult;
+                    busySkill.CurrentCastTimer -= dt;
+                    if (busySkill.CurrentCastTimer <= 0)
+                    {
+                        if (busyConfig.ChannelDurationSeconds > 0) { busySkill.CurrentChannelTimer = busyConfig.ChannelDurationSeconds; if (!busyConfig.IsRepeated) ExecuteSkill(busyConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus); }
+                        else { ExecuteSkill(busyConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus); busySkill.CurrentCooldown = busyConfig.CooldownSeconds / hasteMult; }
+                    }
                 }
+                else { enemy.CurrentCastTimer = 0; enemy.MaxCastTimer = 0; }
             }
 
             if (isCasting) enemy.ActionState = "Casting";
             else { if (enemy.ActionState == "Casting") enemy.ActionState = "Idle"; enemy.CurrentCastingSkillId = string.Empty; enemy.CurrentCastTimer = 0f; enemy.MaxCastTimer = 0f; }
 
-            foreach (var skill in enemy.Skills)
-            {
-                if (_configs.Skills.TryGetValue(skill.ConfigId, out var config) && config.IsIndependent)
-                {
-                    if (skill.CurrentCooldown <= 0 && skill.CurrentCastTimer <= 0 && skill.CurrentChannelTimer <= 0)
-                    {
-                        if (config.CastTimeSeconds > 0) skill.CurrentCastTimer = config.CastTimeSeconds / hasteMult;
-                        else
-                        {
-                            if (config.ChannelDurationSeconds > 0) { skill.CurrentChannelTimer = config.ChannelDurationSeconds; if (!config.IsRepeated) ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus); }
-                            else { ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus); skill.CurrentCooldown = config.CooldownSeconds / hasteMult; }
-                        }
-                    }
-                }
-            }
-
+            // 3. Find Next Skill to cast if Idle
             if (!isCasting && enemy.Skills.Count > 0)
             {
                 for (int i = 0; i < enemy.Skills.Count; i++)
                 {
                     int checkIndex = (enemy.CurrentSkillIndex + i) % enemy.Skills.Count;
                     var skill = enemy.Skills[checkIndex];
-                    if (_configs.Skills.TryGetValue(skill.ConfigId, out var config) && !config.IsIndependent && config.TriggerType == SkillTriggerType.Auto)
+                    if (_configs.Skills.TryGetValue(skill.ConfigId, out var config) && config.TriggerType == SkillTriggerType.Auto)
                     {
-                        if (config.CastTimeSeconds <= 0 && config.CooldownSeconds <= 0 && config.ChannelDurationSeconds <= 0) { ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus); continue; }
                         if (skill.CurrentCooldown <= 0 && skill.CurrentCastTimer <= 0 && skill.CurrentChannelTimer <= 0)
                         {
-                            if (config.CastTimeSeconds > 0) skill.CurrentCastTimer = config.CastTimeSeconds / hasteMult;
+                            // FIX: Update the index tracker FIRST before we trigger 'break'
+                            enemy.CurrentSkillIndex = (checkIndex + 1) % enemy.Skills.Count;
+
+                            if (config.CastTimeSeconds > 0)
+                            {
+                                skill.CurrentCastTimer = config.CastTimeSeconds / hasteMult;
+                                if (!config.IsIndependent) break;
+                            }
                             else
                             {
                                 if (config.ChannelDurationSeconds > 0) { skill.CurrentChannelTimer = config.ChannelDurationSeconds; if (!config.IsRepeated) ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus); }
                                 else { ExecuteSkill(config, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus); skill.CurrentCooldown = config.CooldownSeconds / hasteMult; }
+                                if (!config.IsIndependent) break;
                             }
-                            enemy.CurrentSkillIndex = (checkIndex + 1) % enemy.Skills.Count;
-                            break;
                         }
                     }
                 }
             }
 
+            // 4. Process Dynamic Skills
             if (_configs.Enemies.TryGetValue(enemy.ConfigId, out var eConfig) && eConfig.DynamicSkills != null)
             {
                 foreach (var trigger in eConfig.DynamicSkills)
@@ -588,13 +587,24 @@ public class SkillSystem : IGameSystem
         foreach (var player in state.Players.Values)
         {
             if (player.ActionState == "Dead") continue;
-            bool isCasting = false;
             float hasteMult = (100f + Math.Max(0f, player.GetTotalStat("haste", _configs))) / 100f;
 
             foreach (var skill in player.SynergizedSkills)
             {
                 if (!_configs.Skills.TryGetValue(skill.ConfigId, out var config)) continue;
                 if (skill.CurrentCooldown > 0) skill.CurrentCooldown -= dt;
+
+                if (skill.CurrentChannelTimer > 0)
+                {
+                    skill.CurrentChannelTimer -= dt;
+                    if (config.IsRepeated) ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus);
+
+                    if (skill.CurrentChannelTimer <= 0)
+                    {
+                        skill.CurrentCooldown = config.CooldownSeconds / hasteMult;
+                        _eventBus.Publish(new BeamEndedEvent { CasterId = player.ConnectionId, SkillId = config.Id });
+                    }
+                }
 
                 if (config.IsIndependent && skill.CurrentCastTimer > 0)
                 {
@@ -605,75 +615,57 @@ public class SkillSystem : IGameSystem
                         else { ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus); skill.CurrentCooldown = config.CooldownSeconds / hasteMult; }
                     }
                 }
-
-                if (skill.CurrentChannelTimer > 0)
-                {
-                    skill.CurrentChannelTimer -= dt;
-                    if (config.IsRepeated) ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus);
-                    if (skill.CurrentChannelTimer <= 0)
-                    {
-                        skill.CurrentCooldown = config.CooldownSeconds / hasteMult;
-                        _eventBus.Publish(new BeamEndedEvent { CasterId = player.ConnectionId, SkillId = config.Id });
-                    }
-                }
             }
 
-            var activeCast = player.SynergizedSkills.FirstOrDefault(s => s.CurrentCastTimer > 0 && (!_configs.Skills.TryGetValue(s.ConfigId, out var c) || !c.IsIndependent));
-            if (activeCast != null && _configs.Skills.TryGetValue(activeCast.ConfigId, out var activeConfig))
+            var busySkill = player.SynergizedSkills.FirstOrDefault(s => (s.CurrentCastTimer > 0 || s.CurrentChannelTimer > 0) && (_configs.Skills.TryGetValue(s.ConfigId, out var c) && !c.IsIndependent));
+            bool isCasting = false;
+
+            if (busySkill != null && _configs.Skills.TryGetValue(busySkill.ConfigId, out var busyConfig))
             {
                 isCasting = true;
-                player.CurrentCastingSkillId = activeCast.ConfigId;
-                player.CurrentCastTimer = activeCast.CurrentCastTimer;
-                player.MaxCastTimer = activeConfig.CastTimeSeconds / hasteMult;
+                player.CurrentCastingSkillId = busySkill.ConfigId;
 
-                activeCast.CurrentCastTimer -= dt;
-                if (activeCast.CurrentCastTimer <= 0)
+                if (busySkill.CurrentCastTimer > 0)
                 {
-                    if (activeConfig.ChannelDurationSeconds > 0) { activeCast.CurrentChannelTimer = activeConfig.ChannelDurationSeconds; if (!activeConfig.IsRepeated) ExecuteSkill(activeConfig, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus); }
-                    else { ExecuteSkill(activeConfig, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus); activeCast.CurrentCooldown = activeConfig.CooldownSeconds / hasteMult; }
+                    player.CurrentCastTimer = busySkill.CurrentCastTimer;
+                    player.MaxCastTimer = busyConfig.CastTimeSeconds / hasteMult;
+                    busySkill.CurrentCastTimer -= dt;
+                    if (busySkill.CurrentCastTimer <= 0)
+                    {
+                        if (busyConfig.ChannelDurationSeconds > 0) { busySkill.CurrentChannelTimer = busyConfig.ChannelDurationSeconds; if (!busyConfig.IsRepeated) ExecuteSkill(busyConfig, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus); }
+                        else { ExecuteSkill(busyConfig, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus); busySkill.CurrentCooldown = busyConfig.CooldownSeconds / hasteMult; }
+                    }
                 }
+                else { player.CurrentCastTimer = 0; player.MaxCastTimer = 0; }
             }
 
             if (isCasting) player.ActionState = "Casting";
             else { if (player.ActionState == "Casting") player.ActionState = "Idle"; player.CurrentCastingSkillId = string.Empty; player.CurrentCastTimer = 0f; player.MaxCastTimer = 0f; }
 
-            foreach (var skill in player.SynergizedSkills)
-            {
-                if (_configs.Skills.TryGetValue(skill.ConfigId, out var config) && config.IsIndependent)
-                {
-                    if (config.TriggerType == SkillTriggerType.Auto && state.Phase != GamePhase.WaveActive) continue;
-                    if (skill.CurrentCooldown <= 0 && skill.CurrentCastTimer <= 0 && skill.CurrentChannelTimer <= 0)
-                    {
-                        if (config.CastTimeSeconds > 0) skill.CurrentCastTimer = config.CastTimeSeconds / hasteMult;
-                        else
-                        {
-                            if (config.ChannelDurationSeconds > 0) { skill.CurrentChannelTimer = config.ChannelDurationSeconds; if (!config.IsRepeated) ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus); }
-                            else { ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus); skill.CurrentCooldown = config.CooldownSeconds / hasteMult; }
-                        }
-                    }
-                }
-            }
-
-            if (!isCasting && player.SynergizedSkills.Count > 0)
+            if (!isCasting && state.Phase == GamePhase.WaveActive && player.SynergizedSkills.Count > 0)
             {
                 for (int i = 0; i < player.SynergizedSkills.Count; i++)
                 {
                     int checkIndex = (player.CurrentSkillIndex + i) % player.SynergizedSkills.Count;
                     var skill = player.SynergizedSkills[checkIndex];
-                    if (_configs.Skills.TryGetValue(skill.ConfigId, out var config) && !config.IsIndependent && config.TriggerType == SkillTriggerType.Auto)
+                    if (_configs.Skills.TryGetValue(skill.ConfigId, out var config) && config.TriggerType == SkillTriggerType.Auto)
                     {
-                        if (state.Phase != GamePhase.WaveActive) continue;
-                        if (config.CastTimeSeconds <= 0 && config.CooldownSeconds <= 0 && config.ChannelDurationSeconds <= 0) { ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus); continue; }
                         if (skill.CurrentCooldown <= 0 && skill.CurrentCastTimer <= 0 && skill.CurrentChannelTimer <= 0)
                         {
-                            if (config.CastTimeSeconds > 0) skill.CurrentCastTimer = config.CastTimeSeconds / hasteMult;
+                            // FIX: Update the index tracker FIRST before we trigger 'break'
+                            player.CurrentSkillIndex = (checkIndex + 1) % player.SynergizedSkills.Count;
+
+                            if (config.CastTimeSeconds > 0)
+                            {
+                                skill.CurrentCastTimer = config.CastTimeSeconds / hasteMult;
+                                if (!config.IsIndependent) break;
+                            }
                             else
                             {
                                 if (config.ChannelDurationSeconds > 0) { skill.CurrentChannelTimer = config.ChannelDurationSeconds; if (!config.IsRepeated) ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus); }
                                 else { ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus); skill.CurrentCooldown = config.CooldownSeconds / hasteMult; }
+                                if (!config.IsIndependent) break;
                             }
-                            player.CurrentSkillIndex = (checkIndex + 1) % player.SynergizedSkills.Count;
-                            break;
                         }
                     }
                 }

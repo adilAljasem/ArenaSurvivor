@@ -138,5 +138,20 @@
         "movementBehavior": "Linear",
         "tickRate": 0.1,
         "tickSkillId": "laser_sweep"
+    },
+    "fire_zone_entity": {
+        "id": "fire_zone_entity",
+        "baseSpeed": 0,
+        "lifespan": 5.0,
+        "tickRate": 0.5,
+        "tickSkillId": "fire_zone_tick",
+        "pierceCount": 999,
+        "textureKey": "explosion1",
+        "animFly": [
+            0,
+            8
+        ],
+        "animFlyFrameRate": 10,
+        "scale": 2.0
     }
 }

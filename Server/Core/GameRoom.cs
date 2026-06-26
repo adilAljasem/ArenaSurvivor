@@ -21,6 +21,7 @@ public class GameRoom
     public string CurrentMapId { get; set; } = "map_forest";
     public int ExpectedPlayerCount { get; set; } = 0;
     public int StitchedPlayerCount { get; set; } = 0;
+    private int _lastAnnouncedPauseMinute = -1;
     public GameState State { get; } = new();
     public EventBus EventBus { get; } = new();
 
@@ -82,44 +83,60 @@ public class GameRoom
         // ─── LIFECYCLE ────────────────────────────────────────────────────────
         if (State.Status == RoomStatus.Paused_AwaitingPlayers)
         {
+            isPaused = true; // This securely locks the physics engine
             State.PauseTimer -= dt;
 
-            // If 10 minutes pass and they didn't come back
-            if (State.PauseTimer <= 0)
+            // Broadcast to the console & EventBus every 1 minute
+            int minutesLeft = (int)Math.Ceiling(State.PauseTimer / 60f);
+            if (minutesLeft != _lastAnnouncedPauseMinute && minutesLeft > 0)
             {
-                // 1. Find all players who are currently offline
-                var missingPlayers = State.Players
-                    .Where(p => _roomManager.GetRoomForPlayer(p.Value.ConnectionId) == null)
-                    .ToList();
-
-                // 2. Permanently remove them from the room
-                foreach (var mp in missingPlayers)
-                {
-                    State.Players.TryRemove(mp.Key, out _);
-                }
-
-                // 3. Unpause the game for the players who stayed
-                State.Status = RoomStatus.Active;
+                _lastAnnouncedPauseMinute = minutesLeft;
                 EventBus.Publish(new ChatMessageEvent
                 {
                     Sender = "System",
-                    Message = "Pause timeout reached. Missing players were removed. Match resumed!"
+                    Message = $"Match paused. {minutesLeft} minute(s) remaining for missing players to return."
                 });
+                Console.WriteLine($"[ROOM] Room {RoomId} is empty/paused. {minutesLeft}m remaining.");
+            }
+
+            // When the 3 minutes finish...
+            if (State.PauseTimer <= 0)
+            {
+                int onlineCount = State.Players.Values.Count(p => _roomManager.GetRoomForPlayer(p.ConnectionId) != null);
+
+                if (onlineCount == 0)
+                {
+                    // NOBODY returned. Delete the match.
+                    State.Status = RoomStatus.ScheduledForDeletion;
+                    Console.WriteLine($"[ROOM] Room {RoomId}: pause timer expired. Room deleted.");
+                }
+                else
+                {
+                    // SOMEONE returned! Kick the players who didn't make it back and unpause.
+                    var missingPlayers = State.Players
+                        .Where(p => _roomManager.GetRoomForPlayer(p.Value.ConnectionId) == null)
+                        .ToList();
+
+                    foreach (var mp in missingPlayers)
+                    {
+                        State.Players.TryRemove(mp.Key, out _);
+                    }
+
+                    State.Status = RoomStatus.Active;
+                    isPaused = false; // Release the physics lock
+
+                    EventBus.Publish(new ChatMessageEvent
+                    {
+                        Sender = "System",
+                        Message = "Pause timeout reached. Missing players were removed. Match resumed!"
+                    });
+                }
             }
         }
-        else if (State.Status == RoomStatus.GracePeriod)
+        else
         {
-            State.GracePeriodTimer -= dt;
-            if (State.GracePeriodTimer <= 0)
-            {
-                // If we're still in GracePeriod when the timer hits zero, it means
-                // not all players returned in time. Delete the room.
-                // (If ALL players reconnected, JoinLiveMatch already promoted
-                //  the room to Active, so we'd never reach this branch.)
-                State.Status = RoomStatus.ScheduledForDeletion;
-                Console.WriteLine($"[ROOM] Room {RoomId}: grace period expired. Room deleted.");
-            }
-            isPaused = true;
+            // Reset the minute tracker when the game is actively playing
+            _lastAnnouncedPauseMinute = -1;
         }
 
         // ─── PHYSICS (only when not paused) ───────────────────────────────────
@@ -253,17 +270,7 @@ public class GameRoom
 
             if (player.PendingLevelUps > 0 && player.CurrentLevelUpChoices.Count == 0)
             {
-                float luck = player.GetTotalStat("luck", _configManager);
-                player.CurrentLevelUpChoices = new List<Configs.LevelUpCardConfig>();
-                int maxTier = _configManager.LevelUpCards.Values.Any() ? _configManager.LevelUpCards.Values.Max(c => c.Tier) : 1;
-
-                for (int i = 0; i < 3; i++)
-                {
-                    int tier = MatchHub.RollRarityTier(luck, maxTier);
-                    var cards = _configManager.LevelUpCards.Values.Where(c => c.Tier == tier).ToList();
-                    if (!cards.Any()) cards = _configManager.LevelUpCards.Values.Where(c => c.Tier <= tier).ToList();
-                    if (cards.Any()) player.CurrentLevelUpChoices.Add(cards[Random.Shared.Next(cards.Count)]);
-                }
+                MatchHub.GenerateLevelUpChoicesForPlayer(player, _configManager);
             }
 
             await _matchHubContext.Clients.Client(player.ConnectionId).SendAsync("UpdatePlayerUI", new

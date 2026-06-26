@@ -1098,16 +1098,21 @@ export class VfxRenderer {
     if (!skillConfigs) return;
 
     aoeEvents.forEach(ev => {
+      const configId = ev.configId ?? ev.ConfigId;
+      const config = skillConfigs[configId];
+      if (!config) return;
+
+      // >>> THE INVISIBILITY FIX: If there is no colorTint, abort drawing the AOE entirely! <<<
+      const colorStr = config.colorTint ?? config.ColorTint;
+      if (!colorStr || colorStr === "") {
+        return;
+      }
+
+      // If we made it here, the skill has a colorTint, so we proceed with drawing it.
       const x = ev.x ?? ev.X;
       const y = ev.y ?? ev.Y;
       const radius = ev.radius ?? ev.Radius;
-      const configId = ev.configId ?? ev.ConfigId;
-
-      // >>> NEW: Extract the isFriendly flag from the server! <<<
       const isFriendly = ev.isFriendly ?? ev.IsFriendly ?? false;
-
-      const config = skillConfigs[configId];
-      if (!config) return;
 
       const vfxTex = config.vfxTextureKey || config.VfxTextureKey;
       const vfxFrames = config.vfxAnimFrames || config.VfxAnimFrames;
@@ -1123,8 +1128,6 @@ export class VfxRenderer {
         // If the art's base radius is known, scale it to match the skill's actual radius
         // (e.g. drawn for 100px, skill radius is 140px -> scale 1.4x), then apply the flat
         // VfxScale on top as a manual fine-tune (art padding, stylistic oversize, etc.).
-        // If baseRadius is unset (0), fall back to flatVfxScale alone -- old behavior,
-        // for skills where art size is intentionally decoupled from the hitbox.
         const finalScale = baseRadius > 0 && radius > 0
           ? (radius / baseRadius) * flatVfxScale
           : flatVfxScale;
@@ -1146,15 +1149,8 @@ export class VfxRenderer {
       }
       // --- OPTION B: SMOOTH NOVA SHOCKWAVE (Fallback) ---
       else {
-        // >>> NEW: Default to Green for Friendly, Red for Enemy <<<
-        let colorHex = isFriendly ? 0x00ff00 : 0xff0000;
-
-        const colorStr = config.colorTint || config.ColorTint;
-
-        // If you explicitly set a colorTint in JSON, it will override the Green/Red.
-        if (colorStr) {
-          colorHex = parseColor(colorStr, colorHex);
-        }
+        // We parse the exact color specified in the JSON
+        const colorHex = parseColor(colorStr, isFriendly ? 0x00ff00 : 0xff0000);
 
         const visualRadius = radius > 0 ? radius : 60;
 
@@ -1167,7 +1163,7 @@ export class VfxRenderer {
           targets: ring,
           scale: 1.0,
           alpha: 0,
-          duration: 800, // >>> FIX: Slowed down from 400ms to 800ms! <<<
+          duration: 800, // Slowed down for better visual flow
           ease: 'Cubic.easeOut',
           onComplete: () => ring.destroy()
         });
@@ -1192,73 +1188,105 @@ export class VfxRenderer {
   //
   // `activeBeams` is owned by the caller (the scene) and passed in, same pattern as
   // projectileSprites/playerSprites elsewhere — VfxRenderer itself stays stateless.
-  static renderBeamEvents(scene: Phaser.Scene, beamEvents: any[], configs: any, activeBeams: Map<string, { beam: Phaser.GameObjects.Rectangle, core: Phaser.GameObjects.Rectangle }>) {
-    if (!beamEvents || beamEvents.length === 0) return;
+  static renderBeamEvents(scene: Phaser.Scene, beamEvents: any[], configs: any, activeBeams: Map<string, any>) {
+    // 1. Mark all existing beams as NOT updated this tick (Prep for Garbage Collection)
+    activeBeams.forEach(entry => { entry.updatedThisTick = false; });
 
-    beamEvents.forEach(ev => {
-      const startX = ev.startX ?? ev.StartX;
-      const startY = ev.startY ?? ev.StartY;
-      const targetX = ev.targetX ?? ev.TargetX;
-      const targetY = ev.targetY ?? ev.TargetY;
-      const width = ev.width ?? ev.Width ?? 10;
-      const casterId = ev.casterId ?? ev.CasterId;
-      const skillId = ev.skillId ?? ev.SkillId;
+    if (beamEvents && beamEvents.length > 0) {
+      beamEvents.forEach(ev => {
+        const startX = ev.startX ?? ev.StartX;
+        const startY = ev.startY ?? ev.StartY;
+        const targetX = ev.targetX ?? ev.TargetX;
+        const targetY = ev.targetY ?? ev.TargetY;
+        const width = ev.width ?? ev.Width ?? 10;
+        const casterId = ev.casterId ?? ev.CasterId;
+        const skillId = ev.skillId ?? ev.SkillId;
 
-      const dx = targetX - startX;
-      const dy = targetY - startY;
-      const length = Math.sqrt(dx * dx + dy * dy);
-      if (length <= 0) return;
+        const dx = targetX - startX;
+        const dy = targetY - startY;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        if (length <= 0) return;
 
-      const angle = Math.atan2(dy, dx);
+        const angle = Math.atan2(dy, dx);
 
-      let colorHex = 0xff3030;
-      const colorStr = ev.colorTint ?? ev.ColorTint;
-      if (colorStr) {
-        colorHex = parseColor(colorStr, colorHex);
+        let colorHex = 0xff3030;
+        const colorStr = ev.colorTint ?? ev.ColorTint;
+        if (colorStr) {
+          colorHex = parseColor(colorStr, colorHex);
+        }
+
+        const key = `${casterId}:${skillId}`;
+        let entry = activeBeams.get(key);
+
+        if (!entry) {
+          // >>> NEW: Visually upgraded beams with glow nodes and light blending! <<<
+          const beam = scene.add.rectangle(startX, startY, length, width, colorHex, 0.85);
+          beam.setOrigin(0, 0.5).setDepth(298).setBlendMode(Phaser.BlendModes.ADD);
+
+          const core = scene.add.rectangle(startX, startY, length, Math.max(2, width * 0.25), 0xffffff, 0.9);
+          core.setOrigin(0, 0.5).setDepth(299).setBlendMode(Phaser.BlendModes.ADD);
+
+          const startGlow = scene.add.circle(startX, startY, width * 1.5, colorHex, 0.8);
+          startGlow.setDepth(300).setBlendMode(Phaser.BlendModes.ADD);
+
+          const impactGlow = scene.add.circle(targetX, targetY, width * 1.8, colorHex, 0.9);
+          impactGlow.setDepth(300).setBlendMode(Phaser.BlendModes.ADD);
+
+          entry = { beam, core, startGlow, impactGlow, baseWidth: width, colorHex };
+          activeBeams.set(key, entry);
+        }
+
+        entry.updatedThisTick = true;
+
+        // >>> NEW: Sine wave pulse animation so the beam flutters and vibrates! <<<
+        const pulse = Math.sin(scene.time.now / 30); // Fast oscillation
+        const currentWidth = entry.baseWidth * (1 + (pulse * 0.15)); // 15% thickness flutter
+        const alphaShift = pulse * 0.15; // Fluctuate transparency 
+
+        entry.beam.setPosition(startX, startY);
+        entry.beam.rotation = angle;
+        entry.beam.setSize(length, currentWidth);
+        entry.beam.fillColor = colorHex;
+        entry.beam.alpha = 0.7 + alphaShift;
+
+        entry.core.setPosition(startX, startY);
+        entry.core.rotation = angle;
+        entry.core.setSize(length, Math.max(2, currentWidth * 0.25));
+        entry.core.alpha = 0.8 + alphaShift;
+
+        // Anchor the glowing orbs to the caster's hand and the impact point
+        entry.startGlow.setRadius(currentWidth * (1.2 + pulse * 0.2));
+        entry.startGlow.alpha = 0.7 + alphaShift;
+        entry.startGlow.fillColor = colorHex;
+
+        entry.impactGlow.setRadius(currentWidth * (1.5 + pulse * 0.3));
+        entry.impactGlow.alpha = 0.8 + alphaShift;
+        entry.impactGlow.fillColor = colorHex;
+      });
+    }
+
+    // 2. GARBAGE COLLECTION: Destroy any beam that the server didn't explicitly send an update for.
+    // This perfectly fixes beams getting stuck if an enemy dies or a cast is interrupted!
+    activeBeams.forEach((entry, key) => {
+      if (!entry.updatedThisTick) {
+        entry.beam.destroy();
+        entry.core.destroy();
+        if (entry.startGlow) entry.startGlow.destroy();
+        if (entry.impactGlow) entry.impactGlow.destroy();
+        activeBeams.delete(key);
       }
-
-      const key = `${casterId}:${skillId}`;
-      let entry = activeBeams.get(key);
-
-      if (!entry) {
-        // setOrigin(0, 0.5): left-center anchor, so the rectangle grows away from the
-        // caster along its rotation axis instead of growing from its own center.
-        const beam = scene.add.rectangle(startX, startY, length, width, colorHex, 0.85);
-        beam.setOrigin(0, 0.5);
-        beam.setDepth(298);
-
-        // Thin bright core on top of the wider translucent body reads better than a flat
-        // single-color bar, without needing any art.
-        const core = scene.add.rectangle(startX, startY, length, Math.max(2, width * 0.25), 0xffffff, 0.9);
-        core.setOrigin(0, 0.5);
-        core.setDepth(299);
-
-        entry = { beam, core };
-        activeBeams.set(key, entry);
-      }
-
-      // Reposition + restretch every tick. setSize controls the rectangle's actual collision
-      // geometry, not just visuals, but Phaser's renderer reads geometry+position+rotation
-      // fresh each frame, so this is enough to make it track the caster smoothly.
-      entry.beam.setPosition(startX, startY);
-      entry.beam.rotation = angle;
-      entry.beam.setSize(length, width);
-
-      entry.core.setPosition(startX, startY);
-      entry.core.rotation = angle;
-      entry.core.setSize(length, Math.max(2, width * 0.25));
     });
   }
 
-  // Called when the server confirms a channel has ended (timer expired, or the skill was
-  // force-reset). Destroys the persistent beam objects and removes the map entry.
-  static endBeam(casterId: string, skillId: string, activeBeams: Map<string, { beam: Phaser.GameObjects.Rectangle, core: Phaser.GameObjects.Rectangle }>) {
+  static endBeam(casterId: string, skillId: string, activeBeams: Map<string, any>) {
     const key = `${casterId}:${skillId}`;
     const entry = activeBeams.get(key);
     if (!entry) return;
 
     entry.beam.destroy();
     entry.core.destroy();
+    if (entry.startGlow) entry.startGlow.destroy();
+    if (entry.impactGlow) entry.impactGlow.destroy();
     activeBeams.delete(key);
   }
 }

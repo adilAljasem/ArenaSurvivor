@@ -1,37 +1,394 @@
 {
-    "brawn_1": {
-        "id": "brawn_1",
-        "name": "Brawn",
+    "maxHp_1": {
+        "id": "maxHp_1",
+        "name": "Minimal Vitality",
         "tier": 1,
-        "statName": "meleeDamage",
-        "amount": 2
+        "statName": "maxHp",
+        "amount": 2.0
     },
-    "swiftness_1": {
-        "id": "swiftness_1",
-        "name": "Swiftness",
-        "tier": 1,
-        "statName": "attackSpeedPercent",
-        "amount": 0.05
-    },
-    "learner_1": {
-        "id": "learner_1",
-        "name": "Learner",
-        "tier": 1,
-        "statName": "xpGainPercent",
-        "amount": 0.10
-    },
-    "vitality_2": {
-        "id": "vitality_2",
-        "name": "Vitality",
+    "maxHp_2": {
+        "id": "maxHp_2",
+        "name": "Slight Fortitude",
         "tier": 2,
         "statName": "maxHp",
-        "amount": 8
+        "amount": 5.0
     },
-    "fury_3": {
-        "id": "fury_3",
-        "name": "Fury",
+    "maxHp_3": {
+        "id": "maxHp_3",
+        "name": "Resilient Frame",
         "tier": 3,
+        "statName": "maxHp",
+        "amount": 7.0
+    },
+    "maxHp_4": {
+        "id": "maxHp_4",
+        "name": "Ultimate Resilience",
+        "tier": 4,
+        "statName": "maxHp",
+        "amount": 10.0
+    },
+    "hpRegen_1": {
+        "id": "hpRegen_1",
+        "name": "Slow Recovery",
+        "tier": 1,
+        "statName": "hpRegen",
+        "amount": 1.00
+    },
+    "hpRegen_2": {
+        "id": "hpRegen_2",
+        "name": "Moderate Recovery",
+        "tier": 2,
+        "statName": "hpRegen",
+        "amount": 2.00
+    },
+    "hpRegen_3": {
+        "id": "hpRegen_3",
+        "name": "Consistent Healing",
+        "tier": 3,
+        "statName": "hpRegen",
+        "amount": 3.00
+    },
+    "hpRegen_4": {
+        "id": "hpRegen_4",
+        "name": "Overwhelming Flow",
+        "tier": 4,
+        "statName": "hpRegen",
+        "amount": 4.0
+    },
+    "lifeSteal_1": {
+        "id": "lifeSteal_1",
+        "name": "Minor Drain",
+        "tier": 1,
+        "statName": "lifeSteal",
+        "amount": 0.01
+    },
+    "lifeSteal_2": {
+        "id": "lifeSteal_2",
+        "name": "Steady Siphon",
+        "tier": 2,
+        "statName": "lifeSteal",
+        "amount": 0.02
+    },
+    "lifeSteal_3": {
+        "id": "lifeSteal_3",
+        "name": "True Leecher",
+        "tier": 3,
+        "statName": "lifeSteal",
+        "amount": 0.03
+    },
+    "lifeSteal_4": {
+        "id": "lifeSteal_4",
+        "name": "Devouring Power",
+        "tier": 4,
+        "statName": "lifeSteal",
+        "amount": 0.06
+    },
+    "damagePercent_1": {
+        "id": "damagePercent_1",
+        "name": "Weak Spark",
+        "tier": 1,
         "statName": "damagePercent",
-        "amount": 0.10
+        "amount": 0.01
+    },
+    "damagePercent_2": {
+        "id": "damagePercent_2",
+        "name": "Focused Strike",
+        "tier": 2,
+        "statName": "damagePercent",
+        "amount": 0.02
+    },
+    "damagePercent_4": {
+        "id": "damagePercent_4",
+        "name": "Devastation",
+        "tier": 4,
+        "statName": "damagePercent",
+        "amount": 0.04
+    },
+    "meleeDamage_1": {
+        "id": "meleeDamage_1",
+        "name": "Tender Fist",
+        "tier": 1,
+        "statName": "meleeDamage",
+        "amount": 1.0
+    },
+    "meleeDamage_2": {
+        "id": "meleeDamage_2",
+        "name": "Solid Swing",
+        "tier": 2,
+        "statName": "meleeDamage",
+        "amount": 3.0
+    },
+    "meleeDamage_3": {
+        "id": "meleeDamage_3",
+        "name": "Mighty Strike",
+        "tier": 3,
+        "statName": "meleeDamage",
+        "amount": 6.0
+    },
+    "meleeDamage_4": {
+        "id": "meleeDamage_4",
+        "name": "Shattering Blow",
+        "tier": 4,
+        "statName": "meleeDamage",
+        "amount": 10.0
+    },
+    "rangedDamage_1": {
+        "id": "rangedDamage_1",
+        "name": "Weak Shot",
+        "tier": 1,
+        "statName": "rangedDamage",
+        "amount": 1.0
+    },
+    "rangedDamage_2": {
+        "id": "rangedDamage_2",
+        "name": "Adept Aim",
+        "tier": 2,
+        "statName": "rangedDamage",
+        "amount": 3.0
+    },
+    "rangedDamage_3": {
+        "id": "rangedDamage_3",
+        "name": "Targeted Barrage",
+        "tier": 3,
+        "statName": "rangedDamage",
+        "amount": 6.0
+    },
+    "rangedDamage_4": {
+        "id": "rangedDamage_4",
+        "name": "Execution Fire",
+        "tier": 4,
+        "statName": "rangedDamage",
+        "amount": 10.0
+    },
+    "magicDamage_1": {
+        "id": "magicDamage_1",
+        "name": "Weak Incantation",
+        "tier": 1,
+        "statName": "magicDamage",
+        "amount": 1.0
+    },
+    "magicDamage_2": {
+        "id": "magicDamage_2",
+        "name": "Minor Arcane",
+        "tier": 2,
+        "statName": "magicDamage",
+        "amount": 3.0
+    },
+    "magicDamage_3": {
+        "id": "magicDamage_3",
+        "name": "Powerful Spell",
+        "tier": 3,
+        "statName": "magicDamage",
+        "amount": 6.0
+    },
+    "magicDamage_4": {
+        "id": "magicDamage_4",
+        "name": "Cataclysmic Power",
+        "tier": 4,
+        "statName": "magicDamage",
+        "amount": 10.0
+    },
+    "movementSpeed_1": {
+        "id": "movementSpeed_1",
+        "name": "Sluggish Pace",
+        "tier": 1,
+        "statName": "movementSpeed",
+        "amount": 1.00
+    },
+    "movementSpeed_4": {
+        "id": "movementSpeed_4",
+        "name": "Blur of Speed",
+        "tier": 4,
+        "statName": "movementSpeed",
+        "amount": 5.0
+    },
+    "haste_1": {
+        "id": "haste_1",
+        "name": "Slow Reaction",
+        "tier": 1,
+        "statName": "haste",
+        "amount": 1.00
+    },
+    "haste_2": {
+        "id": "haste_2",
+        "name": "Agile Burst",
+        "tier": 2,
+        "statName": "haste",
+        "amount": 2.00
+    },
+    "haste_3": {
+        "id": "haste_3",
+        "name": "Fleetness",
+        "tier": 3,
+        "statName": "haste",
+        "amount": 3.00
+    },
+    "haste_4": {
+        "id": "haste_4",
+        "name": "Rapid Fire",
+        "tier": 4,
+        "statName": "haste",
+        "amount": 5.0
+    },
+    "armor_1": {
+        "id": "armor_1",
+        "name": "Thin Leather",
+        "tier": 1,
+        "statName": "armor",
+        "amount": 1.0
+    },
+    "armor_2": {
+        "id": "armor_2",
+        "name": "Sturdy Padding",
+        "tier": 2,
+        "statName": "armor",
+        "amount": 3.0
+    },
+    "armor_3": {
+        "id": "armor_3",
+        "name": "Full Plate",
+        "tier": 3,
+        "statName": "armor",
+        "amount": 5.0
+    },
+    "armor_4": {
+        "id": "armor_4",
+        "name": "Titan Shell",
+        "tier": 4,
+        "statName": "armor",
+        "amount": 10.0
+    },
+    "magicDefense_1": {
+        "id": "magicDefense_1",
+        "name": "Dormant Shield",
+        "tier": 1,
+        "statName": "magicDefense",
+        "amount": 1.0
+    },
+    "magicDefense_2": {
+        "id": "magicDefense_2",
+        "name": "Arcane Barrier",
+        "tier": 2,
+        "statName": "magicDefense",
+        "amount": 3.0
+    },
+    "magicDefense_3": {
+        "id": "magicDefense_3",
+        "name": "Mana Guard",
+        "tier": 3,
+        "statName": "magicDefense",
+        "amount": 5.0
+    },
+    "magicDefense_4": {
+        "id": "magicDefense_4",
+        "name": "Absolute Immunity",
+        "tier": 4,
+        "statName": "magicDefense",
+        "amount": 10.0
+    },
+    "defensePercent_3": {
+        "id": "defensePercent_3",
+        "name": "Impenetrable",
+        "tier": 3,
+        "statName": "defensePercent",
+        "amount": 0.01
+    },
+    "defensePercent_4": {
+        "id": "defensePercent_4",
+        "name": "Invulnerable Aegis",
+        "tier": 4,
+        "statName": "defensePercent",
+        "amount": 0.02
+    },
+    "harvesting_1": {
+        "id": "harvesting_1",
+        "name": "Gathering Novice",
+        "tier": 1,
+        "statName": "harvesting",
+        "amount": 2.0
+    },
+    "harvesting_2": {
+        "id": "harvesting_2",
+        "name": "Proficient Gatherer",
+        "tier": 2,
+        "statName": "harvesting",
+        "amount": 5.0
+    },
+    "harvesting_3": {
+        "id": "harvesting_3",
+        "name": "Master Harvester",
+        "tier": 3,
+        "statName": "harvesting",
+        "amount": 8.0
+    },
+    "harvesting_4": {
+        "id": "harvesting_4",
+        "name": "Economic God",
+        "tier": 4,
+        "statName": "harvesting",
+        "amount": 12.0
+    },
+    "attackSpeedPercent_1": {
+        "id": "attackSpeedPercent_1",
+        "name": "Slow Rhythm",
+        "tier": 1,
+        "statName": "attackSpeedPercent",
+        "amount": 0.01
+    },
+    "attackSpeedPercent_2": {
+        "id": "attackSpeedPercent_2",
+        "name": "Steady Pace",
+        "tier": 2,
+        "statName": "attackSpeedPercent",
+        "amount": 0.02
+    },
+    "attackSpeedPercent_3": {
+        "id": "attackSpeedPercent_3",
+        "name": "Rapid Chain",
+        "tier": 3,
+        "statName": "attackSpeedPercent",
+        "amount": 0.03
+    },
+    "attackSpeedPercent_4": {
+        "id": "attackSpeedPercent_4",
+        "name": "Machine Gun",
+        "tier": 4,
+        "statName": "attackSpeedPercent",
+        "amount": 0.4
+    },
+    "xpGainPercent_1": {
+        "id": "xpGainPercent_1",
+        "name": "Apprentice",
+        "tier": 1,
+        "statName": "xpGainPercent",
+        "amount": 0.01
+    },
+    "xpGainPercent_2": {
+        "id": "xpGainPercent_2",
+        "name": "Dedicated Trainee",
+        "tier": 2,
+        "statName": "xpGainPercent",
+        "amount": 0.03
+    },
+    "xpGainPercent_3": {
+        "id": "xpGainPercent_3",
+        "name": "Veteran Scholar",
+        "tier": 3,
+        "statName": "xpGainPercent",
+        "amount": 0.05
+    },
+    "xpGainPercent_4": {
+        "id": "xpGainPercent_4",
+        "name": "Apex Learner",
+        "tier": 4,
+        "statName": "xpGainPercent",
+        "amount": 0.07
+    },
+    "critChance_3": {
+        "id": "critChance_3",
+        "name": "Lucky Streak",
+        "tier": 3,
+        "statName": "critChance",
+        "amount": 0.02
     }
 }

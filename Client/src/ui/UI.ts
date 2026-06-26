@@ -713,6 +713,7 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                     };
 
                     if (registerFocus) registerFocus(3, i, focusItem);
+                    hitbox.on('pointerdown', () => focusItem.onSelect());
                     hitbox.on('pointerover', (p: Phaser.Input.Pointer) => { if (setMouseFocus) setMouseFocus(3, i); focusItem.onFocus(p); });
                     hitbox.on('pointerout', () => focusItem.onBlur());
                     hitbox.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip.updatePosition(p.x, p.y));
@@ -857,6 +858,7 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                         }
                     };
                     if (registerFocus) registerFocus(2, i, focusItem);
+                    hitbox.on('pointerdown', () => focusItem.onSelect());
 
                     hitbox.on('pointerover', (p: Phaser.Input.Pointer) => { if (setMouseFocus) setMouseFocus(2, i); focusItem.onFocus(p); });
                     hitbox.on('pointerout', () => focusItem.onBlur());
