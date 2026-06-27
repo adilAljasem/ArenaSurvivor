@@ -16,6 +16,8 @@ function parseColor(colorStr: any, fallback: number): number {
   return cached;
 }
 
+export let globalUiGraphics: Phaser.GameObjects.Graphics | null = null;
+
 // Phaser's container.getData()/setData() lazily allocates a DataManager (its own
 // event-emitter + Map) the first time it's touched, and every get/set after that goes
 // through that indirection. At 500+ actors doing ~10 getData calls each per frame, that's
@@ -26,30 +28,22 @@ function parseColor(colorStr: any, fallback: number): number {
 // (it dies with the container, same as setData did).
 interface ActorRefs {
   bodySprite: Phaser.GameObjects.Sprite | Phaser.GameObjects.Rectangle;
-  // HP background + fill + segment markers used to be 3 separate game objects
-  // (2 Rectangles + 1 Graphics), each contributing its own draw call. A WebGL batch
-  // flush happens every time the renderer hits a different object/texture type, so
-  // interleaving Rectangle/Graphics/Sprite/Text per actor was forcing several batch
-  // flushes per actor just for the HP bar. Drawing bg+fill+markers into ONE Graphics
-  // object per actor collapses that to a single draw call, with identical pixels.
-  hpBarGfx: Phaser.GameObjects.Graphics;
-  hpText: Phaser.GameObjects.Text;
+  hpText: Phaser.GameObjects.BitmapText;
   baseWidth: number;
   weaponsContainer: Phaser.GameObjects.Container;
-  // Weapon sprites keyed by slot index, replacing weaponsContainer.getByName()/.each()
-  // linear scans (both O(weapon count) per actor per frame) with O(1) lookups.
   weaponSprites: Map<number, Phaser.GameObjects.Sprite>;
   castCircle: Phaser.GameObjects.Ellipse;
-  // Cast bar background + fill merged into one Graphics object for the same reason
-  // as hpBarGfx above.
-  castBarGfx: Phaser.GameObjects.Graphics;
   wasDead: boolean;
+
+  hpBgRect: Phaser.GameObjects.Rectangle;
+  hpFillRect: Phaser.GameObjects.Rectangle;
+  shieldFillRect: Phaser.GameObjects.Rectangle;
+
+  // VFX State Trackers
   prevActionState: string | undefined;
   prevCastSkillId: string | undefined;
   prevHp: number | undefined;
   flashTimer: number;
-  // Cache the raw fields that drove the last FX rebuild, instead of re-building a
-  // concatenated string key from them every frame just to compare.
   lastFxActionState: string;
   lastFxCastSkillId: string;
   lastFxEffectsKey: string;
@@ -71,6 +65,16 @@ export class ActorRenderer {
     enemyList?: any[]
   ): Set<string> {
     const activeIds = new Set<string>();
+
+    // >>> OPTIMIZATION: Cache the current time once per frame instead of 3000+ times
+    const currentTime = scene.time.now;
+
+
+
+    // Grab camera bounds for culling...
+    const cam = scene.cameras.main;
+    const viewLeft = cam.worldView.x - 100;
+
 
     actorList.forEach((actor: any) => {
       // 1. Identify Identity & Configs
@@ -125,170 +129,145 @@ export class ActorRenderer {
           bodySprite = scene.add.rectangle(0, 0, 32, 32, 0x000000).setStrokeStyle(2, 0x00ff00) as any;
         }
 
-        const hpBarGfx = scene.add.graphics();
-        const castBarGfx = scene.add.graphics().setVisible(false);
+        // >>> OPTIMIZATION: Force distinct Z-Depths to fix visibility
+        const hpText = scene.add.bitmapText(0, 0, 'damageFont', '', 10)
+          .setOrigin(0.5, 0.5)
+          .setVisible(false)
+          .setDepth(55); // Depth 55 ensures text is ALWAYS on top
 
-        const hpText = scene.add.text(0, 0, '', {
-          fontFamily: "'Segoe UI', Tahoma, sans-serif",
-          fontSize: '10px',
-          color: '#ffffff',
-          fontStyle: 'bold',
-          stroke: '#000000',
-          strokeThickness: 3,
-          resolution: 3
-        }).setOrigin(0.5, 0.5).setVisible(false);
+        const hpBgRect = scene.add.rectangle(0, -25, uiWidth, 6, 0x000000)
+          .setOrigin(0.5, 0.5).setVisible(false).setDepth(50);
+
+        const hpFillRect = scene.add.rectangle(-(uiWidth / 2), -25, uiWidth, 6, hpColor)
+          .setOrigin(0, 0.5).setVisible(false).setDepth(51); // Depth 51 renders over background
+
+        const shieldFillRect = scene.add.rectangle(-(uiWidth / 2), -25, uiWidth, 6, 0xffffff)
+          .setOrigin(0, 0.5).setVisible(false).setDepth(52); // Depth 52 renders over HP bar
 
         const weaponsContainer = scene.add.container(0, 0);
 
-        // Same anchor/order as before: castCircle, body, hpBarGfx, hpText, weapons, castBarGfx.
-        // Grouping the two Graphics objects with the Sprite/Text in a stable order also helps
-        // the WebGL batcher merge consecutive same-type draws across actors in the list.
-        container.add([castCircle, bodySprite, hpBarGfx, hpText, weaponsContainer, castBarGfx]);
+        container.add([castCircle, bodySprite, hpText, hpBgRect, hpFillRect, shieldFillRect, weaponsContainer]);
 
         const refs: ActorRefs = {
-          bodySprite, hpBarGfx, hpText,
-          baseWidth: uiWidth,
-          weaponsContainer,
-          weaponSprites: new Map(),
-          castCircle, castBarGfx,
-          wasDead: false,
-          prevActionState: undefined,
-          prevCastSkillId: undefined,
-          prevHp: undefined,
-          flashTimer: 0,
-          lastFxActionState: '',
-          lastFxCastSkillId: '',
-          lastFxEffectsKey: '',
-          wasFlashing: false,
+          bodySprite, hpText, baseWidth: uiWidth, weaponsContainer,
+          weaponSprites: new Map(), castCircle, wasDead: false,
+          hpBgRect, hpFillRect, shieldFillRect,
+          prevActionState: undefined, prevCastSkillId: undefined, prevHp: undefined,
+          flashTimer: 0, lastFxActionState: '', lastFxCastSkillId: '', lastFxEffectsKey: '', wasFlashing: false
         };
         (container as any).__refs = refs;
 
         sprites.set(safeId, container);
       }
 
-      // 3. UPDATE UI BARS
+      // 3. UPDATE UI BARS (Network Tick Only)
       const container = sprites.get(safeId)!;
       const refs = getRefs(container);
       const body = refs.bodySprite as Phaser.GameObjects.Sprite;
 
-      let topY = -16;
-      let bottomY = 16;
-      let realHeight = 32;
+      // Aggressive Camera Culling for the Network Tick
+      const cam = scene.cameras.main;
+      const viewLeft = cam.scrollX - 100;
+      const viewRight = cam.scrollX + cam.width + 100;
+      const viewTop = cam.scrollY - 100;
+      const viewBottom = cam.scrollY + cam.height + 100;
 
-      // 1. Check if you manually defined the height in the JSON!
-      const explicitVisualHeight = config?.visualHeight ?? config?.VisualHeight;
+      const isVisible = targetX >= viewLeft && targetX <= viewRight && targetY >= viewTop && targetY <= viewBottom;
 
-      if (explicitVisualHeight !== undefined && explicitVisualHeight !== null) {
-        // Use the manual JSON height
-        const halfHeight = (explicitVisualHeight * scale) / 2;
-        topY = -halfHeight - 20; // Health bar sits 20px above their head
-        bottomY = halfHeight + 10; // Cast bar sits 10px below their feet
-        realHeight = explicitVisualHeight * scale;
-      } else {
-        // 2. Fallback if you haven't updated the JSON for this monster yet
-        const bodyHalfHeight = (body && body.displayHeight) ? body.displayHeight / 2 : 16;
-        topY = -bodyHalfHeight - 20;
-        bottomY = bodyHalfHeight + 10;
-        realHeight = bodyHalfHeight * 2;
+      if (!isVisible) {
+        if (container.visible) container.setVisible(false);
+        return;
       }
 
+      if (!container.visible) container.setVisible(true);
 
-      const hpBarGfx = refs.hpBarGfx;
-      const baseW = refs.baseWidth ?? 32;
-
-      hpBarGfx.y = topY;
-
+      // >>> FIX: Declare local variables so Sections 4, 5, and 6 can use them! <<<
+      // >>> FIX: Declare local variables so Sections 4, 5, and 6 can use them! <<<
+      const actionState = actor.actionState || actor.ActionState || "Idle";
       const currentHp = actor.currentHp ?? actor.CurrentHp ?? 0;
       const maxHp = actor.maxHp ?? actor.MaxHp ?? 1;
-      const currentShield = actor.currentShield ?? 0; // <<< NEW
 
-      // If shield exceeds max HP, the bar scales down to fit everything natively!
-      const totalCapacity = Math.max(maxHp, currentHp + currentShield);
+      // FIX: Added 'CurrentShield' fallback in case the server sends PascalCase!
+      const currentShield = actor.currentShield ?? actor.CurrentShield ?? 0;
 
-      const fillWidth = baseW * Math.max(0, currentHp / totalCapacity);
-      const shieldWidth = baseW * Math.max(0, currentShield / totalCapacity);
+      const currentCastTimer = actor.currentCastTimer || actor.CurrentCastTimer || 0;
+      const maxCastTimer = actor.maxCastTimer || actor.MaxCastTimer || 0;
 
-      hpBarGfx.clear();
-      hpBarGfx.fillStyle(0x000000, 1);
-      hpBarGfx.fillRect(-baseW / 2, -3, baseW, 6);
+      // >>> NEW: Dynamic Visual Height Calculation <<<
+      // Reads the height from the config (fallback to 32) and applies the scale
+      const visualHeight = config?.visualHeight ?? config?.VisualHeight ?? 32;
+      let realHeight = visualHeight * scale;
 
-      // Draw HP
-      if (fillWidth > 0) {
-        hpBarGfx.fillStyle(hpColor, 1);
-        hpBarGfx.fillRect(-baseW / 2, -3, fillWidth, 6);
-      }
+      // Top sits just above their head, Bottom sits at their feet
+      let topY = -(realHeight / 2) - 6;
+      let bottomY = (realHeight / 2);
 
-      // Draw Shield (White) right where the HP ends!
-      if (shieldWidth > 0) {
-        hpBarGfx.fillStyle(0xffffff, 1);
-        hpBarGfx.fillRect((-baseW / 2) + fillWidth, -3, shieldWidth, 6);
-      }
-
-      // Draw segment ticks based on total capacity so the visual scaling stays true
-      if (totalCapacity > 50) {
-        hpBarGfx.lineStyle(2, 0x000000, 1.0);
-        const segments = Math.floor(totalCapacity / 50);
-        const pixelsPer50 = baseW / (totalCapacity / 50);
-
-        for (let i = 1; i <= segments; i++) {
-          const lineX = -(baseW / 2) + (i * pixelsPer50);
-          if (lineX >= (baseW / 2) - 1.5) continue;
-          hpBarGfx.beginPath().moveTo(lineX, -4).lineTo(lineX, 4).strokePath();
-        }
-      }
-
-      const actionState = actor.actionState || actor.ActionState || "Idle";
-      const currentCast = actor.currentCastTimer || actor.CurrentCastTimer || 0;
-      const maxCast = actor.maxCastTimer || actor.MaxCastTimer || 0;
-
+      // 1. UPDATE HEALTH TEXT (Toggled by 'u')
       const hpText = refs.hpText;
       if (hpText) {
         const shouldShow = scene.data.get('showHealthNumbers') === true && actionState !== "Dead";
-
         if (shouldShow) {
-          hpText.y = topY;
-          // >>> NEW: Add shield to the floating text if active
-          if (currentShield > 0) {
-            hpText.setText(`${Math.round(currentHp)} (+${Math.round(currentShield)}) / ${Math.round(maxHp)}`);
-          } else {
-            hpText.setText(`${Math.round(currentHp)} / ${Math.round(maxHp)}`);
-          }
-          hpText.setVisible(true);
+          hpText.y = topY - 12; // Pushes the text up so it doesn't cover the bar
+          const newHpString = currentShield > 0
+            ? `${Math.round(currentHp)} (+${Math.round(currentShield)}) / ${Math.round(maxHp)}`
+            : `${Math.round(currentHp)} / ${Math.round(maxHp)}`;
+
+          if (hpText.text !== newHpString) hpText.setText(newHpString);
+          if (!hpText.visible) hpText.setVisible(true);
         } else if (hpText.visible) {
           hpText.setVisible(false);
         }
       }
 
-      const castBarGfx = refs.castBarGfx;
+      // 2. UPDATE HEALTH & SHIELD BARS natively inside the container
+      const totalCapacity = Math.max(maxHp, currentHp + currentShield);
+      if (actionState !== "Dead" && totalCapacity > 0 && (currentHp < maxHp || currentShield > 0 || isPlayer)) {
+        refs.hpBgRect.y = topY;
+        refs.hpFillRect.y = topY;
+        refs.shieldFillRect.y = topY;
+
+        refs.hpBgRect.setVisible(true);
+        refs.hpFillRect.setVisible(true);
+
+        // LoL Style Border: Make the background slightly taller/wider than the fills to act as a border outline
+        refs.hpBgRect.setDisplaySize(refs.baseWidth + 2, 8);
+
+        const hpPct = Math.max(0, Math.min(1, currentHp / totalCapacity));
+        refs.hpFillRect.scaleX = hpPct;
+
+        // Vibrant LoL-style Green/Red
+        refs.hpFillRect.fillColor = isFriendly ? 0x2ecc71 : 0xe74c3c;
+
+        if (currentShield > 0) {
+          refs.shieldFillRect.setVisible(true);
+          const shieldPct = Math.max(0, Math.min(1, currentShield / totalCapacity));
+          refs.shieldFillRect.scaleX = shieldPct;
+
+          // Start the shield exactly where the HP bar ends
+          refs.shieldFillRect.x = -(refs.baseWidth / 2) + (refs.baseWidth * hpPct);
+
+          // LoL Style Shield Color (Bright light grey/white)
+          refs.shieldFillRect.fillColor = 0xdddddd;
+        } else {
+          refs.shieldFillRect.setVisible(false);
+        }
+      } else {
+        refs.hpBgRect.setVisible(false);
+        refs.hpFillRect.setVisible(false);
+        refs.shieldFillRect.setVisible(false);
+      }
+
       const castCircle = refs.castCircle;
-
-      castBarGfx.y = bottomY + 6;
-      castCircle.y = bottomY;
-
-      // Extract the casting config if available to check the UI toggle
       const castingSkillId = actor.currentCastingSkillId || actor.CurrentCastingSkillId;
       const skillCfg = castingSkillId ? ((configs.skills || configs.Skills)?.[castingSkillId]) : null;
+
       const showCastBar = skillCfg ? (skillCfg.showCastBar !== false && skillCfg.ShowCastBar !== false) : true;
 
-      if (actionState === "Casting" && maxCast > 0 && showCastBar) {
+      if (actionState === "Casting" && maxCastTimer > 0 && showCastBar) {
+        castCircle.y = bottomY;
         castCircle.setVisible(true);
-        castCircle.scaleX = 0.8 + Math.sin(scene.time.now / 100) * 0.2;
-
-        // Same geometry as before: bg rect 40x6 centered, with a 1px gray stroke, plus a
-        // gold fill rect anchored at the left edge shrinking as cast progresses.
-        const castFillWidth = 40 * Math.max(0, 1 - (currentCast / maxCast));
-        castBarGfx.clear();
-        castBarGfx.fillStyle(0x000000, 1);
-        castBarGfx.fillRect(-20, -3, 40, 6);
-        castBarGfx.lineStyle(1, 0x555555, 1);
-        castBarGfx.strokeRect(-20, -3, 40, 6);
-        if (castFillWidth > 0) {
-          castBarGfx.fillStyle(0xffd700, 1);
-          castBarGfx.fillRect(-20, -3, castFillWidth, 6);
-        }
-        castBarGfx.setVisible(true);
+        castCircle.scaleX = 0.8 + Math.sin(currentTime / 100) * 0.2;
       } else {
-        castBarGfx.setVisible(false);
         castCircle.setVisible(false);
       }
 
@@ -428,75 +407,125 @@ export class ActorRenderer {
           let aimX = actor.aimX ?? actor.AimX ?? targetX;
           let aimY = actor.aimY ?? actor.AimY ?? targetY;
 
+          // >>> SYNC FIX: Check if the weapon is firing THIS EXACT FRAME before calculating aim
+          const firedList = actor.firedWeapons || actor.FiredWeapons || [];
+          const isFiringThisFrame = firedList.includes(slotIndex);
+
           // ✅ AutoShot Visual Rotation Tracking
           const isAutoShot = wConfig.autoShot === true || wConfig.AutoShot === true;
           if (isPlayer && isAutoShot && enemyList && enemyList.length > 0) {
-            const baseRange = wConfig.range ?? wConfig.Range ?? 300;
-            const latestStats = scene.data.get('latestPlayerStats');
-            const rangeBonus = latestStats?.range ?? 0;
-            const finalRange = baseRange + rangeBonus;
-            const rangeSq = finalRange * finalRange;
 
-            const weaponWorldX = targetX + wx;
-            const weaponWorldY = targetY + wy;
+            const frameCount = scene.game.loop.frame;
+            const throttleOffset = slotIndex;
 
-            let bestInRangeDistSq = rangeSq;
-            let bestInRangeX = 0, bestInRangeY = 0, foundInRange = false;
+            if (!sprite.data) sprite.setDataEnabled();
 
-            let bestAnyDistSq = Number.MAX_VALUE;
-            let bestAnyX = 0, bestAnyY = 0, foundAny = false;
+            // >>> FPS & SYNC FIX: Use 5-frame throttle for idle aiming, but FORCE instant recalculation if firing! <<<
+            if (isFiringThisFrame || (frameCount + throttleOffset) % 5 === 0 || !sprite.getData('cachedAimX')) {
+              const baseRange = wConfig.range ?? wConfig.Range ?? 300;
+              const latestStats = scene.data.get('latestPlayerStats');
+              const rangeBonus = latestStats?.range ?? 0;
+              const finalRange = baseRange + rangeBonus;
+              const rangeSq = finalRange * finalRange;
 
-            for (let ei = 0; ei < enemyList.length; ei++) {
-              const enemy = enemyList[ei];
-              const eState = enemy.actionState || enemy.ActionState || "Idle";
-              if (eState === "Dead") continue;
-              const eTeam = enemy.team || enemy.Team || "Enemy";
-              if (eTeam !== "Enemy") continue;
+              const weaponWorldX = targetX + wx;
+              const weaponWorldY = targetY + wy;
 
-              const ex = enemy.x ?? enemy.X ?? 0;
-              const ey = enemy.y ?? enemy.Y ?? 0;
-              const dx = ex - weaponWorldX;
-              const dy = ey - weaponWorldY;
-              const distSq = dx * dx + dy * dy;
+              let bestInRangeDistSq = rangeSq;
+              let bestInRangeX = 0, bestInRangeY = 0, foundInRange = false;
 
-              if (distSq <= bestInRangeDistSq) {
-                bestInRangeDistSq = distSq;
-                bestInRangeX = ex; bestInRangeY = ey;
-                foundInRange = true;
+              let bestAnyDistSq = Number.MAX_VALUE;
+              let bestAnyX = 0, bestAnyY = 0, foundAny = false;
+
+              // We expand the cull box to ~1200 pixels (roughly screen size).
+              // This allows weapons to track incoming enemies smoothly before they get in range,
+              // while still saving CPU by skipping the 2000+ enemies way off the map.
+              const searchRadius = Math.max(finalRange, 1200);
+
+              for (let ei = 0; ei < enemyList.length; ei++) {
+                const enemy = enemyList[ei];
+
+                // Skip dead enemies
+                const eState = enemy.actionState || enemy.ActionState || "Idle";
+                if (eState === "Dead") continue;
+
+                // Skip friendly targets
+                const eTeam = enemy.team || enemy.Team || "Enemy";
+                if (eTeam !== "Enemy") continue;
+
+                const ex = enemy.x ?? enemy.X ?? 0;
+                const dx = ex - weaponWorldX;
+                if (Math.abs(dx) > searchRadius) continue; // Fast horizontal cull
+
+                const ey = enemy.y ?? enemy.Y ?? 0;
+                const dy = ey - weaponWorldY;
+                if (Math.abs(dy) > searchRadius) continue; // Fast vertical cull
+
+                const distSq = dx * dx + dy * dy;
+
+                if (distSq <= rangeSq) {
+                  if (distSq < bestInRangeDistSq) {
+                    bestInRangeDistSq = distSq;
+                    bestInRangeX = ex; bestInRangeY = ey;
+                    foundInRange = true;
+                  }
+                }
+
+                if (distSq < bestAnyDistSq) {
+                  bestAnyDistSq = distSq;
+                  bestAnyX = ex; bestAnyY = ey;
+                  foundAny = true;
+                }
               }
-              if (distSq < bestAnyDistSq) {
-                bestAnyDistSq = distSq;
-                bestAnyX = ex; bestAnyY = ey;
-                foundAny = true;
+
+              if (foundInRange) {
+                sprite.setData('cachedAimX', bestInRangeX);
+                sprite.setData('cachedAimY', bestInRangeY);
+              } else if (foundAny) {
+                sprite.setData('cachedAimX', bestAnyX);
+                sprite.setData('cachedAimY', bestAnyY);
+              } else {
+                // >>> THE JITTER FIX <<<
+                // Don't set the aim to the player's exact center (targetX/Y). 
+                // Because of the 5-frame throttle, as the player walks away from that cached coordinate,
+                // the math calculates a negative angle and flips the weapon backward!
+                // Fallback to the player's actual mouse/joystick aim.
+                const fallbackAimX = actor.aimX ?? actor.AimX ?? (targetX + 100);
+                const fallbackAimY = actor.aimY ?? actor.AimY ?? targetY;
+                sprite.setData('cachedAimX', fallbackAimX);
+                sprite.setData('cachedAimY', fallbackAimY);
               }
             }
 
-            if (foundInRange) {
-              aimX = bestInRangeX; aimY = bestInRangeY;
-            } else if (foundAny) {
-              aimX = bestAnyX; aimY = bestAnyY;
-            }
+            // Read from the throttled cache
+            aimX = sprite.getData('cachedAimX');
+            aimY = sprite.getData('cachedAimY');
           }
 
           const angle = Math.atan2(aimY - targetY, aimX - targetX);
-
           sprite.rotation = angle;
           sprite.setFlipY(Math.abs(angle) > Math.PI / 2);
 
-          const firedList = actor.firedWeapons || actor.FiredWeapons || [];
-          if (firedList.includes(slotIndex) && !scene.tweens.isTweening(sprite)) {
+          // >>> FPS FIX 4: Avoid O(N) Scene Tween Lookups (Updated to use our isFiringThisFrame boolean) <<<
+          if (isFiringThisFrame && !(sprite as any).__isAnimatingAttack) {
+            (sprite as any).__isAnimatingAttack = true;
             const animType = wConfig.attackAnimType || 'recoil';
+
+            const cleanupTween = () => { (sprite as any).__isAnimatingAttack = false; };
+
             if (animType === 'stab') {
-              scene.tweens.add({ targets: sprite, x: wx + Math.cos(angle) * 20, y: wy + Math.sin(angle) * 20, yoyo: true, duration: 100, ease: 'Power2' });
+              scene.tweens.add({ targets: sprite, x: wx + Math.cos(angle) * 20, y: wy + Math.sin(angle) * 20, yoyo: true, duration: 100, ease: 'Power2', onComplete: cleanupTween });
             } else if (animType === 'recoil') {
-              scene.tweens.add({ targets: sprite, x: wx + Math.cos(angle) * -15, y: wy + Math.sin(angle) * -15, yoyo: true, duration: 80, ease: 'Cubic.easeOut' });
+              scene.tweens.add({ targets: sprite, x: wx + Math.cos(angle) * -15, y: wy + Math.sin(angle) * -15, yoyo: true, duration: 80, ease: 'Cubic.easeOut', onComplete: cleanupTween });
             } else if (animType === 'swing') {
-              scene.tweens.add({ targets: sprite, angle: sprite.angle + 360, duration: 150, ease: 'Linear' });
+              scene.tweens.add({ targets: sprite, angle: sprite.angle + 360, duration: 150, ease: 'Linear', onComplete: cleanupTween });
+            } else {
+              cleanupTween();
             }
             if (isPlayer && wConfig.soundFire) AudioManager.getInstance().playSfx(wConfig.soundFire);
           }
 
-          if (!scene.tweens.isTweening(sprite)) { sprite.x = wx; sprite.y = wy; }
+          if (!(sprite as any).__isAnimatingAttack) { sprite.x = wx; sprite.y = wy; }
         }
       });
 
@@ -657,12 +686,13 @@ export class ActorRenderer {
 
         const prevHp = refs.prevHp;
         if (prevHp !== undefined && currentHp < prevHp) {
-          refs.flashTimer = scene.time.now + 150;
+          refs.flashTimer = currentTime + 150; // <--- Make sure this also uses currentTime!
           AudioManager.getInstance().playLastProjectileHitSound();
         }
         refs.prevHp = currentHp;
 
-        applyVisualFX(scene, container, refs, body as Phaser.GameObjects.Sprite, actor, configs, topY, bottomY, realHeight);
+        // >>> Pass currentTime at the very end of this function call <<<
+        applyVisualFX(scene, container, refs, body as Phaser.GameObjects.Sprite, actor, configs, topY, bottomY, realHeight, currentTime);
       }
     });
 
@@ -881,41 +911,38 @@ export class WorldRenderer {
       if (floatingNumbersThisTick >= MAX_FLOATING_NUMBERS_PER_TICK) return;
       floatingNumbersThisTick++;
 
-      let color = '#ffffff';
-
-      let stroke = '#000000';
+      // >>> FIX: Use raw Hex numbers for WebGL Tinting instead of CSS strings
+      let tintColor = 0xffffff; // Default White
       let textStr = Math.round(Math.abs(amt)).toString();
       let finalScale = 0.5;
 
       // >>> DODGE & BLOCK VISUALS <<<
       if (isDodge) {
-        color = '#00e5ff'; // Cyan
-        stroke = '#005b9f';
+        tintColor = 0x00e5ff; // Cyan
         textStr = 'DODGE';
         finalScale = 0.6;
       } else if (isBlock) {
-        color = '#b0bec5'; // Silver/Gray
-        stroke = '#455a64';
+        tintColor = 0xb0bec5; // Silver/Gray
         textStr = 'BLOCK';
         finalScale = 0.6;
       } else if (isHeal) {
-        color = '#00ff00';
+        tintColor = 0x00ff00; // Green
         textStr = `+${textStr}`;
       } else if (isCrit) {
-        color = '#ffeb3b'; // Yellow
-        stroke = '#d32f2f'; // Red stroke
+        tintColor = 0xffeb3b; // Yellow
         textStr = `💥 ${textStr}`;
         finalScale = 0.75;
       }
 
-      const floatingText = scene.add.text(startX, startY, textStr, {
-        fontFamily: "'Segoe UI', Tahoma, sans-serif",
-        fontSize: '20px',
-        color: color,
-        fontStyle: isCrit || isDodge || isBlock ? 'italic bold' : 'bold',
-        stroke: stroke,
-        strokeThickness: isCrit ? 6 : 4
-      }).setOrigin(0.5).setDepth(20).setScale(finalScale);
+      // Create the fast BitmapText
+      const floatingText = scene.add.bitmapText(startX, startY, 'damageFont', textStr, 20)
+        .setOrigin(0.5)
+        .setDepth(20)
+        .setScale(finalScale);
+
+      // >>> APPLY THE COLOR HERE <<<
+      floatingText.setTint(tintColor);
+
 
       scene.tweens.add({
         targets: floatingText,
@@ -979,28 +1006,35 @@ export function applyVisualFX(
   masterConfigs: any,
   topY: number,
   bottomY: number = 20,
-  realHeight: number = 32 // <--- New parameter!
+  realHeight: number = 32,
+  currentTime: number // <--- 1. Add the new parameter here!
 ) {
-  // Compare the raw fields directly instead of concatenating them into a string every
-  // frame for every actor just to compare strings - same result, no allocation/join cost
-  // on the (very common) frame where nothing changed.
   const castSkillId = entity.currentCastingSkillId || '';
   const effectsKey = (entity.activeEffects || []).join(',');
-  const isFlashing = scene.time.now < (refs.flashTimer || 0);
 
-  const unchanged = refs.lastFxActionState === entity.actionState &&
+  // <--- 2. Use currentTime here instead of scene.time.now!
+  const isFlashing = currentTime < (refs.flashTimer || 0);
+
+  // >>> OPTIMIZATION 1: Handle Flashing Independently!
+  if (isFlashing !== refs.wasFlashing) {
+    refs.wasFlashing = isFlashing;
+    if (isFlashing) mainSprite.setTintFill(0xffffff);
+    else mainSprite.clearTint();
+  }
+
+  // >>> OPTIMIZATION 2: Only rebuild FX if the actual effects/state changed, NOT when flashing!
+  const fxUnchanged = refs.lastFxActionState === entity.actionState &&
     refs.lastFxCastSkillId === castSkillId &&
-    refs.lastFxEffectsKey === effectsKey &&
-    refs.wasFlashing === isFlashing;
-  if (unchanged) return;
+    refs.lastFxEffectsKey === effectsKey;
+
+  if (fxUnchanged) return; // Skip recreating UI!
 
   refs.lastFxActionState = entity.actionState;
   refs.lastFxCastSkillId = castSkillId;
   refs.lastFxEffectsKey = effectsKey;
-  refs.wasFlashing = isFlashing;
 
+  // Clean up old FX ONLY because the state actually changed
   container.list.filter(c => c.name === 'overhead_fx' || c.name === 'status_fx').forEach(c => c.destroy());
-
   if (isFlashing) mainSprite.setTintFill(0xffffff);
   else mainSprite.clearTint();
 
@@ -1290,3 +1324,4 @@ export class VfxRenderer {
     activeBeams.delete(key);
   }
 }
+

@@ -303,9 +303,11 @@ public class NetworkSystem : IGameSystem
 
     private static byte[] CompressPayload(object payload)
     {
-        // FIX C: Serialize directly into the compression stream. 
-        // This completely eliminates the LOH string allocation that causes the 5-second freezes!
-        using var ms = new MemoryStream();
+        // FIX: Pre-allocate 1 Megabyte of memory instantly. 
+        // This stops the MemoryStream from constantly resizing and creating massive 
+        // abandoned byte arrays that cause the 4-second Garbage Collection freezes!
+        using var ms = new MemoryStream(1024 * 1024);
+
         using (var gzip = new GZipStream(ms, CompressionLevel.Fastest))
         {
             JsonSerializer.Serialize(gzip, payload, _serializerOptions);

@@ -191,6 +191,8 @@ class GameScene extends Phaser.Scene {
     this.load.audio('ui_recycle', '/assets/Audio/ui_recycle.wav');
     this.load.audio('ui_levelup', '/assets/audio/ui_levelup.wav');
     this.load.audio('ui_click', '/assets/Audio/UI/btnclick.mp3');
+
+    this.load.bitmapFont('damageFont', 'assets/fonts/fon.png', 'assets/fonts/fon.xml');
   }
 
   create() {
@@ -1255,12 +1257,34 @@ class GameScene extends Phaser.Scene {
   }
 
   private smoothInterpolateSprites(map: Map<string, any>, speed: number = 0.2) {
+    const cam = this.cameras.main;
+    // Add a 200px buffer outside the camera view
+    const cullLeft = cam.scrollX - 200;
+    const cullRight = cam.scrollX + cam.width + 200;
+    const cullTop = cam.scrollY - 200;
+    const cullBottom = cam.scrollY + cam.height + 200;
+
     map.forEach((sprite, id) => {
       const target = this.targetPositions.get(id);
-      if (target) {
-        sprite.x = Phaser.Math.Linear(sprite.x, target.x, speed);
-        sprite.y = Phaser.Math.Linear(sprite.y, target.y, speed);
+      if (!target) return;
+
+      // 1. Off-screen? Snap instantly, don't waste CPU interpolating unseen entities.
+      if (target.x < cullLeft || target.x > cullRight || target.y < cullTop || target.y > cullBottom) {
+        if (sprite.x !== target.x) sprite.x = target.x;
+        if (sprite.y !== target.y) sprite.y = target.y;
+        return;
       }
+
+      // 2. On-screen? Interpolate with a 0.5px deadzone.
+      // If a sprite is within half a pixel of its target, snap it to prevent endless micro-updates.
+      const dx = target.x - sprite.x;
+      const dy = target.y - sprite.y;
+
+      if (Math.abs(dx) > 0.5) sprite.x += dx * speed;
+      else if (sprite.x !== target.x) sprite.x = target.x;
+
+      if (Math.abs(dy) > 0.5) sprite.y += dy * speed;
+      else if (sprite.y !== target.y) sprite.y = target.y;
     });
   }
 

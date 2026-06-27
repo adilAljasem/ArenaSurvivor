@@ -230,7 +230,7 @@
     "name": "Troll Runt",
     "tier": 1,
     "isBoss": false,
-    "minWave": 500,
+    "minWave": 30,
     "maxWave": 999,
     "spawnWeight": 250,
     "textureKey": "enemies_sheet1",

@@ -4,7 +4,7 @@
     "name": "Well Rounded",
     "textureKey": "characters_sheet1",
     "iconFrame": 0,
-    "VisualHeight": 15.0,
+    "VisualHeight": 25.0,
     "scale": 2.0,
     "defaultFacingRight": true,
     "animIdle": [
@@ -23,7 +23,7 @@
     ],
     "animDeathFrameRate": 12,
     "baseStats": {
-      "maxHp": 3000000,
+      "maxHp": 30000,
       "movementSpeed": 200,
       "meleeDamage": 50,
       "rangedDamage": 50,
