@@ -123,6 +123,10 @@ class GameScene extends Phaser.Scene {
   private perfText!: Phaser.GameObjects.Text;
   private versionText!: Phaser.GameObjects.Text;
 
+  private activeEnemiesArray: ServerEnemy[] = [];
+  private enemiesDirty: boolean = true;
+  private hpGraphics!: Phaser.GameObjects.Graphics;
+
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: any;
   private currentPhase: string = "WaitingForPlayers";
@@ -159,6 +163,8 @@ class GameScene extends Phaser.Scene {
 
 
   private pingIntervalId: ReturnType<typeof setInterval> | null = null;
+
+
 
   constructor() { super('GameScene'); }
 
@@ -206,6 +212,7 @@ class GameScene extends Phaser.Scene {
     this.groundTooltip = new Tooltip(this);
     this.skillActionBar = new SkillActionBar(this);
     this.skillActionBar.updateLayout(this.scale.width, this.scale.height);
+    this.hpGraphics = this.add.graphics().setDepth(50);
 
     AudioManager.getInstance().init(this);
 
@@ -218,6 +225,7 @@ class GameScene extends Phaser.Scene {
       console.log("Handshake received from Lobby. Configs loaded.");
       this.applyHandshakePayload(payload);
     });
+
 
 
     lobbyConnection.on("MatchStarted", (roomId: string, matchToken: string, workerUrl: string) => {
@@ -301,6 +309,7 @@ class GameScene extends Phaser.Scene {
         console.error("Failed to connect to worker:", err);
       });
     });
+
 
 
     // ==========================================
@@ -613,12 +622,304 @@ class GameScene extends Phaser.Scene {
   }
 
 
+
   // ==========================================
   // 2. WORKER NODE (MATCH) LISTENERS
   // ==========================================
   private bindWorkerListeners() {
     // .off() before .on() makes this method safe to call multiple times
     // (e.g., if withAutomaticReconnect fires and the connection is reused).
+
+    const networkWorker = new Worker(new URL('./network.worker.ts', import.meta.url), { type: 'module' });
+
+    networkWorker.onmessage = (e) => {
+      const { rawState, compressedSize, uncompressedSize } = e.data;
+
+      // 1. Update Network Statistics
+      this.compressedBytesReceived += compressedSize;
+      this.uncompressedBytesReceived += uncompressedSize;
+
+      this.lastNetworkEntitiesCount =
+        (rawState.p?.length || 0) + (rawState.e?.length || 0) +
+        (rawState.me?.length || 0) + (rawState.nb?.length || 0) + (rawState.pk?.length || 0);
+
+      const PhaseMap = ["WaitingForPlayers", "WaveActive", "ShopPhase"];
+      const StateMap = ["Idle", "Moving", "Attacking", "Casting", "Dead"];
+
+      // ==========================================
+      // 2. PROCESS DELETIONS
+      // ==========================================
+      if (rawState.db) {
+        rawState.db.forEach((id: string) => {
+          const sprite = this.projectileSprites.get(id);
+          if (sprite) {
+            const configId = (sprite as any).__pdata?.configId as string | undefined;
+            if (configId) {
+              const projCfg = masterConfigs.projectiles?.[configId] ?? masterConfigs.Projectiles?.[configId];
+              if (projCfg?.soundHit) AudioManager.getInstance().setLastProjectileHitSound(projCfg.soundHit);
+            }
+            sprite.destroy();
+            this.projectileSprites.delete(id);
+          }
+        });
+      }
+
+      if (rawState.de?.length > 0) {
+        rawState.de.forEach((id: string) => this.enemyCache.delete(id));
+        this.enemiesDirty = true; // Mark array for rebuild
+      }
+
+      if (rawState.dpk?.length > 0) {
+        rawState.dpk.forEach((id: string) => {
+          this.pickupCache.delete(id);
+          if (id === this.nearbyLootId) {
+            this.nearbyLootId = null;
+            this.groundTooltip.hide();
+          }
+        });
+      }
+
+      // ==========================================
+      // 3. PROCESS ADDITIONS & UPDATES
+      // ==========================================
+      if (rawState.nb) {
+        rawState.nb.forEach((b: any[]) => {
+          const id = b[0], configId = b[1], x = b[2], y = b[3], vx = b[4], vy = b[5];
+          const config = masterConfigs.projectiles ? (masterConfigs.projectiles[configId] || masterConfigs.Projectiles?.[configId]) : null;
+
+          let sprite: any;
+          if (config && (config.textureKey || config.TextureKey)) {
+            const tex = config.textureKey || config.TextureKey;
+            const frame = config.iconFrame ?? config.IconFrame ?? 0;
+            sprite = this.add.sprite(x, y, tex, frame);
+            sprite.setScale(config.scale || config.Scale || 1.0);
+            sprite.setRotation(Math.atan2(vy, vx));
+
+            const animKey = `${configId}_fly`;
+            if (this.anims && this.anims.exists(animKey)) {
+              sprite.play(animKey);
+            }
+          } else {
+            sprite = this.add.rectangle(x, y, 10, 10, 0xffff00);
+          }
+          sprite.setDepth(10);
+
+          sprite.__pdata = {
+            vx, vy, configId,
+            isOrbital: b[6] === 1,
+            ownerId: b[6] === 1 ? b[7] : undefined,
+            orbitRadius: b[6] === 1 ? b[8] : undefined,
+            orbitAngleOffset: b[6] === 1 ? b[9] : undefined,
+          };
+
+          this.projectileSprites.set(id, sprite);
+        });
+      }
+
+      if (rawState.e?.length > 0) {
+        rawState.e.forEach((e: any[]) => {
+          this.enemyCache.set(e[0], {
+            id: e[0], configId: e[1], x: e[2], y: e[3], currentHp: e[4], maxHp: e[5],
+            aimX: e[6], aimY: e[7],
+            actionState: StateMap[e[8]], currentCastingSkillId: e[9], currentCastTimer: e[10],
+            maxCastTimer: e[11], activeEffects: e[12] || [],
+            weapons: e[13]?.map((w: any[]) => ({
+              configId: w[0], slotIndex: w[1], level: w[2], rolledStats: w[3] || {}, totalBaseStats: w[4] || {}
+            })) || [],
+            firedWeapons: e[14] || [],
+            team: e[15],
+            currentShield: e[16] || 0
+          });
+        });
+        this.enemiesDirty = true; // Mark array for rebuild
+      }
+
+      if (rawState.pk) {
+        rawState.pk.forEach((pk: any[]) => {
+          this.pickupCache.set(pk[0], {
+            id: pk[0], x: pk[1], y: pk[2], value: pk[3],
+            type: pk[4] ?? 0,
+            gearConfigId: pk[5] || '',
+            level: pk[6] ?? 1,
+            totalBaseStats: pk[7] || {},
+            rolledStats: pk[8] || {},
+            skills: pk[9] || []
+          });
+        });
+      }
+
+      if (rawState.me) {
+        rawState.me.forEach((m: any[]) => {
+          const cached = this.enemyCache.get(m[0]);
+          if (cached) {
+            cached.x = m[1]; cached.y = m[2]; cached.currentHp = m[3]; cached.maxHp = m[4];
+            cached.aimX = m[5]; cached.aimY = m[6]; cached.actionState = StateMap[m[7]];
+            cached.currentCastingSkillId = m[8]; cached.currentCastTimer = m[9]; cached.maxCastTimer = m[10];
+            cached.activeEffects = m[11] || []; cached.firedWeapons = m[12] || []; cached.currentShield = m[13] || 0;
+          }
+        });
+      }
+
+      // ==========================================
+      // 4. REBUILD CACHE (ONLY IF NEEDED)
+      // ==========================================
+      if (this.enemiesDirty) {
+        this.activeEnemiesArray = Array.from(this.enemyCache.values());
+        this.enemiesDirty = false;
+      }
+
+      // ==========================================
+      // 5. ASSEMBLE GAME STATE PAYLOAD
+      // ==========================================
+      const state: GameStatePayload = {
+        phase: PhaseMap[rawState.ph] || "WaitingForPlayers",
+        currentWave: rawState.w, timeRemaining: rawState.tr,
+        players: rawState.p?.map((p: any[]) => ({
+          connectionId: p[0], x: p[1], y: p[2], aimX: p[3], aimY: p[4],
+          currentHp: p[5], maxHp: p[6], gold: p[7], actionState: StateMap[p[8]],
+          currentCastingSkillId: p[9], currentCastTimer: p[10], maxCastTimer: p[11],
+          weapons: p[12]?.map((w: any[]) => ({
+            configId: w[0], slotIndex: w[1], level: w[2], rolledStats: w[3] || {},
+            weaponSkills: w[4] || [], totalBaseStats: w[5] || {}
+          })) || [],
+          firedWeapons: p[13] || [],
+          activeEffects: p[14] || [],
+          synergizedSkills: p[15]?.map((s: any[]) => ({
+            configId: s[0], currentCooldown: s[1]
+          })) || [],
+          statDiff: p[16],
+          currentShield: p[17] || 0,
+          currentShop: [], stats: {}, ownedItems: {}
+        })) || [],
+
+        enemies: this.activeEnemiesArray, // <--- Using the fast cached array!
+        pickups: Array.from(this.pickupCache.values()),
+        projectiles: [],
+
+        damageEvents: rawState.dmg?.map((d: any[]) => ({
+          x: d[0], y: d[1], amount: d[2],
+          isCritical: d[3] === 1, isDodge: d[4] === 1, isBlock: d[5] === 1
+        })) || [],
+        aoeEvents: rawState.aoe?.map((a: any[]) => ({ x: a[0], y: a[1], radius: a[2], isFriendly: a[3], configId: a[4] })) || [],
+        beamEvents: rawState.bm?.map((b: any[]) => ({ startX: b[0], startY: b[1], targetX: b[2], targetY: b[3], width: b[4], colorTint: b[5], casterId: b[6], skillId: b[7] })) || [],
+        beamEndedEvents: rawState.be?.map((b: any[]) => ({ casterId: b[0], skillId: b[1] })) || []
+      };
+
+      // ==========================================
+      // 6. RENDER VFX & UI
+      // ==========================================
+      const aoeEvents = state.aoeEvents || [];
+      const beamEvents = state.beamEvents || [];
+      const beamEndedEvents = state.beamEndedEvents || [];
+
+      VfxRenderer.renderAoeEvents(this, aoeEvents, masterConfigs);
+      VfxRenderer.renderBeamEvents(this, beamEvents, masterConfigs, this.activeBeams);
+      beamEndedEvents.forEach((ev: { casterId: string, skillId: string }) => {
+        VfxRenderer.endBeam(ev.casterId, ev.skillId, this.activeBeams);
+      });
+
+      this.currentPhase = state.phase;
+      const myPlayer = state.players.find(p => p.connectionId === matchConnection.connectionId);
+
+      if (myPlayer) {
+        this.goldUIText.setText(`💰 ${myPlayer.gold}`);
+
+        if (myPlayer.statDiff) {
+          let currentStats = this.data.get('latestPlayerStats') || {};
+          Object.assign(currentStats, myPlayer.statDiff);
+          this.data.set('latestPlayerStats', currentStats);
+
+          if (this.shopUIModule) {
+            const currentLevel = this.data.get('playerLevel') || 1;
+            this.shopUIModule.updateJustStats(currentStats, currentLevel);
+          }
+
+          const speedEl = document.getElementById('ui-stat-speed');
+          if (speedEl) speedEl.innerText = Math.floor(currentStats["movementSpeed"] || 0).toString();
+
+          const hpEl = document.getElementById('ui-stat-maxhp');
+          if (hpEl) hpEl.innerText = Math.floor(currentStats["maxHp"] || 0).toString();
+
+          const dmgEl = document.getElementById('ui-stat-damage');
+          if (dmgEl) {
+            const totalDmg = (currentStats["meleeDamage"] || 0) + (currentStats["magicDamage"] || 0);
+            dmgEl.innerText = Math.floor(totalDmg).toString();
+          }
+        }
+
+        const pStats = this.data.get('latestPlayerStats') || {};
+        this.skillActionBar.updateSkills(myPlayer.synergizedSkills, masterConfigs, pStats);
+      }
+
+      // ==========================================
+      // 7. LOOT TOOLTIP LOGIC
+      // ==========================================
+      const PICKUP_RADIUS_SQ = 50 * 50;
+      let newNearbyLootId: string | null = null;
+      if (myPlayer) {
+        for (const [id, pickup] of this.pickupCache) {
+          if (pickup.type === 0) continue;
+          const dx = pickup.x - myPlayer.x;
+          const dy = pickup.y - myPlayer.y;
+          if (dx * dx + dy * dy <= PICKUP_RADIUS_SQ) {
+            newNearbyLootId = id;
+            break;
+          }
+        }
+      }
+
+      if (newNearbyLootId !== this.nearbyLootId) {
+        this.nearbyLootId = newNearbyLootId;
+        if (newNearbyLootId) {
+          const pickup = this.pickupCache.get(newNearbyLootId)!;
+          const pType = pickup.type;
+          const gearConfig = pType === 1
+            ? (masterConfigs.weapons?.[pickup.gearConfigId])
+            : (masterConfigs.items?.[pickup.gearConfigId]);
+          if (gearConfig) {
+            const cam = this.cameras.main;
+            const screenX = (pickup.x - cam.scrollX) * cam.zoom;
+            const screenY = (pickup.y - cam.scrollY) * cam.zoom - 80;
+            this.groundTooltip.show(gearConfig, screenX, screenY, 1, masterConfigs, pickup.totalBaseStats, pickup.rolledStats, pickup.skills);
+          }
+        } else {
+          this.groundTooltip.hide();
+        }
+      }
+
+      // ==========================================
+      // 8. PHASE TEXT UPDATES
+      // ==========================================
+      if (this.currentPhase === "WaitingForPlayers") {
+        this.waveUIText.setText(`WAITING FOR HOST TO START...`).setColor('#bf55ec');
+      } else if (this.currentPhase === "WaveActive") {
+        this.waveUIText.setText(`Wave ${state.currentWave} - 0:${state.timeRemaining.toString().padStart(2, '0')}`).setColor('#ffffff');
+        if (this.previousPhase !== "WaveActive") { this.shopUIModule.setVisible(false); this.manuallyClosedShop = true; }
+      } else if (this.currentPhase === "ShopPhase") {
+        this.waveUIText.setText(`SHOP PHASE - ${state.timeRemaining}s`).setColor('#00ff00');
+        if (this.previousPhase !== "ShopPhase") { this.shopUIModule.setVisible(true); this.manuallyClosedShop = false; }
+      }
+      this.previousPhase = this.currentPhase;
+
+      // ==========================================
+      // 9. RENDER ACTORS & WORLD
+      // ==========================================
+      const activePlayers = ActorRenderer.render(this, state.players, this.playerSprites, masterConfigs, this.targetPositions, true, state.enemies, this.hpGraphics);
+      const activeEnemies = ActorRenderer.render(this, state.enemies, this.enemySprites, masterConfigs, this.targetPositions, false, undefined, this.hpGraphics);
+      const dummyMap = new Map();
+      const { activePickups } = WorldRenderer.render(this, state, dummyMap, this.pickupSprites, masterConfigs, this.targetPositions) as any;
+
+      const mySprite = this.playerSprites.get(matchConnection.connectionId || "");
+      if (mySprite && !(this.cameras.main as any)._isFollowing) {
+        this.cameras.main.startFollow(mySprite, true, 0.1, 0.1);
+        (this.cameras.main as any)._isFollowing = true;
+      }
+
+      this.cleanupSprites(this.playerSprites, activePlayers);
+      this.cleanupSprites(this.enemySprites, activeEnemies);
+      this.cleanupSprites(this.pickupSprites, activePickups);
+    };
+
 
     matchConnection.off("MatchError");
     matchConnection.on("MatchError", (msg: string) => {
@@ -690,274 +991,8 @@ class GameScene extends Phaser.Scene {
     matchConnection.off("UpdateStateCompressed");
 
     matchConnection.on("UpdateStateCompressed", (compressedBase64: string) => {
-      const compressedSize = compressedBase64.length + 50;
-      this.compressedBytesReceived += compressedSize;
-
-      const binaryString = atob(compressedBase64);
-      const len = binaryString.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-
-      const decompressedBytes = pako.ungzip(bytes);
-      const jsonString = new TextDecoder().decode(decompressedBytes);
-
-      const uncompressedSize = new TextEncoder().encode(jsonString).length + 50;
-      this.uncompressedBytesReceived += uncompressedSize;
-
-      const rawState = JSON.parse(jsonString);
-
-      this.lastNetworkEntitiesCount =
-        (rawState.p?.length || 0) + (rawState.e?.length || 0) +
-        (rawState.me?.length || 0) + (rawState.nb?.length || 0) + (rawState.pk?.length || 0);
-
-      const PhaseMap = ["WaitingForPlayers", "WaveActive", "ShopPhase"];
-      const StateMap = ["Idle", "Moving", "Attacking", "Casting", "Dead"];
-
-      // --- PROJECTILES ---
-      if (rawState.db) {
-        rawState.db.forEach((id: string) => {
-          const sprite = this.projectileSprites.get(id);
-          if (sprite) {
-            const configId = (sprite as any).__pdata?.configId as string | undefined;
-            if (configId) {
-              const projCfg = masterConfigs.projectiles?.[configId] ?? masterConfigs.Projectiles?.[configId];
-              if (projCfg?.soundHit) AudioManager.getInstance().setLastProjectileHitSound(projCfg.soundHit);
-            }
-            sprite.destroy();
-            this.projectileSprites.delete(id);
-          }
-        });
-      }
-
-      if (rawState.nb) {
-        rawState.nb.forEach((b: any[]) => {
-          const id = b[0], configId = b[1], x = b[2], y = b[3], vx = b[4], vy = b[5];
-          const config = masterConfigs.projectiles ? (masterConfigs.projectiles[configId] || masterConfigs.Projectiles?.[configId]) : null;
-
-          let sprite: any;
-          if (config && (config.textureKey || config.TextureKey)) {
-            const tex = config.textureKey || config.TextureKey;
-            const frame = config.iconFrame ?? config.IconFrame ?? 0;
-            sprite = this.add.sprite(x, y, tex, frame);
-            sprite.setScale(config.scale || config.Scale || 1.0);
-            sprite.setRotation(Math.atan2(vy, vx));
-
-            const animKey = `${configId}_fly`;
-            if (this.anims && this.anims.exists(animKey)) {
-              sprite.play(animKey);
-            }
-          } else {
-            sprite = this.add.rectangle(x, y, 10, 10, 0xffff00);
-          }
-          sprite.setDepth(10);
-
-          sprite.__pdata = {
-            vx, vy, configId,
-            isOrbital: b[6] === 1,
-            ownerId: b[6] === 1 ? b[7] : undefined,
-            orbitRadius: b[6] === 1 ? b[8] : undefined,
-            orbitAngleOffset: b[6] === 1 ? b[9] : undefined,
-          };
-
-          this.projectileSprites.set(id, sprite);
-        });
-      }
-
-      // --- ENEMIES & PICKUPS DELTAS ---
-      rawState.de?.forEach((id: string) => this.enemyCache.delete(id));
-      rawState.dpk?.forEach((id: string) => {
-        this.pickupCache.delete(id);
-        if (id === this.nearbyLootId) {
-          this.nearbyLootId = null;
-          this.groundTooltip.hide();
-        }
-      });
-
-      rawState.e?.forEach((e: any[]) => {
-        this.enemyCache.set(e[0], {
-          id: e[0], configId: e[1], x: e[2], y: e[3], currentHp: e[4], maxHp: e[5],
-          aimX: e[6], aimY: e[7],
-          actionState: StateMap[e[8]], currentCastingSkillId: e[9], currentCastTimer: e[10],
-          maxCastTimer: e[11], activeEffects: e[12] || [],
-          weapons: e[13]?.map((w: any[]) => ({
-            configId: w[0], slotIndex: w[1], level: w[2], rolledStats: w[3] || {}, totalBaseStats: w[4] || {}
-          })) || [],
-          firedWeapons: e[14] || [],
-          team: e[15],
-          currentShield: e[16] || 0
-        });
-      });
-
-      rawState.pk?.forEach((pk: any[]) => {
-        this.pickupCache.set(pk[0], {
-          id: pk[0], x: pk[1], y: pk[2], value: pk[3],
-          type: pk[4] ?? 0,
-          gearConfigId: pk[5] || '',
-          level: pk[6] ?? 1,
-          totalBaseStats: pk[7] || {},
-          rolledStats: pk[8] || {},
-          skills: pk[9] || []
-        });
-      });
-
-
-
-      rawState.me?.forEach((m: any[]) => {
-        const cached = this.enemyCache.get(m[0]);
-        if (cached) {
-          cached.x = m[1];
-          cached.y = m[2];
-          cached.currentHp = m[3];
-          cached.maxHp = m[4];
-          cached.aimX = m[5];
-          cached.aimY = m[6];
-          cached.actionState = StateMap[m[7]];
-          cached.currentCastingSkillId = m[8];
-          cached.currentCastTimer = m[9];
-          cached.maxCastTimer = m[10];
-          cached.activeEffects = m[11] || [];
-          cached.firedWeapons = m[12] || [];
-          cached.currentShield = m[13] || 0;
-        }
-      });
-
-      // --- FINAL STATE PAYLOAD ---
-      const state: GameStatePayload = {
-        phase: PhaseMap[rawState.ph] || "WaitingForPlayers",
-        currentWave: rawState.w, timeRemaining: rawState.tr,
-        players: rawState.p?.map((p: any[]) => ({
-          connectionId: p[0], x: p[1], y: p[2], aimX: p[3], aimY: p[4],
-          currentHp: p[5], maxHp: p[6], gold: p[7], actionState: StateMap[p[8]],
-          currentCastingSkillId: p[9], currentCastTimer: p[10], maxCastTimer: p[11],
-          weapons: p[12]?.map((w: any[]) => ({
-            configId: w[0], slotIndex: w[1], level: w[2], rolledStats: w[3] || {},
-            weaponSkills: w[4] || [], totalBaseStats: w[5] || {}
-          })) || [],
-          firedWeapons: p[13] || [],
-          activeEffects: p[14] || [],
-          synergizedSkills: p[15]?.map((s: any[]) => ({
-            configId: s[0], currentCooldown: s[1]
-          })) || [],
-          statDiff: p[16],
-          currentShield: p[17] || 0,
-          currentShop: [], stats: {}, ownedItems: {}
-        })) || [],
-        enemies: Array.from(this.enemyCache.values()),
-        pickups: Array.from(this.pickupCache.values()),
-        projectiles: [],
-        damageEvents: rawState.dmg?.map((d: any[]) => ({
-          x: d[0], y: d[1], amount: d[2],
-          isCritical: d[3] === 1, isDodge: d[4] === 1, isBlock: d[5] === 1
-        })) || [],
-        aoeEvents: rawState.aoe?.map((a: any[]) => ({ x: a[0], y: a[1], radius: a[2], isFriendly: a[3], configId: a[4] })) || [],
-        beamEvents: rawState.bm?.map((b: any[]) => ({ startX: b[0], startY: b[1], targetX: b[2], targetY: b[3], width: b[4], colorTint: b[5], casterId: b[6], skillId: b[7] })) || [],
-        beamEndedEvents: rawState.be?.map((b: any[]) => ({ casterId: b[0], skillId: b[1] })) || []
-      };
-
-      const aoeEvents = state.aoeEvents || [];
-      const beamEvents = state.beamEvents || [];
-      const beamEndedEvents = state.beamEndedEvents || [];
-
-      VfxRenderer.renderAoeEvents(this, aoeEvents, masterConfigs);
-      VfxRenderer.renderBeamEvents(this, beamEvents, masterConfigs, this.activeBeams);
-      beamEndedEvents.forEach((ev: { casterId: string, skillId: string }) => {
-        VfxRenderer.endBeam(ev.casterId, ev.skillId, this.activeBeams);
-      });
-
-      this.currentPhase = state.phase;
-      const myPlayer = state.players.find(p => p.connectionId === matchConnection.connectionId);
-
-      if (myPlayer) {
-        this.goldUIText.setText(`💰 ${myPlayer.gold}`);
-
-        if (myPlayer.statDiff) {
-          let currentStats = this.data.get('latestPlayerStats') || {};
-          Object.assign(currentStats, myPlayer.statDiff);
-          this.data.set('latestPlayerStats', currentStats);
-
-          if (this.shopUIModule) {
-            const currentLevel = this.data.get('playerLevel') || 1;
-            this.shopUIModule.updateJustStats(currentStats, currentLevel);
-          }
-
-          const speedEl = document.getElementById('ui-stat-speed');
-          if (speedEl) speedEl.innerText = Math.floor(currentStats["movementSpeed"] || 0).toString();
-
-          const hpEl = document.getElementById('ui-stat-maxhp');
-          if (hpEl) hpEl.innerText = Math.floor(currentStats["maxHp"] || 0).toString();
-
-          const dmgEl = document.getElementById('ui-stat-damage');
-          if (dmgEl) {
-            const totalDmg = (currentStats["meleeDamage"] || 0) + (currentStats["magicDamage"] || 0);
-            dmgEl.innerText = Math.floor(totalDmg).toString();
-          }
-        }
-
-        const pStats = this.data.get('latestPlayerStats') || {};
-        this.skillActionBar.updateSkills(myPlayer.synergizedSkills, masterConfigs, pStats);
-      }
-
-      const PICKUP_RADIUS_SQ = 50 * 50;
-      let newNearbyLootId: string | null = null;
-      if (myPlayer) {
-        for (const [id, pickup] of this.pickupCache) {
-          if (pickup.type === 0) continue;
-          const dx = pickup.x - myPlayer.x;
-          const dy = pickup.y - myPlayer.y;
-          if (dx * dx + dy * dy <= PICKUP_RADIUS_SQ) {
-            newNearbyLootId = id;
-            break;
-          }
-        }
-      }
-
-      if (newNearbyLootId !== this.nearbyLootId) {
-        this.nearbyLootId = newNearbyLootId;
-        if (newNearbyLootId) {
-          const pickup = this.pickupCache.get(newNearbyLootId)!;
-          const pType = pickup.type;
-          const gearConfig = pType === 1
-            ? (masterConfigs.weapons?.[pickup.gearConfigId])
-            : (masterConfigs.items?.[pickup.gearConfigId]);
-          if (gearConfig) {
-            const cam = this.cameras.main;
-            const screenX = (pickup.x - cam.scrollX) * cam.zoom;
-            const screenY = (pickup.y - cam.scrollY) * cam.zoom - 80;
-            this.groundTooltip.show(gearConfig, screenX, screenY, 1, masterConfigs, pickup.totalBaseStats, pickup.rolledStats, pickup.skills);
-          }
-        } else {
-          this.groundTooltip.hide();
-        }
-      }
-
-      if (this.currentPhase === "WaitingForPlayers") {
-        this.waveUIText.setText(`WAITING FOR HOST TO START...`).setColor('#bf55ec');
-      } else if (this.currentPhase === "WaveActive") {
-        this.waveUIText.setText(`Wave ${state.currentWave} - 0:${state.timeRemaining.toString().padStart(2, '0')}`).setColor('#ffffff');
-        if (this.previousPhase !== "WaveActive") { this.shopUIModule.setVisible(false); this.manuallyClosedShop = true; }
-      } else if (this.currentPhase === "ShopPhase") {
-        this.waveUIText.setText(`SHOP PHASE - ${state.timeRemaining}s`).setColor('#00ff00');
-        if (this.previousPhase !== "ShopPhase") { this.shopUIModule.setVisible(true); this.manuallyClosedShop = false; }
-      }
-      this.previousPhase = this.currentPhase;
-
-      const activePlayers = ActorRenderer.render(this, state.players, this.playerSprites, masterConfigs, this.targetPositions, true, state.enemies);
-      const activeEnemies = ActorRenderer.render(this, state.enemies, this.enemySprites, masterConfigs, this.targetPositions, false);
-
-      const dummyMap = new Map();
-      const { activePickups } = WorldRenderer.render(this, state, dummyMap, this.pickupSprites, masterConfigs, this.targetPositions) as any;
-
-      const mySprite = this.playerSprites.get(matchConnection.connectionId || "");
-      if (mySprite && !(this.cameras.main as any)._isFollowing) {
-        this.cameras.main.startFollow(mySprite, true, 0.1, 0.1);
-        (this.cameras.main as any)._isFollowing = true;
-      }
-
-      this.cleanupSprites(this.playerSprites, activePlayers);
-      this.cleanupSprites(this.enemySprites, activeEnemies);
-      this.cleanupSprites(this.pickupSprites, activePickups);
+      // Instead of freezing the main thread, we just hand the string to the worker!
+      networkWorker.postMessage(compressedBase64);
     });
   }
 
@@ -967,6 +1002,69 @@ class GameScene extends Phaser.Scene {
     this.smoothInterpolateSprites(this.playerSprites, 0.2);
     this.smoothInterpolateSprites(this.enemySprites, 0.2);
     const dtSeconds = delta / 1000;
+
+    this.hpGraphics.clear();
+
+    // --- NEW: Draw all health bars and cast bars in one batched pass! ---
+    const drawHpBars = (map: Map<string, any>) => {
+      map.forEach((sprite) => {
+        if (!sprite.visible) return;
+
+        const refs = sprite.__refs;
+        if (!refs) return;
+
+        // Hide the old pulsing ellipse fallback you had
+        if (refs.castCircle) refs.castCircle.setVisible(false);
+
+        const drawX = sprite.x - (refs.baseWidth / 2);
+        const drawY = sprite.y + refs.topY;
+
+        // --- 1. HEALTH & SHIELD BARS (League of Legends Style) ---
+        const totalCapacity = Math.max(refs.maxHp, refs.currentHp + refs.currentShield);
+
+        // Only draw if they are alive and missing health (or are a player)
+        if (refs.actionState !== "Dead" && totalCapacity > 0 && (refs.currentHp < refs.maxHp || refs.currentShield > 0 || refs.isPlayer)) {
+
+          const hpPct = Math.max(0, Math.min(1, refs.currentHp / totalCapacity));
+          const shieldPct = Math.max(0, Math.min(1, refs.currentShield / totalCapacity));
+
+          // Background (Black Border)
+          this.hpGraphics.fillStyle(0x000000, 1);
+          this.hpGraphics.fillRect(drawX - 1, drawY - 1, refs.baseWidth + 2, 8);
+
+          // HP Fill (Green for friends, Red for enemies)
+          this.hpGraphics.fillStyle(refs.isFriendly ? 0x2ecc71 : 0xe74c3c, 1);
+          this.hpGraphics.fillRect(drawX, drawY, refs.baseWidth * hpPct, 6);
+
+          // Shield Fill (Cyan/White) appended exactly at the end of the HP block!
+          if (refs.currentShield > 0) {
+            this.hpGraphics.fillStyle(0x00ffff, 1); // LoL often uses Cyan for magic shields
+            this.hpGraphics.fillRect(drawX + (refs.baseWidth * hpPct), drawY, refs.baseWidth * shieldPct, 6);
+          }
+        }
+
+        // --- 2. CAST BAR (Linear progress bar underneath) ---
+        if (refs.actionState === "Casting" && refs.maxCastTimer > 0 && refs.showCastBar && refs.actionState !== "Dead") {
+          const castY = drawY + 10; // Positioned neatly 10px below the health bar
+
+          // Reverse the timer so it acts like a progress bar filling up from left to right
+          const castProgress = 1.0 - Math.max(0, Math.min(1, refs.currentCastTimer / refs.maxCastTimer));
+
+          // Background (Dark gray)
+          this.hpGraphics.fillStyle(0x000000, 0.8);
+          this.hpGraphics.fillRect(drawX - 1, castY - 1, refs.baseWidth + 2, 5);
+
+          // Cast Fill (Yellow/Orange warning color)
+          this.hpGraphics.fillStyle(0xffa500, 1);
+          this.hpGraphics.fillRect(drawX, castY, refs.baseWidth * castProgress, 3);
+        }
+      });
+    };
+
+    // Execute the draw commands for all actors
+    drawHpBars(this.playerSprites);
+    drawHpBars(this.enemySprites);
+
 
     if (this.skillActionBar) {
       this.skillActionBar.smoothTickCooldowns(dtSeconds);

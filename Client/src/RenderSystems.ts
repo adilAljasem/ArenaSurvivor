@@ -35,10 +35,6 @@ interface ActorRefs {
   castCircle: Phaser.GameObjects.Ellipse;
   wasDead: boolean;
 
-  hpBgRect: Phaser.GameObjects.Rectangle;
-  hpFillRect: Phaser.GameObjects.Rectangle;
-  shieldFillRect: Phaser.GameObjects.Rectangle;
-
   // VFX State Trackers
   prevActionState: string | undefined;
   prevCastSkillId: string | undefined;
@@ -48,6 +44,19 @@ interface ActorRefs {
   lastFxCastSkillId: string;
   lastFxEffectsKey: string;
   wasFlashing: boolean;
+
+  // --- ADD THESE NEW STATE TRACKERS FOR HEALTH BARS ---
+  currentHp: number;
+  maxHp: number;
+  currentShield: number;
+  topY: number;
+  bottomY: number;      // <--- NEW: For the Cast Bar
+  actionState: string;
+  isFriendly: boolean;
+  isPlayer: boolean;
+  currentCastTimer: number;
+  maxCastTimer: number; // <--- NEW: For the Cast Bar
+  showCastBar: boolean; // <--- NEW: For the Cast Bar
 }
 
 function getRefs(container: Phaser.GameObjects.Container): ActorRefs {
@@ -62,7 +71,8 @@ export class ActorRenderer {
     configs: any,
     targets: Map<string, { x: number, y: number }>,
     isPlayer: boolean,
-    enemyList?: any[]
+    enemyList?: any[],
+    hpGraphics?: Phaser.GameObjects.Graphics // <--- ADD THIS HERE
   ): Set<string> {
     const activeIds = new Set<string>();
 
@@ -83,7 +93,15 @@ export class ActorRenderer {
 
       const targetX = actor.x ?? actor.X ?? 0;
       const targetY = actor.y ?? actor.Y ?? 0;
-      targets.set(safeId, { x: targetX, y: targetY });
+
+      let target = targets.get(safeId);
+      if (!target) {
+        target = { x: targetX, y: targetY };
+        targets.set(safeId, target);
+      } else {
+        target.x = targetX;
+        target.y = targetY;
+      }
 
       let configId = actor.configId || actor.ConfigId;
       if (isPlayer && !configId) configId = "char_well_rounded";
@@ -135,25 +153,22 @@ export class ActorRenderer {
           .setVisible(false)
           .setDepth(55); // Depth 55 ensures text is ALWAYS on top
 
-        const hpBgRect = scene.add.rectangle(0, -25, uiWidth, 6, 0x000000)
-          .setOrigin(0.5, 0.5).setVisible(false).setDepth(50);
-
-        const hpFillRect = scene.add.rectangle(-(uiWidth / 2), -25, uiWidth, 6, hpColor)
-          .setOrigin(0, 0.5).setVisible(false).setDepth(51); // Depth 51 renders over background
-
-        const shieldFillRect = scene.add.rectangle(-(uiWidth / 2), -25, uiWidth, 6, 0xffffff)
-          .setOrigin(0, 0.5).setVisible(false).setDepth(52); // Depth 52 renders over HP bar
 
         const weaponsContainer = scene.add.container(0, 0);
 
-        container.add([castCircle, bodySprite, hpText, hpBgRect, hpFillRect, shieldFillRect, weaponsContainer]);
+        container.add([castCircle, bodySprite, hpText, weaponsContainer]);
 
         const refs: ActorRefs = {
           bodySprite, hpText, baseWidth: uiWidth, weaponsContainer,
           weaponSprites: new Map(), castCircle, wasDead: false,
-          hpBgRect, hpFillRect, shieldFillRect,
           prevActionState: undefined, prevCastSkillId: undefined, prevHp: undefined,
-          flashTimer: 0, lastFxActionState: '', lastFxCastSkillId: '', lastFxEffectsKey: '', wasFlashing: false
+          flashTimer: 0, lastFxActionState: '', lastFxCastSkillId: '', lastFxEffectsKey: '', wasFlashing: false,
+
+          // Add default values for the new fields here:
+          currentHp: 0, maxHp: 1, currentShield: 0, topY: 0, bottomY: 0,
+          actionState: "Idle", isFriendly: isFriendly, isPlayer: isPlayer,
+          currentCastTimer: 0, // <--- 2. ADD THIS!
+          maxCastTimer: 0, showCastBar: true
         };
         (container as any).__refs = refs;
 
@@ -194,11 +209,9 @@ export class ActorRenderer {
       const maxCastTimer = actor.maxCastTimer || actor.MaxCastTimer || 0;
 
       // >>> NEW: Dynamic Visual Height Calculation <<<
-      // Reads the height from the config (fallback to 32) and applies the scale
       const visualHeight = config?.visualHeight ?? config?.VisualHeight ?? 32;
       let realHeight = visualHeight * scale;
 
-      // Top sits just above their head, Bottom sits at their feet
       let topY = -(realHeight / 2) - 6;
       let bottomY = (realHeight / 2);
 
@@ -207,7 +220,7 @@ export class ActorRenderer {
       if (hpText) {
         const shouldShow = scene.data.get('showHealthNumbers') === true && actionState !== "Dead";
         if (shouldShow) {
-          hpText.y = topY - 12; // Pushes the text up so it doesn't cover the bar
+          hpText.y = topY - 12;
           const newHpString = currentShield > 0
             ? `${Math.round(currentHp)} (+${Math.round(currentShield)}) / ${Math.round(maxHp)}`
             : `${Math.round(currentHp)} / ${Math.round(maxHp)}`;
@@ -219,57 +232,23 @@ export class ActorRenderer {
         }
       }
 
-      // 2. UPDATE HEALTH & SHIELD BARS natively inside the container
-      const totalCapacity = Math.max(maxHp, currentHp + currentShield);
-      if (actionState !== "Dead" && totalCapacity > 0 && (currentHp < maxHp || currentShield > 0 || isPlayer)) {
-        refs.hpBgRect.y = topY;
-        refs.hpFillRect.y = topY;
-        refs.shieldFillRect.y = topY;
-
-        refs.hpBgRect.setVisible(true);
-        refs.hpFillRect.setVisible(true);
-
-        // LoL Style Border: Make the background slightly taller/wider than the fills to act as a border outline
-        refs.hpBgRect.setDisplaySize(refs.baseWidth + 2, 8);
-
-        const hpPct = Math.max(0, Math.min(1, currentHp / totalCapacity));
-        refs.hpFillRect.scaleX = hpPct;
-
-        // Vibrant LoL-style Green/Red
-        refs.hpFillRect.fillColor = isFriendly ? 0x2ecc71 : 0xe74c3c;
-
-        if (currentShield > 0) {
-          refs.shieldFillRect.setVisible(true);
-          const shieldPct = Math.max(0, Math.min(1, currentShield / totalCapacity));
-          refs.shieldFillRect.scaleX = shieldPct;
-
-          // Start the shield exactly where the HP bar ends
-          refs.shieldFillRect.x = -(refs.baseWidth / 2) + (refs.baseWidth * hpPct);
-
-          // LoL Style Shield Color (Bright light grey/white)
-          refs.shieldFillRect.fillColor = 0xdddddd;
-        } else {
-          refs.shieldFillRect.setVisible(false);
-        }
-      } else {
-        refs.hpBgRect.setVisible(false);
-        refs.hpFillRect.setVisible(false);
-        refs.shieldFillRect.setVisible(false);
-      }
-
-      const castCircle = refs.castCircle;
+      // 2. EXTRACT CAST BAR LOGIC
       const castingSkillId = actor.currentCastingSkillId || actor.CurrentCastingSkillId;
       const skillCfg = castingSkillId ? ((configs.skills || configs.Skills)?.[castingSkillId]) : null;
-
       const showCastBar = skillCfg ? (skillCfg.showCastBar !== false && skillCfg.ShowCastBar !== false) : true;
 
-      if (actionState === "Casting" && maxCastTimer > 0 && showCastBar) {
-        castCircle.y = bottomY;
-        castCircle.setVisible(true);
-        castCircle.scaleX = 0.8 + Math.sin(currentTime / 100) * 0.2;
-      } else {
-        castCircle.setVisible(false);
-      }
+      // 3. SAVE ALL DATA FOR MAIN.TS TO DRAW AT 60FPS
+      refs.currentHp = currentHp;
+      refs.maxHp = maxHp;
+      refs.currentShield = currentShield;
+      refs.topY = topY;
+      refs.bottomY = bottomY;
+      refs.actionState = actionState;
+      refs.isFriendly = isFriendly;
+      refs.isPlayer = isPlayer;
+      refs.currentCastTimer = currentCastTimer; // <--- 3. ADD THIS!
+      refs.maxCastTimer = maxCastTimer;
+      refs.showCastBar = showCastBar;
 
       // 4. WEAPONS
       const weaponsContainer = refs.weaponsContainer;
