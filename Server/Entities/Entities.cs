@@ -690,6 +690,10 @@ public class ProjectileEntity
 
     // How often (in seconds) an orbiting projectile can re-damage the same target while circling.
     public float OrbitHitInterval { get; set; } = 0.5f;
+
+    // >>> NEW: When true, this projectile seeks allied targets (heals/shields) instead of enemies.
+    // Set by ProjectileFactory when spawned from a ClosestAlly-targeted skill.
+    public bool IsFriendlyProjectile { get; set; } = false;
 }
 
 public enum PickupType

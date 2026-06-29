@@ -538,10 +538,23 @@ public class MatchHub : Hub
                 {
                     if (_configManager.Weapons.TryGetValue(w.ConfigId, out var wc)) basePrice = wc.Price;
 
-                    // 2. EXPLICITLY remove the object from the list to bypass internal bugs
+                    // 2. Remove the weapon from the list first
                     player.Weapons.Remove(w);
 
-                    // 3. Wrap original method in try/catch so if it crashes, the server survives
+                    // 3. Strip skills that came from this weapon and are no longer granted by any remaining gear
+                    if (w.WeaponSkills != null)
+                    {
+                        foreach (var ws in w.WeaponSkills)
+                        {
+                            bool grantedElsewhere =
+                                player.Weapons.Any(ow => ow.WeaponSkills?.Any(s => s.ConfigId == ws.ConfigId) == true) ||
+                                player.OwnedItems.Any(oi => oi.ItemSkills?.Any(s => s.ConfigId == ws.ConfigId) == true);
+                            if (!grantedElsewhere)
+                                player.SynergizedSkills.RemoveAll(s => s.ConfigId == ws.ConfigId);
+                        }
+                    }
+
+                    // 4. Attempt the full rebuild (may crash if it relies on the weapon still being in the list)
                     try { player.RemoveWeapon(slotIndex, _configManager); } catch { }
                 }
             }
@@ -553,10 +566,23 @@ public class MatchHub : Hub
                 {
                     if (_configManager.Items.TryGetValue(it.ConfigId, out var ic)) basePrice = ic.Price;
 
-                    // 2. EXPLICITLY remove the object from the list
+                    // 2. Remove the item from the list first
                     player.OwnedItems.Remove(it);
 
-                    // 3. Wrap original method in try/catch
+                    // 3. Strip skills that came from this item and are no longer granted by any remaining gear
+                    if (it.ItemSkills != null)
+                    {
+                        foreach (var itemSkill in it.ItemSkills)
+                        {
+                            bool grantedElsewhere =
+                                player.Weapons.Any(ow => ow.WeaponSkills?.Any(s => s.ConfigId == itemSkill.ConfigId) == true) ||
+                                player.OwnedItems.Any(oi => oi.ItemSkills?.Any(s => s.ConfigId == itemSkill.ConfigId) == true);
+                            if (!grantedElsewhere)
+                                player.SynergizedSkills.RemoveAll(s => s.ConfigId == itemSkill.ConfigId);
+                        }
+                    }
+
+                    // 4. Attempt the full rebuild
                     try { player.RemoveItem(slotIndex, _configManager); } catch { }
                 }
             }

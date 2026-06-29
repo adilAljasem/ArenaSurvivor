@@ -25,17 +25,31 @@ public class EffectSystem : IGameSystem
     {
         if (_configs.Effects.TryGetValue(ev.EffectConfigId, out var effectConfig))
         {
+            float shieldToGrant = effectConfig.GrantedShield;
+            if (shieldToGrant > 0 && ev.Caster != null)
+            {
+                // >>> FIX 4: Use GetTotalStat instead of CachedStats to guarantee all 
+                // gear, traits, and base stats are correctly included in the calculation!
+                float shieldPower = Math.Max(0f, ev.Caster.GetTotalStat("shieldPower", _configs));
+                shieldToGrant *= (1f + shieldPower);
+            }
+
+            // >>> NEW: Build the caster ID so tick heals can look up the applier's healPower later.
+            string casterId = string.Empty;
+            if (ev.Caster != null)
+                casterId = ev.Caster is PlayerEntity cp ? cp.ConnectionId : ((EnemyEntity)ev.Caster).Id;
+
             var existing = ev.Target.ActiveEffects.FirstOrDefault(e => e.ConfigId == ev.EffectConfigId);
             if (existing != null)
             {
                 existing.TimeRemaining = effectConfig.Duration;
-                // >>> NEW: Refresh the shield if it's applied again
-                if (effectConfig.GrantedShield > 0)
+                if (shieldToGrant > 0)
                 {
-                    ev.Target.CurrentShield -= existing.GrantedShieldAmount; // Remove leftover old shield
-                    existing.GrantedShieldAmount = effectConfig.GrantedShield;
-                    ev.Target.CurrentShield += effectConfig.GrantedShield;   // Add fresh full shield
+                    ev.Target.CurrentShield -= existing.GrantedShieldAmount;
+                    existing.GrantedShieldAmount = shieldToGrant;
+                    ev.Target.CurrentShield += shieldToGrant;
                 }
+                // SourceId stays as original applier
             }
             else
             {
@@ -43,11 +57,12 @@ public class EffectSystem : IGameSystem
                 {
                     ConfigId = ev.EffectConfigId,
                     TimeRemaining = effectConfig.Duration,
-                    GrantedShieldAmount = effectConfig.GrantedShield // >>> NEW
+                    GrantedShieldAmount = shieldToGrant,
+                    // >>> NEW: Who applied this effect — HealthSystem uses it to scale tick heals
+                    // by the original applier's healPower (e.g. a doctor's HoT scales with their stat)
+                    SourceId = casterId,
                 });
-
-                // >>> NEW: Grant the shield
-                ev.Target.CurrentShield += effectConfig.GrantedShield;
+                ev.Target.CurrentShield += shieldToGrant;
             }
         }
     }
@@ -76,9 +91,12 @@ public class EffectSystem : IGameSystem
             {
                 effect.TimeSinceLastTick -= config.TickRate;
 
+                // >>> NEW: AttackerId = SourceId links the tick back to the original applier,
+                // so HealthSystem.GetHealerHealPower looks up their healPower for tick heals (TickDamage < 0).
                 _eventBus.Publish(new DamageAppliedEvent
                 {
                     Target = entity,
+                    AttackerId = effect.SourceId,
                     State = state,
                     Amount = config.TickDamage,
                     IsCritical = false,
@@ -88,13 +106,11 @@ public class EffectSystem : IGameSystem
 
                 if (!string.IsNullOrEmpty(config.TickSkillId) && _configs.Skills.TryGetValue(config.TickSkillId, out var tickSkill))
                 {
-                    string casterId = entity is PlayerEntity p ? p.ConnectionId : ((EnemyEntity)entity).Id;
-
-                    // >>> THE FIX: Publish to the EventBus instead of calling SkillSystem directly! <<<
+                    string skillCasterId = entity is PlayerEntity p ? p.ConnectionId : ((EnemyEntity)entity).Id;
                     _eventBus.Publish(new RequestSkillCastEvent
                     {
                         Skill = tickSkill,
-                        CasterId = casterId,
+                        CasterId = skillCasterId,
                         StartX = entity.X,
                         StartY = entity.Y,
                         Team = entity.Team,
@@ -105,14 +121,11 @@ public class EffectSystem : IGameSystem
 
             if (effect.TimeRemaining <= 0)
             {
-                // >>> NEW: Remove the remaining shield when the effect naturally expires
                 if (effect.GrantedShieldAmount > 0)
-                {
                     entity.CurrentShield = Math.Max(0, entity.CurrentShield - effect.GrantedShieldAmount);
-                }
-                
+
                 entity.ActiveEffects.RemoveAt(i);
-                entity.StatsNeedRecalculation = true; // <<< THE FIX
+                entity.StatsNeedRecalculation = true;
             }
         }
     }

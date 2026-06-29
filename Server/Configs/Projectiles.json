@@ -153,5 +153,28 @@
         ],
         "animFlyFrameRate": 10,
         "scale": 2.0
+    },
+    "proj_heal_orb": {
+        "Id": "proj_heal_orb",
+        "Name": "Heal Orb",
+        "TextureKey": "effects3",
+        "animFly": [
+            0,
+            7
+        ],
+        "Scale": 1.0,
+        "BaseSpeed": 150,
+        "HitRadius": 22,
+        "Lifespan": 5.5,
+        "MovementBehavior": "Linear",
+        "PierceCount": 0
+    },
+    "proj_shield_orb": {
+        "Id": "proj_shield_orb",
+        "Name": "Shield Orb",
+        "BaseSpeed": 500,
+        "HitRadius": 25,
+        "Lifespan": 3.0,
+        "ColorTint": "#00ccff"
     }
 }

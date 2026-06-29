@@ -20,7 +20,9 @@ public static class ProjectileFactory
         List<string> extraEffects,
         int count = 1,
         float lifespanOverride = 0f,
-        bool isCritical = false)
+        bool isCritical = false,
+        // >>> NEW: true when the projectile targets allied entities (heals / shields)
+        bool isFriendly = false)
     {
         var results = new List<ProjectileEntity>();
 
@@ -40,7 +42,6 @@ public static class ProjectileFactory
         for (int i = 0; i < count; i++)
         {
             // If orbital, spread them in a perfect circle. Otherwise, shoot straight.
-            // (In the future, you can easily add "Shotgun Spread" math right here!)
             float currentAngle = projConfig.MovementBehavior == "Orbital" ? angleStep * i : baseAngle;
 
             var bullet = new ProjectileEntity
@@ -70,7 +71,11 @@ public static class ProjectileFactory
                 OnDeathSkillId = projConfig.OnDeathSkillId,
                 TickRate = projConfig.TickRate,
                 TickSkillId = projConfig.TickSkillId,
+
+                // >>> NEW: Marks projectile to seek allies in ProcessCollisions
+                IsFriendlyProjectile = isFriendly,
             };
+
 
 
             results.Add(bullet);

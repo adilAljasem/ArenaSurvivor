@@ -36,15 +36,17 @@
     "startingItems": [
       "ugly_tooth"
     ],
-    "startingSkills": ["fire_zone_cast"],
+    "startingSkills": [
+      "skill_heal_shot_2","tank"
+    ],
     "dynamicModifiers": [],
     "traits": [
       "trait_packrat"
     ],
     "statMultipliers": {
-    "rangedDamage": 0.20, 
-    "armor": 1.0        
-  }
+      "rangedDamage": 0.20,
+      "armor": 1.0
+    }
   },
   "char_chunky": {
     "id": "char_chunky",
@@ -83,5 +85,51 @@
     "traits": [
       "CannotHeal"
     ]
+  },
+  "char_doctor": {
+    "id": "char_doctor",
+    "name": "Doctor",
+    "textureKey": "characters_sheet1",
+    "iconFrame": 2,
+    "VisualHeight": 25.0,
+    "scale": 2.0,
+    "defaultFacingRight": true,
+    "animIdle": [
+      0,
+      1
+    ],
+    "animIdleFrameRate": 3,
+    "animMove": [
+      24,
+      31
+    ],
+    "animMoveFrameRate": 20,
+    "animDeath": [
+      17,
+      22
+    ],
+    "animDeathFrameRate": 12,
+    "baseStats": {
+      "maxHp": 80,
+      "movementSpeed": 180,
+      "meleeDamage": 5,
+      "rangedDamage": 5,
+      "healPower": 0.5,
+      "shieldPower": 0.4,
+      "hpRegen": 2,
+      "armor": 10
+    },
+    "statMultipliers": {
+      "healPower": 1.5,
+      "shieldPower": 1.2
+    },
+    "startingSkills": [
+      "skill_heal_shot",
+      "skill_shield_shot"
+    ],
+    "startingWeapons": [],
+    "startingItems": [],
+    "dynamicModifiers": [],
+    "traits": []
   }
 }

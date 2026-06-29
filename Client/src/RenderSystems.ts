@@ -762,6 +762,17 @@ export class WorldRenderer {
     });
 
     const dmgList = state.damageEvents || state.DamageEvents || [];
+
+    // >>> NEW: Initialize the Particle Pool once per scene <<<
+    let particlePool = scene.data.get('hitParticlePool');
+    if (!particlePool) {
+      particlePool = scene.add.group({
+        classType: Phaser.GameObjects.Sprite,
+        maxSize: 300, // Maximum particles on screen at once
+        runChildUpdate: false
+      });
+      scene.data.set('hitParticlePool', particlePool);
+    }
     // Safety valve: a single network tick during a big fight can carry far more damage
     // events than a player can usefully read as floating numbers anyway. Each one creates
     // a Text object (one of Phaser's most expensive single calls - canvas rasterize +
@@ -855,14 +866,29 @@ export class WorldRenderer {
         // spike bypasses the 35% random skip (crits always spawn particles), and each
         // burst is up to 8 Rectangle+tween pairs, so an uncapped pile of simultaneous
         // crits could spawn hundreds of objects in one tick.
+        // 2. CHUNKY BROTATO PARTICLES (Now using Object Pooling + White Pixel)
         if (!isFriendlyHit && (Math.random() < 0.35 || isCrit) && particleBurstsThisTick < MAX_PARTICLE_BURSTS_PER_TICK) {
           particleBurstsThisTick++;
           const numParticles = isCrit ? 8 : 4;
-          for (let i = 0; i < numParticles; i++) {
-            const pSize = Phaser.Math.Between(20, 32);
-            const p = scene.add.rectangle(startX, startY, pSize, pSize, hitColor).setDepth(19);
 
-            p.setStrokeStyle(2, 0x000000, 1);
+          for (let i = 0; i < numParticles; i++) {
+            // GET a particle from the pool
+            const p = particlePool.get(startX, startY, 'white_pixel') as Phaser.GameObjects.Sprite;
+
+            if (!p) continue; // If we hit the 300 cap, just skip spawning this particle
+
+            // WAKE IT UP and reset its properties
+            const pSize = Phaser.Math.Between(20, 32);
+            p.setActive(true).setVisible(true);
+            p.setPosition(startX, startY);
+            p.setDisplaySize(pSize, pSize); p.setTint(hitColor);
+            p.setDepth(19);
+            p.setScale(1); // Reset scale in case a previous tween shrunk it
+            p.setAlpha(1);
+
+            // >>> THE FIX: Parse the string into a strict Number, and use setTintFill <<<
+            const finalColor = parseColor(hitColor, 0xff0000);
+            p.setTintFill(finalColor);
 
             const angle = Math.random() * Math.PI * 2;
             const speed = Math.random() * 120 + 60;
@@ -875,7 +901,10 @@ export class WorldRenderer {
               alpha: 1,
               duration: Math.random() * 300 + 200,
               ease: 'Cubic.easeOut',
-              onComplete: () => p.destroy()
+              onComplete: () => {
+                // PUT IT TO SLEEP instead of p.destroy()
+                p.setActive(false).setVisible(false);
+              }
             });
           }
         }
@@ -986,29 +1015,31 @@ export function applyVisualFX(
   topY: number,
   bottomY: number = 20,
   realHeight: number = 32,
-  currentTime: number // <--- 1. Add the new parameter here!
+  currentTime: number
 ) {
   const castSkillId = entity.currentCastingSkillId || '';
   const effectsKey = (entity.activeEffects || []).join(',');
 
-  // <--- 2. Use currentTime here instead of scene.time.now!
   const isFlashing = currentTime < (refs.flashTimer || 0);
 
-  // >>> OPTIMIZATION 1: Handle Flashing Independently!
   if (isFlashing !== refs.wasFlashing) {
     refs.wasFlashing = isFlashing;
     if (isFlashing) mainSprite.setTintFill(0xffffff);
     else mainSprite.clearTint();
   }
 
-  // >>> OPTIMIZATION 2: Only rebuild FX if the actual effects/state changed, NOT when flashing!
-  const fxUnchanged = refs.lastFxActionState === entity.actionState &&
-    refs.lastFxCastSkillId === castSkillId &&
-    refs.lastFxEffectsKey === effectsKey;
+  // >>> THE FIX: Stop relying on ActionState for VFX caching! <<<
+  // We only care if they died, or if their actual buffs/cast ID changed.
+  const isDead = entity.actionState === 'Dead' || entity.ActionState === 'Dead';
+  const currentLifeState = isDead ? "Dead" : "Alive";
+
+  const fxUnchanged = refs.lastFxCastSkillId === castSkillId &&
+    refs.lastFxEffectsKey === effectsKey &&
+    refs.lastFxActionState === currentLifeState;
 
   if (fxUnchanged) return; // Skip recreating UI!
 
-  refs.lastFxActionState = entity.actionState;
+  refs.lastFxActionState = currentLifeState;
   refs.lastFxCastSkillId = castSkillId;
   refs.lastFxEffectsKey = effectsKey;
 
@@ -1020,27 +1051,23 @@ export function applyVisualFX(
   // =========================================================
   // 1. OVERHEAD: SKILL CHARGING ANIMATIONS
   // =========================================================
-  if (entity.actionState === 'Casting' && entity.currentCastingSkillId) {
-    const skillConfig = (masterConfigs.skills || masterConfigs.Skills)?.[entity.currentCastingSkillId] ?? null;
+
+  // >>> THE FIX: Base this strictly on the Cast ID and Timer, NOT ActionState <<<
+  if (castSkillId && refs.currentCastTimer > 0 && !isDead) {
+    const skillConfig = (masterConfigs.skills || masterConfigs.Skills)?.[castSkillId] ?? null;
     if (skillConfig) {
       const tex = skillConfig.chargeVfxTextureKey || skillConfig.ChargeVfxTextureKey || skillConfig.textureKey || skillConfig.TextureKey;
       const animArray = skillConfig.chargeVfxAnimFrames || skillConfig.ChargeVfxAnimFrames || skillConfig.animSkill || skillConfig.AnimSkill;
       const frameRate = skillConfig.chargeVfxFrameRate || skillConfig.ChargeVfxFrameRate || skillConfig.animFrameRate || skillConfig.AnimFrameRate || 15;
       const isRepeated = skillConfig.isRepeated ?? skillConfig.IsRepeated ?? true;
 
-      // >>> TRUE HEIGHT SCALING <<<
-      // A standard character is roughly 32 visible pixels tall.
-      // We calculate how many times bigger the TRUE pixel height is.
       const visualProportion = realHeight / 32.0;
-
-      // Dampen it: It grows with the boss, but never goes above 2.5x size
       const dampedScale = Math.min(2.5, Math.max(0.5, 1.0 + (visualProportion - 1.0) * 0.4));
       const baseVfxScale = skillConfig.chargeVfxScale || skillConfig.ChargeVfxScale || 1.0;
       const finalVfxScale = baseVfxScale * dampedScale;
 
       if (animArray && animArray.length === 2 && tex) {
-        // Float height dynamically scales too, keeping it above the health bar
-        const floatHeight = topY - (40 * finalVfxScale); // Pushed further up into the sky
+        const floatHeight = topY - (40 * finalVfxScale);
         const fxSprite = scene.add.sprite(0, floatHeight, tex).setName('overhead_fx');
         fxSprite.setScale(finalVfxScale);
         container.add(fxSprite);
@@ -1201,8 +1228,10 @@ export class VfxRenderer {
   //
   // `activeBeams` is owned by the caller (the scene) and passed in, same pattern as
   // projectileSprites/playerSprites elsewhere — VfxRenderer itself stays stateless.
+  // Direct 20 TPS update — one event from the server, one immediate reposition of the sprites.
+  // No interpolation layer. No circles. Just beam + bright core, positioned exactly where the
+  // server says, updated every network tick.
   static renderBeamEvents(scene: Phaser.Scene, beamEvents: any[], configs: any, activeBeams: Map<string, any>) {
-    // 1. Mark all existing beams as NOT updated this tick (Prep for Garbage Collection)
     activeBeams.forEach(entry => { entry.updatedThisTick = false; });
 
     if (beamEvents && beamEvents.length > 0) {
@@ -1215,79 +1244,80 @@ export class VfxRenderer {
         const casterId = ev.casterId ?? ev.CasterId;
         const skillId = ev.skillId ?? ev.SkillId;
 
-        const dx = targetX - startX;
-        const dy = targetY - startY;
-        const length = Math.sqrt(dx * dx + dy * dy);
-        if (length <= 0) return;
-
-        const angle = Math.atan2(dy, dx);
-
         let colorHex = 0xff3030;
         const colorStr = ev.colorTint ?? ev.ColorTint;
-        if (colorStr) {
-          colorHex = parseColor(colorStr, colorHex);
-        }
+        if (colorStr) colorHex = parseColor(colorStr, colorHex);
 
         const key = `${casterId}:${skillId}`;
         let entry = activeBeams.get(key);
 
         if (!entry) {
-          // >>> NEW: Visually upgraded beams with glow nodes and light blending! <<<
-          const beam = scene.add.rectangle(startX, startY, length, width, colorHex, 0.85);
-          beam.setOrigin(0, 0.5).setDepth(298).setBlendMode(Phaser.BlendModes.ADD);
+          const beam = scene.add.sprite(startX, startY, 'white_pixel');
+          beam.setOrigin(0, 0.5).setDepth(298).setBlendMode(Phaser.BlendModes.ADD)
+            .setTintFill(colorHex).setAlpha(0.85);
 
-          const core = scene.add.rectangle(startX, startY, length, Math.max(2, width * 0.25), 0xffffff, 0.9);
-          core.setOrigin(0, 0.5).setDepth(299).setBlendMode(Phaser.BlendModes.ADD);
+          const core = scene.add.sprite(startX, startY, 'white_pixel');
+          core.setOrigin(0, 0.5).setDepth(299).setBlendMode(Phaser.BlendModes.ADD)
+            .setTintFill(0xffffff).setAlpha(0.9);
 
-          const startGlow = scene.add.circle(startX, startY, width * 1.5, colorHex, 0.8);
-          startGlow.setDepth(300).setBlendMode(Phaser.BlendModes.ADD);
-
-          const impactGlow = scene.add.circle(targetX, targetY, width * 1.8, colorHex, 0.9);
-          impactGlow.setDepth(300).setBlendMode(Phaser.BlendModes.ADD);
-
-          entry = { beam, core, startGlow, impactGlow, baseWidth: width, colorHex };
+          // We now store the casterId so we can track the sprite!
+          entry = { beam, core, baseWidth: width, colorHex, casterId };
           activeBeams.set(key, entry);
         }
 
         entry.updatedThisTick = true;
-
-        // >>> NEW: Sine wave pulse animation so the beam flutters and vibrates! <<<
-        const pulse = Math.sin(scene.time.now / 30); // Fast oscillation
-        const currentWidth = entry.baseWidth * (1 + (pulse * 0.15)); // 15% thickness flutter
-        const alphaShift = pulse * 0.15; // Fluctuate transparency 
-
-        entry.beam.setPosition(startX, startY);
-        entry.beam.rotation = angle;
-        entry.beam.setSize(length, currentWidth);
-        entry.beam.fillColor = colorHex;
-        entry.beam.alpha = 0.7 + alphaShift;
-
-        entry.core.setPosition(startX, startY);
-        entry.core.rotation = angle;
-        entry.core.setSize(length, Math.max(2, currentWidth * 0.25));
-        entry.core.alpha = 0.8 + alphaShift;
-
-        // Anchor the glowing orbs to the caster's hand and the impact point
-        entry.startGlow.setRadius(currentWidth * (1.2 + pulse * 0.2));
-        entry.startGlow.alpha = 0.7 + alphaShift;
-        entry.startGlow.fillColor = colorHex;
-
-        entry.impactGlow.setRadius(currentWidth * (1.5 + pulse * 0.3));
-        entry.impactGlow.alpha = 0.8 + alphaShift;
-        entry.impactGlow.fillColor = colorHex;
+        // Save the raw network targets
+        entry.serverStartX = startX;
+        entry.serverStartY = startY;
+        entry.serverTargetX = targetX;
+        entry.serverTargetY = targetY;
       });
     }
 
-    // 2. GARBAGE COLLECTION: Destroy any beam that the server didn't explicitly send an update for.
-    // This perfectly fixes beams getting stuck if an enemy dies or a cast is interrupted!
+    // Destroy beams the server stopped reporting this tick.
     activeBeams.forEach((entry, key) => {
       if (!entry.updatedThisTick) {
         entry.beam.destroy();
         entry.core.destroy();
-        if (entry.startGlow) entry.startGlow.destroy();
-        if (entry.impactGlow) entry.impactGlow.destroy();
         activeBeams.delete(key);
       }
+    });
+  }
+
+  // >>> NEW: Run this at 60FPS to lock the beam smoothly to the moving sprites! <<<
+  static updateBeams60FPS(scene: Phaser.Scene, activeBeams: Map<string, any>, playerSprites: Map<string, any>, enemySprites: Map<string, any>) {
+    activeBeams.forEach(entry => {
+      let currentStartX = entry.serverStartX;
+      let currentStartY = entry.serverStartY;
+
+      // Force the laser's start position to exactly match the smoothly moving sprite
+      const casterContainer = playerSprites.get(entry.casterId) || enemySprites.get(entry.casterId);
+      if (casterContainer) {
+        currentStartX = casterContainer.x;
+        currentStartY = casterContainer.y;
+      }
+
+      const dx = entry.serverTargetX - currentStartX;
+      const dy = entry.serverTargetY - currentStartY;
+      const length = Math.sqrt(dx * dx + dy * dy);
+      if (length <= 0) return;
+
+      const angle = Math.atan2(dy, dx);
+
+      // 60FPS Pulsing Math (makes the laser look way smoother now!)
+      const pulse = Math.sin(scene.time.now / 30);
+      const currentWidth = entry.baseWidth * (1 + pulse * 0.15);
+      const alphaShift = pulse * 0.15;
+
+      entry.beam.setPosition(currentStartX, currentStartY);
+      entry.beam.rotation = angle;
+      entry.beam.setDisplaySize(length, currentWidth);
+      entry.beam.alpha = 0.7 + alphaShift;
+
+      entry.core.setPosition(currentStartX, currentStartY);
+      entry.core.rotation = angle;
+      entry.core.setDisplaySize(length, Math.max(2, currentWidth * 0.25));
+      entry.core.alpha = 0.8 + alphaShift;
     });
   }
 
@@ -1295,12 +1325,8 @@ export class VfxRenderer {
     const key = `${casterId}:${skillId}`;
     const entry = activeBeams.get(key);
     if (!entry) return;
-
     entry.beam.destroy();
     entry.core.destroy();
-    if (entry.startGlow) entry.startGlow.destroy();
-    if (entry.impactGlow) entry.impactGlow.destroy();
     activeBeams.delete(key);
   }
 }
-

@@ -336,8 +336,12 @@ public class SkillConfig
     // --- Timing ---
     public float CooldownSeconds { get; set; }
     public float CastTimeSeconds { get; set; }
-    public float ChannelDurationSeconds { get; set; } = 0f;
-
+    private float _channelDurationSeconds = 0f;
+    public float ChannelDurationSeconds
+    {
+        get => _channelDurationSeconds > 0 ? _channelDurationSeconds : (ActionType == SkillActionType.Beam ? 0.5f : 0f);
+        set => _channelDurationSeconds = value;
+    }
     // --- Payload: Summon Specific ---
     public string SummonConfigId { get; set; } = string.Empty;
     public int SummonCount { get; set; } = 1;

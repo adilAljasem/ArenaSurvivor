@@ -4,8 +4,32 @@ import { ShopUI, SkillActionBar, Tooltip } from './ui/UI';
 import { EscMenu } from './ui/EscMenu';
 import { ActorRenderer, VfxRenderer, WorldRenderer } from './RenderSystems';
 import { AudioManager } from './AudioManager';
-import pako from 'pako';
 import { LobbyUI, AuthUI } from './LobbyUI';
+
+// 1. Define the worker code as a string, using a CDN for pako
+const workerCode = `
+  import pako from 'https://esm.sh/pako@2.1.0';
+  
+  self.onmessage = (e) => {
+    const compressedBase64 = e.data;
+    const binaryString = atob(compressedBase64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    const decompressedBytes = pako.ungzip(bytes);
+    const jsonString = new TextDecoder().decode(decompressedBytes);
+    const rawState = JSON.parse(jsonString);
+
+    self.postMessage({ 
+        rawState: rawState, 
+        compressedSize: compressedBase64.length + 50, 
+        uncompressedSize: new TextEncoder().encode(jsonString).length + 50 
+    });
+  };
+`;
 
 
 // --- SIGNALR CONNECTIONS ---
@@ -184,6 +208,7 @@ class GameScene extends Phaser.Scene {
     this.load.spritesheet('explosion2', '/assets/Effects/explosion2.png', { frameWidth: 128, frameHeight: 96 });
     this.load.spritesheet('skill_icons', '/assets/Skills/skillsicon.png', { frameWidth: 78, frameHeight: 76 });
     this.load.spritesheet('Enemies1_sheet', '/assets/Enemies/mosquito-fly devil - fly fortest.png', { frameWidth: 64, frameHeight: 64 });
+    this.load.spritesheet('effects3', '/assets/Effects/Bullet 24x24 Part 7B Free.png', { frameWidth: 24, frameHeight: 24 });
 
     this.load.image('tex_grass', '/assets/obstacles/grass map.jpg');
     this.load.image('tex_sand', '/assets/obstacles/map1.jpg');
@@ -216,7 +241,17 @@ class GameScene extends Phaser.Scene {
 
     AudioManager.getInstance().init(this);
 
+    const g = this.add.graphics();
+    g.fillStyle(0xffffff, 1);
+    g.fillRect(0, 0, 4, 4);
+    g.generateTexture('white_pixel', 4, 4);
+    g.clear();
 
+    // Generate a soft white circle texture (for glows and AOE)
+    g.fillStyle(0xffffff, 1);
+    g.fillCircle(16, 16, 16);
+    g.generateTexture('white_circle', 32, 32);
+    g.destroy();
 
     // ==========================================
     // 1. MASTER NODE (LOBBY) LISTENERS
@@ -559,8 +594,6 @@ class GameScene extends Phaser.Scene {
       this.activeBeams.forEach(entry => {
         entry.beam.destroy();
         entry.core.destroy();
-        if (entry.startGlow) entry.startGlow.destroy();
-        if (entry.impactGlow) entry.impactGlow.destroy();
       });
       this.activeBeams.clear();
     });
@@ -630,8 +663,11 @@ class GameScene extends Phaser.Scene {
     // .off() before .on() makes this method safe to call multiple times
     // (e.g., if withAutomaticReconnect fires and the connection is reused).
 
-    const networkWorker = new Worker(new URL('./network.worker.ts', import.meta.url), { type: 'module' });
+    // 2. Create a Blob from the string and generate a URL
+    const blob = new Blob([workerCode], { type: 'application/javascript' });
+    const workerUrl = URL.createObjectURL(blob);
 
+    const networkWorker = new Worker(workerUrl, { type: 'module' });
     networkWorker.onmessage = (e) => {
       const { rawState, compressedSize, uncompressedSize } = e.data;
 
@@ -1001,6 +1037,9 @@ class GameScene extends Phaser.Scene {
     this.handleInput(time);
     this.smoothInterpolateSprites(this.playerSprites, 0.2);
     this.smoothInterpolateSprites(this.enemySprites, 0.2);
+
+    VfxRenderer.updateBeams60FPS(this, this.activeBeams, this.playerSprites, this.enemySprites);
+
     const dtSeconds = delta / 1000;
 
     this.hpGraphics.clear();
@@ -1019,42 +1058,49 @@ class GameScene extends Phaser.Scene {
         const drawX = sprite.x - (refs.baseWidth / 2);
         const drawY = sprite.y + refs.topY;
 
-        // --- 1. HEALTH & SHIELD BARS (League of Legends Style) ---
-        const totalCapacity = Math.max(refs.maxHp, refs.currentHp + refs.currentShield);
+        // --- 1. HEALTH & SHIELD BARS (LoL Style) ---
+        // HP fills left→right based on currentHp/maxHp. The bar width never changes.
+        // Shield is RIGHT-ANCHORED: it starts at the far-right edge and extends LEFT by
+        // (shield/maxHp * barWidth). When HP is full the shield overlays the green;
+        // when HP is low it first fills the empty space then overlaps the remaining HP.
+        // A thin 1px dark seam at the shield's left edge marks the boundary cleanly.
+        if (refs.actionState !== "Dead" && refs.maxHp > 0 && (refs.currentHp < refs.maxHp || refs.currentShield > 0 || refs.isPlayer)) {
+          const barW = refs.baseWidth;
+          const hpPct = Math.max(0, Math.min(1, refs.currentHp / refs.maxHp));
 
-        // Only draw if they are alive and missing health (or are a player)
-        if (refs.actionState !== "Dead" && totalCapacity > 0 && (refs.currentHp < refs.maxHp || refs.currentShield > 0 || refs.isPlayer)) {
-
-          const hpPct = Math.max(0, Math.min(1, refs.currentHp / totalCapacity));
-          const shieldPct = Math.max(0, Math.min(1, refs.currentShield / totalCapacity));
-
-          // Background (Black Border)
+          // Background
           this.hpGraphics.fillStyle(0x000000, 1);
-          this.hpGraphics.fillRect(drawX - 1, drawY - 1, refs.baseWidth + 2, 8);
+          this.hpGraphics.fillRect(drawX - 1, drawY - 1, barW + 2, 8);
 
-          // HP Fill (Green for friends, Red for enemies)
+          // HP fill (left → right, always vs maxHp)
           this.hpGraphics.fillStyle(refs.isFriendly ? 0x2ecc71 : 0xe74c3c, 1);
-          this.hpGraphics.fillRect(drawX, drawY, refs.baseWidth * hpPct, 6);
+          this.hpGraphics.fillRect(drawX, drawY, barW * hpPct, 6);
 
-          // Shield Fill (Cyan/White) appended exactly at the end of the HP block!
+          // Shield: right-anchored, extends left, drawn ON TOP of whatever the HP fill left
           if (refs.currentShield > 0) {
-            this.hpGraphics.fillStyle(0x00ffff, 1); // LoL often uses Cyan for magic shields
-            this.hpGraphics.fillRect(drawX + (refs.baseWidth * hpPct), drawY, refs.baseWidth * shieldPct, 6);
+            const shieldW = Math.min(refs.currentShield / refs.maxHp * barW, barW);
+            const shieldX = drawX + barW - shieldW;   // right edge minus shield width
+
+            this.hpGraphics.fillStyle(0xe8f0fe, 1);   // Light white shield colour
+            this.hpGraphics.fillRect(shieldX, drawY, shieldW, 6);
+
+            // 1px dark seam at the shield's left edge so it reads as a separate layer
+            this.hpGraphics.fillStyle(0x1a3a5c, 1);
+            this.hpGraphics.fillRect(shieldX, drawY, 1, 6);
           }
         }
 
         // --- 2. CAST BAR (Linear progress bar underneath) ---
-        if (refs.actionState === "Casting" && refs.maxCastTimer > 0 && refs.showCastBar && refs.actionState !== "Dead") {
-          const castY = drawY + 10; // Positioned neatly 10px below the health bar
+        // FIX: Do not require ActionState === "Casting". If a weapon auto-fires, 
+        // ActionState becomes "Attacking" for 1 tick, which causes the UI to flicker.
+        if (refs.currentCastTimer > 0 && refs.maxCastTimer > 0 && refs.showCastBar && refs.actionState !== "Dead") {
+          const castY = drawY + 10;
 
-          // Reverse the timer so it acts like a progress bar filling up from left to right
           const castProgress = 1.0 - Math.max(0, Math.min(1, refs.currentCastTimer / refs.maxCastTimer));
 
-          // Background (Dark gray)
           this.hpGraphics.fillStyle(0x000000, 0.8);
           this.hpGraphics.fillRect(drawX - 1, castY - 1, refs.baseWidth + 2, 5);
 
-          // Cast Fill (Yellow/Orange warning color)
           this.hpGraphics.fillStyle(0xffa500, 1);
           this.hpGraphics.fillRect(drawX, castY, refs.baseWidth * castProgress, 3);
         }
@@ -1108,6 +1154,9 @@ class GameScene extends Phaser.Scene {
         sprite.y += pdata.vy * dtSeconds;
       }
     });
+
+
+
 
     if (this.isDebugMode) {
       if (time - this.lastBandwidthTime > 1000) {

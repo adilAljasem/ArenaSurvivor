@@ -328,9 +328,9 @@
         "range": 1000,
         "beamWidth": 20,
         "baseDamage": 15,
-        "castTimeSeconds": 1.5,
-        "channelDurationSeconds": 25.0,
-        "cooldownSeconds": 2.0,
+        "castTimeSeconds": 0.8,
+        "channelDurationSeconds": 0.5,
+        "cooldownSeconds": 0.8,
         "colorTint": "0xff00ff"
     },
     "laser_closest_2": {
@@ -352,9 +352,10 @@
         "range": 500,
         "beamWidth": 10,
         "baseDamage": 20,
-        "cooldownSeconds": 30.0,
+        "cooldownSeconds": 5.0,
         "castTimeSeconds": 2.0,
-        "channelDurationSeconds": 4.0,
+        "channelDurationSeconds": 20.0,
+        "StopMoving": true,
         "colorTint": "0xff4400"
     },
     "laser_sweep_2": {
@@ -460,5 +461,34 @@
         "actionType": "AoE",
         "radius": 150,
         "baseDamage": 15
+    },
+    "skill_heal_shot_2": {
+        "Id": "skill_heal_shot_2",
+        "Name": "Healing Shot II",
+        "TriggerType": "Auto",
+        "ActionType": "Projectile",
+        "TargetType": "ClosestAlly",
+        "ProjectileId": "proj_heal_orb",
+        "ProjectileCount": 1,
+        "CooldownSeconds": 2.5,
+        "BaseDamage": -25.0,
+        "Range": 700,
+        "ColorTint": "#00ff88"
+    },
+    "tank": {
+        "Id": "tank",
+        "Name": "Tank",
+        "TriggerType": "Auto",
+        "ActionType": "Projectile",
+        "TargetType": "ClosestAlly",
+        "ProjectileId": "proj_shield_orb",
+        "ProjectileCount": 1,
+        "CooldownSeconds": 5.0,
+        "BaseDamage": 0.0,
+        "Range": 700,
+        "ApplyEffects": [
+            "effect_shield_basic"
+        ],
+        "ColorTint": "#00ccff"
     }
 }

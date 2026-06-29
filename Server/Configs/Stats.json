@@ -19,5 +19,7 @@
     "attackSpeedPercent",
     "xpGainPercent",
     "projectileSpeedPercent",
-    "critChance"
+    "critChance",
+    "healPower",
+    "shieldPower"
 ]

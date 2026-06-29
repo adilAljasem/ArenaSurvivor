@@ -61,9 +61,11 @@ public class GameRoom
         _systems.Add(new HealthSystem());
         _systems.Add(new LootSystem());
         _systems.Add(new EffectSystem());
+        _systems.Add(new SkillSystem());
         _systems.Add(new MovementSystem());
         _systems.Add(new CombatSystem());
-        _systems.Add(new SkillSystem());
+
+
         _systems.Add(_networkSystem);
 
         foreach (var system in _systems)

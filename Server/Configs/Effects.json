@@ -109,5 +109,13 @@
     "isBuff": true,
     "grantedShield": 150,
     "duration": 5.0
+  },
+  "effect_shield_basic": {
+    "Id": "effect_shield_basic",
+    "Name": "Basic Shield",
+    "grantedShield": 50.0,
+    "isBuff": true,
+    "Duration": 5.0,
+    "ColorTint": "#00ccff"
   }
 }

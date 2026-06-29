@@ -110,6 +110,10 @@ public class ApplyEffectEvent
 {
     public BaseActorEntity Target { get; set; } = null!;
     public string EffectConfigId { get; set; } = string.Empty;
+
+    // >>> NEW: Who cast the effect? Used by EffectSystem to scale GrantedShield by the caster's
+    // shieldPower stat. Null when the effect is self-applied with no identifiable caster.
+    public BaseActorEntity? Caster { get; set; }
 }
 
 public class SpawnProjectileEvent

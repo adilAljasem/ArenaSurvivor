@@ -23,20 +23,30 @@ public class HealthSystem : IGameSystem
 
     private void ProcessRegen(float dt, GameState state)
     {
+        // 1. Process Player Passive Regeneration
         foreach (var player in state.Players.Values)
         {
             if (player.ActionState == "Dead") continue;
+
             float regen = player.CachedStats.GetValueOrDefault("hpRegen", 0f);
+            // REMOVED: healPower multiplier. Regen is now purely based on the regen stat.
             if (regen > 0 && player.CurrentHp < player.CurrentMaxHp)
+            {
                 player.CurrentHp = Math.Min(player.CurrentMaxHp, player.CurrentHp + (regen * dt));
+            }
         }
 
+        // 2. Process Enemy Passive Regeneration
         foreach (var enemy in state.Enemies.Values)
         {
             if (enemy.ActionState == "Dead") continue;
+
             float regen = enemy.CachedStats.GetValueOrDefault("hpRegen", 0f);
+            // REMOVED: healPower multiplier.
             if (regen > 0 && enemy.CurrentHp < enemy.CurrentMaxHp)
+            {
                 enemy.CurrentHp = Math.Min(enemy.CurrentMaxHp, enemy.CurrentHp + (regen * dt));
+            }
         }
     }
 
@@ -47,16 +57,21 @@ public class HealthSystem : IGameSystem
         // 1. Ignore HP changes on Dodge/Block
         if (ev.IsDodge || ev.IsBlock) return;
 
-
-        // 2. Handle Healing natively (Negative amount = Heal)
+        // 2. Handle Healing (Negative amount = Heal)
         if (ev.Amount < 0)
         {
             float maxHp = ev.Target.GetTotalStat("maxHp", _configs);
-            ev.Target.CurrentHp = Math.Min(maxHp, ev.Target.CurrentHp - ev.Amount);
+            float rawHeal = -ev.Amount; // make positive
+
+            // >>> NEW: Universal healPower scaling.
+            // Look up the healer by AttackerId; their healPower scales how much they heal others.
+            // If AttackerId is empty (e.g. a direct system call), fall back to the target's own healPower.
+            float healPower = GetHealerHealPower(ev);
+            ev.Target.CurrentHp = Math.Min(maxHp, ev.Target.CurrentHp + rawHeal * (1f + healPower));
             return;
         }
 
-        // >>> 3. NEW: SHIELD ABSORPTION LOGIC <<<
+        // >>> 3. SHIELD ABSORPTION LOGIC
         if (ev.Amount > 0 && ev.Target.CurrentShield > 0)
         {
             float remainingDamage = ev.Amount;
@@ -102,5 +117,24 @@ public class HealthSystem : IGameSystem
                 State = ev.State
             });
         }
+    }
+
+    // >>> NEW: Finds the healer entity and returns their healPower stat.
+    // The HEALER's healPower scales their OUTPUT — so a doctor character with high
+    // healPower heals others more, regardless of what the recipient's stats are.
+    private float GetHealerHealPower(DamageAppliedEvent ev)
+    {
+        if (!string.IsNullOrEmpty(ev.AttackerId) && ev.State != null)
+        {
+            BaseActorEntity? healer =
+                ev.State.Players.GetValueOrDefault(ev.AttackerId) as BaseActorEntity
+                ?? ev.State.Enemies.GetValueOrDefault(ev.AttackerId);
+
+            if (healer != null)
+                return healer.CachedStats.GetValueOrDefault("healPower", 0f);
+        }
+
+        // Self-heal (regen path already handles this separately; this is a fallback)
+        return ev.Target.CachedStats.GetValueOrDefault("healPower", 0f);
     }
 }
