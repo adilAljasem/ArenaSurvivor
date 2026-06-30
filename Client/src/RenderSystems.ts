@@ -1,5 +1,6 @@
 import * as Phaser from 'phaser';
 import { AudioManager } from './AudioManager';
+import { world, type ActorComponent } from './ECS';
 
 // Cache parsed hex-color strings -> number. Same strings repeat every single
 // frame for every actor/skill/effect, so avoid re-running parseInt+replace each time.
@@ -122,6 +123,31 @@ export class ActorRenderer {
       const isFriendly = isPlayer || (actor.team || actor.Team) === 'Player';
       const hpColor = isFriendly ? 0x00ff00 : 0xff0000;
 
+      // --- ECS INGEST ---
+      // Normalize this tick's network data into a real component ONCE,
+      // instead of re-deriving `actor.x ?? actor.X` style fallbacks at every
+      // read site below (this function used to do that ~15 times). Stored
+      // in World even for off-screen/culled actors below, so the component
+      // store stays authoritative regardless of render culling.
+      const comp: ActorComponent = {
+        isPlayer, configId, team: actor.team || actor.Team || '',
+        x: targetX, y: targetY,
+        velX: actor.velX ?? actor.VelX,
+        actionState: actor.actionState || actor.ActionState || "Idle",
+        currentHp: actor.currentHp ?? actor.CurrentHp ?? 0,
+        maxHp: actor.maxHp ?? actor.MaxHp ?? 1,
+        currentShield: actor.currentShield ?? actor.CurrentShield ?? 0,
+        aimX: actor.aimX ?? actor.AimX,
+        aimY: actor.aimY ?? actor.AimY,
+        firedWeapons: actor.firedWeapons || actor.FiredWeapons || [],
+        weapons: actor.weapons || actor.Weapons || [],
+        currentCastingSkillId: actor.currentCastingSkillId || actor.CurrentCastingSkillId,
+        currentCastTimer: actor.currentCastTimer || actor.CurrentCastTimer || 0,
+        maxCastTimer: actor.maxCastTimer || actor.MaxCastTimer || 0,
+        stats: actor.stats,
+      };
+      world.upsertActor(safeId, comp);
+
       // Read the custom offset from the server's handshake config
       const explicitOffset = config?.weaponOffset ?? config?.WeaponOffset;
       const weaponOffset = explicitOffset !== undefined && explicitOffset !== null
@@ -196,19 +222,16 @@ export class ActorRenderer {
 
       if (!container.visible) container.setVisible(true);
 
-      // >>> FIX: Declare local variables so Sections 4, 5, and 6 can use them! <<<
-      // >>> FIX: Declare local variables so Sections 4, 5, and 6 can use them! <<<
-      const actionState = actor.actionState || actor.ActionState || "Idle";
-      const currentHp = actor.currentHp ?? actor.CurrentHp ?? 0;
-      const maxHp = actor.maxHp ?? actor.MaxHp ?? 1;
+      // >>> Pulled from the component built at ingest above — no more
+      // re-deriving camelCase/PascalCase fallbacks here. <
+      const actionState = comp.actionState;
+      const currentHp = comp.currentHp;
+      const maxHp = comp.maxHp;
+      const currentShield = comp.currentShield;
+      const currentCastTimer = comp.currentCastTimer;
+      const maxCastTimer = comp.maxCastTimer;
 
-      // FIX: Added 'CurrentShield' fallback in case the server sends PascalCase!
-      const currentShield = actor.currentShield ?? actor.CurrentShield ?? 0;
-
-      const currentCastTimer = actor.currentCastTimer || actor.CurrentCastTimer || 0;
-      const maxCastTimer = actor.maxCastTimer || actor.MaxCastTimer || 0;
-
-      // >>> NEW: Dynamic Visual Height Calculation <<<
+      // >>> NEW: Dynamic Visual Height Calculation <
       const visualHeight = config?.visualHeight ?? config?.VisualHeight ?? 32;
       let realHeight = visualHeight * scale;
 
@@ -233,7 +256,7 @@ export class ActorRenderer {
       }
 
       // 2. EXTRACT CAST BAR LOGIC
-      const castingSkillId = actor.currentCastingSkillId || actor.CurrentCastingSkillId;
+      const castingSkillId = comp.currentCastingSkillId;
       const skillCfg = castingSkillId ? ((configs.skills || configs.Skills)?.[castingSkillId]) : null;
       const showCastBar = skillCfg ? (skillCfg.showCastBar !== false && skillCfg.ShowCastBar !== false) : true;
 
@@ -253,7 +276,7 @@ export class ActorRenderer {
       // 4. WEAPONS
       const weaponsContainer = refs.weaponsContainer;
       const activeWeaponSlots = new Set<number>();
-      const weaponsList = actor.weapons || actor.Weapons || [];
+      const weaponsList = comp.weapons;
 
       // --- NEW: Generate a 4-Pointed Magical Star Texture ---
       if (!scene.textures.exists('fx_spark')) {
@@ -367,7 +390,7 @@ export class ActorRenderer {
             }
           }
 
-          // >>> UPDATE AURA POSITION & ANIMATION EVERY FRAME <<<
+          // >>> UPDATE AURA POSITION & ANIMATION EVERY FRAME <
           if ((sprite as any).__aura) {
             const aura = (sprite as any).__aura;
             aura.x = sprite.x;
@@ -383,11 +406,11 @@ export class ActorRenderer {
           // =======================================================
 
           // Default to player aim (mouse pointer)
-          let aimX = actor.aimX ?? actor.AimX ?? targetX;
-          let aimY = actor.aimY ?? actor.AimY ?? targetY;
+          let aimX = comp.aimX ?? targetX;
+          let aimY = comp.aimY ?? targetY;
 
           // >>> SYNC FIX: Check if the weapon is firing THIS EXACT FRAME before calculating aim
-          const firedList = actor.firedWeapons || actor.FiredWeapons || [];
+          const firedList = comp.firedWeapons;
           const isFiringThisFrame = firedList.includes(slotIndex);
 
           // ✅ AutoShot Visual Rotation Tracking
@@ -399,7 +422,7 @@ export class ActorRenderer {
 
             if (!sprite.data) sprite.setDataEnabled();
 
-            // >>> FPS & SYNC FIX: Use 5-frame throttle for idle aiming, but FORCE instant recalculation if firing! <<<
+            // >>> FPS & SYNC FIX: Use 5-frame throttle for idle aiming, but FORCE instant recalculation if firing! <
             if (isFiringThisFrame || (frameCount + throttleOffset) % 5 === 0 || !sprite.getData('cachedAimX')) {
               const baseRange = wConfig.range ?? wConfig.Range ?? 300;
               const latestStats = scene.data.get('latestPlayerStats');
@@ -464,13 +487,13 @@ export class ActorRenderer {
                 sprite.setData('cachedAimX', bestAnyX);
                 sprite.setData('cachedAimY', bestAnyY);
               } else {
-                // >>> THE JITTER FIX <<<
+                // >>> THE JITTER FIX <
                 // Don't set the aim to the player's exact center (targetX/Y). 
                 // Because of the 5-frame throttle, as the player walks away from that cached coordinate,
                 // the math calculates a negative angle and flips the weapon backward!
                 // Fallback to the player's actual mouse/joystick aim.
-                const fallbackAimX = actor.aimX ?? actor.AimX ?? (targetX + 100);
-                const fallbackAimY = actor.aimY ?? actor.AimY ?? targetY;
+                const fallbackAimX = comp.aimX ?? (targetX + 100);
+                const fallbackAimY = comp.aimY ?? targetY;
                 sprite.setData('cachedAimX', fallbackAimX);
                 sprite.setData('cachedAimY', fallbackAimY);
               }
@@ -485,7 +508,7 @@ export class ActorRenderer {
           sprite.rotation = angle;
           sprite.setFlipY(Math.abs(angle) > Math.PI / 2);
 
-          // >>> FPS FIX 4: Avoid O(N) Scene Tween Lookups (Updated to use our isFiringThisFrame boolean) <<<
+          // >>> FPS FIX 4: Avoid O(N) Scene Tween Lookups (Updated to use our isFiringThisFrame boolean) <
           if (isFiringThisFrame && !(sprite as any).__isAnimatingAttack) {
             (sprite as any).__isAnimatingAttack = true;
             const animType = wConfig.attackAnimType || 'recoil';
@@ -565,17 +588,17 @@ export class ActorRenderer {
         const distToTarget = Math.abs(targetX - container.x) + Math.abs(targetY - container.y);
         const isMoving = distToTarget > 1.0;
 
-        const castingSkillId = actor.currentCastingSkillId || actor.CurrentCastingSkillId;
+        const castingSkillId = comp.currentCastingSkillId;
         const skillCfg = castingSkillId ? ((configs.skills || configs.Skills)?.[castingSkillId]) : null;
         const stopMoving = skillCfg?.stopMoving === true || skillCfg?.StopMoving === true;
         const isObstacle = !isPlayer && (config.baseStats?.movementSpeed === 0 || config.BaseStats?.movementSpeed === 0);
 
         // Check if they have weapons equipped
-        const weaponsList = actor.weapons || actor.Weapons || [];
+        const weaponsList = comp.weapons;
         const hasWeapons = weaponsList.length > 0;
 
-        const meleeAimX = actor.aimX ?? actor.AimX ?? container.x;
-        const meleeAimY = actor.aimY ?? actor.AimY ?? container.y;
+        const meleeAimX = comp.aimX ?? container.x;
+        const meleeAimY = comp.aimY ?? container.y;
         const distToAim = Math.sqrt(Math.pow(meleeAimX - container.x, 2) + Math.pow(meleeAimY - container.y, 2));
         const attackRadius = config.attackRadius ?? config.AttackRadius ?? 40;
         const inMeleeRange = distToAim <= (attackRadius + 15);
@@ -585,7 +608,7 @@ export class ActorRenderer {
         // 1. Determine if they are physically allowed to move
         const isActuallyMoving = isMoving && !stopMoving && !isObstacle;
 
-        // >>> THE GLITCH FIX: Check if an attack animation is physically playing right now! <<<
+        // >>> THE GLITCH FIX: Check if an attack animation is physically playing right now! <
         const isCurrentlyAttacking = body.anims?.currentAnim?.key?.endsWith('_attack') && body.anims?.isPlaying;
 
         if (actionState === "Dead" && config.animDeath) {
@@ -595,7 +618,7 @@ export class ActorRenderer {
           targetAnim = `${config.id}_attack`;
         } else if (isCurrentlyAttacking) {
           // 3. If they are already in the middle of swinging, LET IT FINISH!
-          // >>> TS FIX: Added optional chaining and a fallback! <<<
+          // >>> TS FIX: Added optional chaining and a fallback! <
           targetAnim = body.anims?.currentAnim?.key ?? `${config.id}_attack`;
         } else if (isActuallyMoving && config.animMove) {
           // 4. Move: They are moving
@@ -614,10 +637,10 @@ export class ActorRenderer {
           body.play(targetAnim);
         }
 
-        // >>> NEW: DYNAMIC ANIMATION SPEED SCALING <<<
+        // >>> NEW: DYNAMIC ANIMATION SPEED SCALING <
         if (actionState === "Attacking") {
           // Check if there is an attackSpeedPercent stat coming from the server
-          const atkSpeedPct = actor.stats?.attackSpeedPercent ?? 0;
+          const atkSpeedPct = comp.stats?.attackSpeedPercent ?? 0;
           body.anims.timeScale = 1 + atkSpeedPct; // Speds up the animation dynamically!
         } else {
           // Reset to normal speed for walking/idle
@@ -625,8 +648,8 @@ export class ActorRenderer {
         }
 
         const isDefaultRight = config.defaultFacingRight !== false;
-        const aimX = actor.aimX ?? actor.AimX;
-        const velX = actor.velX ?? actor.VelX ?? (targetX - container.x);
+        const aimX = comp.aimX;
+        const velX = comp.velX ?? (targetX - container.x);
 
         let faceRight = isDefaultRight;
         if (isPlayer) {
@@ -642,7 +665,7 @@ export class ActorRenderer {
             faceRight = aimX > targetX + 1;
           }
           if (faceRight) body.setFlipX(!isDefaultRight);
-          else if (faceLeft || aimX < targetX - 1) body.setFlipX(isDefaultRight);
+          else if (faceLeft || (aimX !== undefined && aimX < targetX - 1)) body.setFlipX(isDefaultRight);
         }
 
         if (isPlayer) {
@@ -670,7 +693,7 @@ export class ActorRenderer {
         }
         refs.prevHp = currentHp;
 
-        // >>> Pass currentTime at the very end of this function call <<<
+        // >>> Pass currentTime at the very end of this function call <
         applyVisualFX(scene, container, refs, body as Phaser.GameObjects.Sprite, actor, configs, topY, bottomY, realHeight, currentTime);
       }
     });
@@ -688,6 +711,12 @@ export class WorldRenderer {
     const activeProjectiles = new Set<string>();
     const activePickups = new Set<string>();
 
+    // NOTE: state.projectiles is always [] today — the real projectile
+    // system lives in main.ts (network ingest + a per-frame orbital/linear
+    // movement loop in update(), not this network-tick renderer). This
+    // branch is dead code in the current build; left untouched here and
+    // slated for removal/replacement when projectiles move into World
+    // (Phase 3), so this diff stays scoped to pickups only.
     const projList = state.projectiles || state.Projectiles || [];
     projList.forEach((proj: any) => {
       const safeId = proj.id || proj.Id;
@@ -722,38 +751,42 @@ export class WorldRenderer {
       }
     });
 
-    const pickupList = state.pickups || state.Pickups || [];
-    pickupList.forEach((pickup: any) => {
-      const safeId = pickup.id || pickup.Id;
+    // Pickups are sourced directly from World — populated once per network
+    // tick by the ingest code in main.ts, read here without the
+    // intermediate `Array.from(pickupCache.values())` rebuild this used to
+    // require. Pickups never move once spawned, so this loop only ever
+    // needs to CREATE a sprite the first time it sees an id; everything
+    // else about a pickup is immutable after spawn.
+    world.pickups.forEach((pickup, safeId) => {
       activePickups.add(safeId);
       if (!pickups.has(safeId)) {
-        const pType = pickup.type ?? pickup.Type ?? 0;
-        const gearConfigId = pickup.gearConfigId || pickup.GearConfigId || '';
+        const pType = pickup.type;
+        const gearConfigId = pickup.gearConfigId;
 
         let sprite: Phaser.GameObjects.Sprite | Phaser.GameObjects.Rectangle;
 
         if (pType === 1 && gearConfigId) {
           const wConfig = configs.weapons ? (configs.weapons[gearConfigId] || configs.Weapons?.[gearConfigId]) : null;
           if (wConfig && wConfig.textureKey && scene.textures.exists(wConfig.textureKey)) {
-            sprite = scene.add.sprite(pickup.x ?? pickup.X, pickup.y ?? pickup.Y, wConfig.textureKey);
+            sprite = scene.add.sprite(pickup.x, pickup.y, wConfig.textureKey);
             if (wConfig.iconFrame !== undefined) (sprite as Phaser.GameObjects.Sprite).setFrame(wConfig.iconFrame);
             sprite.setScale(wConfig.scale || 1.0);
           } else {
-            sprite = scene.add.rectangle(pickup.x ?? pickup.X, pickup.y ?? pickup.Y, 14, 14, 0xffaa00).setStrokeStyle(2, 0xffffff) as any;
+            sprite = scene.add.rectangle(pickup.x, pickup.y, 14, 14, 0xffaa00).setStrokeStyle(2, 0xffffff) as any;
           }
         } else if (pType === 2 && gearConfigId) {
           const iConfig = configs.items ? (configs.items[gearConfigId] || configs.Items?.[gearConfigId]) : null;
           if (iConfig && iConfig.textureKey && scene.textures.exists(iConfig.textureKey)) {
-            sprite = scene.add.sprite(pickup.x ?? pickup.X, pickup.y ?? pickup.Y, iConfig.textureKey);
+            sprite = scene.add.sprite(pickup.x, pickup.y, iConfig.textureKey);
             if (iConfig.iconFrame !== undefined) (sprite as Phaser.GameObjects.Sprite).setFrame(iConfig.iconFrame);
             sprite.setScale(iConfig.scale || 1.0);
           } else {
-            sprite = scene.add.rectangle(pickup.x ?? pickup.X, pickup.y ?? pickup.Y, 14, 14, 0x00aaff).setStrokeStyle(2, 0xffffff) as any;
+            sprite = scene.add.rectangle(pickup.x, pickup.y, 14, 14, 0x00aaff).setStrokeStyle(2, 0xffffff) as any;
           }
         } else {
           sprite = scene.textures.exists('items_sheet')
-            ? scene.add.sprite(pickup.x ?? pickup.X, pickup.y ?? pickup.Y, 'items_sheet', 6)
-            : scene.add.rectangle(pickup.x ?? pickup.X, pickup.y ?? pickup.Y, 12, 12, 0x000000).setStrokeStyle(2, 0x00ff00) as any;
+            ? scene.add.sprite(pickup.x, pickup.y, 'items_sheet', 6)
+            : scene.add.rectangle(pickup.x, pickup.y, 12, 12, 0x000000).setStrokeStyle(2, 0x00ff00) as any;
         }
 
         (sprite as any).setDepth(5);
@@ -763,7 +796,7 @@ export class WorldRenderer {
 
     const dmgList = state.damageEvents || state.DamageEvents || [];
 
-    // >>> NEW: Initialize the Particle Pool once per scene <<<
+    // >>> NEW: Initialize the Particle Pool once per scene <
     let particlePool = scene.data.get('hitParticlePool');
     if (!particlePool) {
       particlePool = scene.add.group({
@@ -795,14 +828,14 @@ export class WorldRenderer {
 
 
       // ====================================================================
-      // >>> REVISED: CHUNKY PARTICLES & GENTLE CAMERA BUMP <<<
+      // >>> REVISED: CHUNKY PARTICLES & GENTLE CAMERA BUMP <
       // ====================================================================
       if (!isDodge && !isBlock && !isHeal) {
 
         const playerList = state.players || state.Players || [];
         const enemyList = state.enemies || state.Enemies || [];
 
-        // >>> THE FIX: CHECK IF THE HIT TARGET IS FRIENDLY <<<
+        // >>> THE FIX: CHECK IF THE HIT TARGET IS FRIENDLY <
         let isFriendlyHit = false;
 
         // 1. Check if hit is near a player
@@ -861,7 +894,7 @@ export class WorldRenderer {
         }
 
         // 2. CHUNKY BROTATO PARTICLES 
-        // >>> We now skip this entirely if isFriendlyHit is true! <<<
+        // >>> We now skip this entirely if isFriendlyHit is true! <
         // Same safety-valve reasoning as the floating-number cap below: a crit-heavy
         // spike bypasses the 35% random skip (crits always spawn particles), and each
         // burst is up to 8 Rectangle+tween pairs, so an uncapped pile of simultaneous
@@ -886,7 +919,7 @@ export class WorldRenderer {
             p.setScale(1); // Reset scale in case a previous tween shrunk it
             p.setAlpha(1);
 
-            // >>> THE FIX: Parse the string into a strict Number, and use setTintFill <<<
+            // >>> THE FIX: Parse the string into a strict Number, and use setTintFill <
             const finalColor = parseColor(hitColor, 0xff0000);
             p.setTintFill(finalColor);
 
@@ -924,7 +957,7 @@ export class WorldRenderer {
       let textStr = Math.round(Math.abs(amt)).toString();
       let finalScale = 0.5;
 
-      // >>> DODGE & BLOCK VISUALS <<<
+      // >>> DODGE & BLOCK VISUALS <
       if (isDodge) {
         tintColor = 0x00e5ff; // Cyan
         textStr = 'DODGE';
@@ -948,7 +981,7 @@ export class WorldRenderer {
         .setDepth(20)
         .setScale(finalScale);
 
-      // >>> APPLY THE COLOR HERE <<<
+      // >>> APPLY THE COLOR HERE <
       floatingText.setTint(tintColor);
 
 
@@ -1028,7 +1061,7 @@ export function applyVisualFX(
     else mainSprite.clearTint();
   }
 
-  // >>> THE FIX: Stop relying on ActionState for VFX caching! <<<
+  // >>> THE FIX: Stop relying on ActionState for VFX caching! <
   // We only care if they died, or if their actual buffs/cast ID changed.
   const isDead = entity.actionState === 'Dead' || entity.ActionState === 'Dead';
   const currentLifeState = isDead ? "Dead" : "Alive";
@@ -1052,7 +1085,7 @@ export function applyVisualFX(
   // 1. OVERHEAD: SKILL CHARGING ANIMATIONS
   // =========================================================
 
-  // >>> THE FIX: Base this strictly on the Cast ID and Timer, NOT ActionState <<<
+  // >>> THE FIX: Base this strictly on the Cast ID and Timer, NOT ActionState <
   if (castSkillId && refs.currentCastTimer > 0 && !isDead) {
     const skillConfig = (masterConfigs.skills || masterConfigs.Skills)?.[castSkillId] ?? null;
     if (skillConfig) {
@@ -1142,7 +1175,7 @@ export class VfxRenderer {
       const config = skillConfigs[configId];
       if (!config) return;
 
-      // >>> THE INVISIBILITY FIX: If there is no colorTint, abort drawing the AOE entirely! <<<
+      // >>> THE INVISIBILITY FIX: If there is no colorTint, abort drawing the AOE entirely! <
       const colorStr = config.colorTint ?? config.ColorTint;
       if (!colorStr || colorStr === "") {
         return;
@@ -1284,7 +1317,7 @@ export class VfxRenderer {
     });
   }
 
-  // >>> NEW: Run this at 60FPS to lock the beam smoothly to the moving sprites! <<<
+  // >>> NEW: Run this at 60FPS to lock the beam smoothly to the moving sprites! <
   static updateBeams60FPS(scene: Phaser.Scene, activeBeams: Map<string, any>, playerSprites: Map<string, any>, enemySprites: Map<string, any>) {
     activeBeams.forEach(entry => {
       let currentStartX = entry.serverStartX;
