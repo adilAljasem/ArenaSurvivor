@@ -58,9 +58,12 @@ public class EffectSystem : IGameSystem
                     ConfigId = ev.EffectConfigId,
                     TimeRemaining = effectConfig.Duration,
                     GrantedShieldAmount = shieldToGrant,
-                    // >>> NEW: Who applied this effect — HealthSystem uses it to scale tick heals
+                    // >>> Who applied this effect — HealthSystem uses it to scale tick heals
                     // by the original applier's healPower (e.g. a doctor's HoT scales with their stat)
                     SourceId = casterId,
+
+                    // >>> ADD THIS EXACT LINE RIGHT HERE <<<
+                    Caster = ev.Caster
                 });
                 ev.Target.CurrentShield += shieldToGrant;
             }

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
 using Server.Configs;
 using Server.Core.Systems;
+using Server.Data;
 using Server.Entities;
 using Server.Hubs;
 using System;
@@ -9,6 +10,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 
 namespace Server.Core;
 
@@ -111,6 +113,7 @@ public class GameRoom
                     // NOBODY returned. Delete the match.
                     State.Status = RoomStatus.ScheduledForDeletion;
                     Console.WriteLine($"[ROOM] Room {RoomId}: pause timer expired. Room deleted.");
+                    _ = SaveMatchResultsToDatabaseAsync();
                 }
                 else
                 {
@@ -190,6 +193,64 @@ public class GameRoom
         if (sw.ElapsedMilliseconds > 50)
             Console.WriteLine($"[CRITICAL] Total frame took {sw.ElapsedMilliseconds}ms! (Target: <50ms)");
     }
+    private async Task SaveMatchResultsToDatabaseAsync()
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            foreach (var player in State.Players.Values)
+            {
+                if (!Guid.TryParse(player.PlayerId, out Guid parsedPlayerId)) continue;
+
+                // 1. Look for an existing record for THIS player in THIS exact match
+                var existingRecord = await db.MatchRecords
+                    .FirstOrDefaultAsync(m => m.RoomId == RoomId && m.PlayerId == parsedPlayerId);
+
+                if (existingRecord != null)
+                {
+                    // 2. UPDATE existing record
+                    existingRecord.HighestWave = State.CurrentWave;
+                    existingRecord.TotalDamageDealt = player.TotalDamageDealt;
+                    existingRecord.TotalDamageTaken = player.TotalDamageTaken;
+                    existingRecord.TotalHealingDone = player.TotalHealingDone;
+                    existingRecord.TotalShieldingDone = player.TotalShieldingDone;
+                    existingRecord.Kills = player.Kills;
+                    existingRecord.Deaths = player.Deaths;
+                    // Note: We don't update MatchDate so it reflects when the match started
+                }
+                else
+                {
+                    // 3. INSERT new record (happens on Wave 1)
+                    db.MatchRecords.Add(new MatchRecord
+                    {
+                        RoomId = RoomId,  // Link it to this room!
+                        PlayerId = parsedPlayerId,
+                        Username = player.Name,
+                        ConfigId = player.ConfigId,
+                        Difficulty = State.CurrentDifficulty,
+                        HighestWave = State.CurrentWave,
+                        TotalDamageDealt = player.TotalDamageDealt,
+                        TotalDamageTaken = player.TotalDamageTaken,
+                        TotalHealingDone = player.TotalHealingDone,
+                        TotalShieldingDone = player.TotalShieldingDone,
+                        Kills = player.Kills,
+                        Deaths = player.Deaths,
+                        MatchDate = DateTime.UtcNow
+                    });
+                }
+            }
+
+            // 4. Save all changes (both updates and inserts) at once
+            await db.SaveChangesAsync();
+            Console.WriteLine($"[DB] Match Records synced for Room {RoomId} at Wave {State.CurrentWave}.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DB ERROR] Failed to sync Match Records: {ex.Message}");
+        }
+    }
 
     private void UpdateGamePhases(float dt)
     {
@@ -218,6 +279,7 @@ public class GameRoom
             .Where(p => p.Type == PickupType.Weapon || p.Type == PickupType.Item)
             .Select(p => p.Id).ToList();
         foreach (var id in leftoverLoot) State.Pickups.TryRemove(id, out _);
+        _ = SaveMatchResultsToDatabaseAsync();
     }
 
     private async Task HandleWaveEndTransition()

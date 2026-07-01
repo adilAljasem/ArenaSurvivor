@@ -72,6 +72,8 @@ export const UIHelpers = {
             armor: { e: "🛡️", n: "Armor" },
             magicDefense: { e: "✨", n: "Magic Def" },
             defensePercent: { e: "🧱", n: "Defense %" },
+            healPower: { e: "💚", n: "Heal Power" },     // <<< ADDED
+            shieldPower: { e: "💠", n: "Shield Power" }, // <<< ADDED
             luck: { e: "🍀", n: "Luck" },
             harvesting: { e: "🌾", n: "Harvesting" },
             dodge: { e: "👻", n: "Dodge" },
@@ -914,6 +916,11 @@ export class ShopUI {
     private focusCol: number = 0;
     private isKeyboardNavActive: boolean = false;
 
+    private currentGold: number = 0;
+    private currentWeapons: any[] = [];
+    private currentItems: any[] = [];
+    private maxItemSlots: number = 5;
+
     constructor(scene: Phaser.Scene, connection: HubConnection) {
         this.scene = scene;
         this.connection = connection;
@@ -1458,7 +1465,6 @@ export class ShopUI {
                         this.tooltip.hide();
                     },
                     onSelect: () => {
-                        AudioManager.getInstance().playUiSfx('ui_buy');
                         this.connection.invoke("BuyItem", configId).catch((err: any) => console.error(err));
                     }
                 };
@@ -1675,6 +1681,148 @@ export class SkillActionBar extends Phaser.GameObjects.Container {
                     const levelText = lvlMatch ? `L${lvlMatch[1]}` : "";
                     slot.text.setText(levelText);
                 }
+            }
+        });
+    }
+}
+
+export class LootNotifier {
+    private scene: Phaser.Scene;
+    private activeToasts: Phaser.GameObjects.Container[] = [];
+
+    constructor(scene: Phaser.Scene) {
+        this.scene = scene;
+    }
+
+    private getTierColor(tier: number): number {
+        switch (tier) {
+            case 1: return 0xc0c0c0; // Common / Gray
+            case 2: return 0x29b6f6; // Rare / Blue
+            case 3: return 0xab47bc; // Epic / Purple
+            case 4: return 0xffca28; // Legendary / Gold
+            default: return 0xffffff;
+        }
+    }
+
+    public show(playerName: string, itemName: string, tier: number, textureKey: string, iconFrame: number) {
+        // --- MOBILE SCALING ---
+        // If the screen is small (like a phone), shrink the notification by 15%
+        const isMobile = this.scene.scale.width < 800;
+        const uiScale = isMobile ? 0.85 : 1.0;
+
+        const height = 45;
+        const padding = 15;
+
+        const targetX = this.scene.scale.width - (20 * uiScale);
+        const baseY = this.scene.scale.height / 2;
+
+        const container = this.scene.add.container(0, baseY).setDepth(10000).setScrollFactor(0);
+        container.setScale(uiScale);
+
+        const tierColor = this.getTierColor(tier);
+        const hexColorString = '#' + tierColor.toString(16).padStart(6, '0');
+
+        // 1. Render the text first so we can measure exactly how wide it is
+        const prefixText = this.scene.add.text(0, 0, `${playerName} picked up `, {
+            fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+            fontSize: '16px',
+            color: '#ffffff',
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 2
+        }).setOrigin(0, 0.5);
+        container.add(prefixText);
+
+        const itemText = this.scene.add.text(0, 0, itemName, {
+            fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+            fontSize: '16px',
+            color: hexColorString,
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 2
+        }).setOrigin(0, 0.5);
+        container.add(itemText);
+
+        // 2. Render the icon and measure its space
+        let iconWidthSpace = 0;
+        if (textureKey && this.scene.textures.exists(textureKey)) {
+            const targetIconSize = 36; // Slightly reduced to look more compact
+            const icon = this.scene.add.sprite(0, 0, textureKey);
+
+            if (iconFrame !== undefined && iconFrame !== null) {
+                icon.setFrame(iconFrame);
+            }
+
+            const maxDim = Math.max(icon.width, icon.height);
+            const dynamicScale = maxDim > 0 ? (targetIconSize / maxDim) : 1;
+
+            icon.setScale(dynamicScale);
+            container.add(icon);
+
+            iconWidthSpace = targetIconSize;
+        }
+
+        // --- DYNAMIC WIDTH CALCULATION ---
+        // Exact width needed = padding + text1 + text2 + gap(10) + icon + padding
+        const textGap = 10;
+        const totalWidth = padding + prefixText.width + itemText.width + (iconWidthSpace > 0 ? textGap + iconWidthSpace : 0) + padding;
+
+        // Now that we know the total width, shift everything to the left so it anchors nicely to the right edge
+        prefixText.setX(-totalWidth + padding);
+        itemText.setX(-totalWidth + padding + prefixText.width);
+
+        // If the icon exists, it's the 3rd element added to the container
+        if (container.list.length > 2) {
+            const iconObj = container.list[2] as Phaser.GameObjects.Sprite;
+            // Place it nicely on the right, accounting for padding and its center origin
+            iconObj.setX(-padding - (iconWidthSpace / 2));
+        }
+
+        // 3. Draw the Background using the exact dynamic width
+        const bg = this.scene.add.graphics();
+        bg.fillStyle(0x000000, 0.15);
+        bg.fillRoundedRect(-totalWidth, -height / 2, totalWidth, height, 8);
+        bg.lineStyle(2, tierColor, 0.8);
+        bg.strokeRoundedRect(-totalWidth, -height / 2, totalWidth, height, 8);
+
+        // Put the background at index 0 so it stays behind the text and icon
+        container.addAt(bg, 0);
+
+        // 4. Push all existing notifications DOWN (factoring in the mobile scale!)
+        this.activeToasts.forEach((toast) => {
+            this.scene.tweens.add({
+                targets: toast,
+                y: toast.y + ((height + 10) * uiScale),
+                duration: 250,
+                ease: 'Power2'
+            });
+        });
+
+        this.activeToasts.unshift(container);
+
+        // 5. Slide in Animation
+        // Start completely off-screen to the right
+        const startX = this.scene.scale.width + (totalWidth * uiScale);
+        container.setX(startX);
+
+        this.scene.tweens.add({
+            targets: container,
+            x: targetX,
+            duration: 400,
+            ease: 'Back.easeOut',
+            onComplete: () => {
+                this.scene.time.delayedCall(2000, () => {
+                    this.scene.tweens.add({
+                        targets: container,
+                        alpha: 0,
+                        x: targetX + 100,
+                        duration: 300,
+                        onComplete: () => {
+                            container.destroy();
+                            this.activeToasts = this.activeToasts.filter(t => t !== container);
+                        }
+                    });
+                });
             }
         });
     }

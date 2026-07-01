@@ -113,6 +113,8 @@ public class ActiveEffect
     // Who caused this effect? (Useful if an enemy dies to poison and we need to know which Player gets the Gold/XP!)
     public string SourceId { get; set; } = string.Empty;
     public float GrantedShieldAmount { get; set; }
+    [JsonIgnore]
+    public BaseActorEntity? Caster { get; set; }
 }
 
 public class ActiveSkill
@@ -278,6 +280,12 @@ public class PlayerEntity : BaseActorEntity
     public int PendingLevelUps { get; set; }
     public Dictionary<string, float> PendingStatDiff { get; } = new();
     public List<Configs.LevelUpCardConfig> CurrentLevelUpChoices { get; set; } = new();
+    public float TotalDamageDealt { get; set; } = 0;
+    public float TotalDamageTaken { get; set; } = 0;
+    public float TotalHealingDone { get; set; } = 0;
+    public float TotalShieldingDone { get; set; } = 0;
+    public int Kills { get; set; } = 0;
+    public int Deaths { get; set; } = 0;
 
 
     // The formula for how much XP you need to reach the next level

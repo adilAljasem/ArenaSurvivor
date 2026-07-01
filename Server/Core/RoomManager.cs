@@ -69,6 +69,8 @@ public class RoomManager
         return null;
     }
 
+    
+
     // Call when a player joins or creates a room (lobby + match stitch).
     public void RegisterPlayerInRoom(string playerId, string roomId) =>
         _playerIdToRoomId[playerId] = roomId;

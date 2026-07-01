@@ -8,6 +8,7 @@ public class ApplicationDbContext : DbContext
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
 
     public DbSet<User> Users => Set<User>();
+    public DbSet<MatchRecord> MatchRecords => Set<MatchRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -20,6 +21,10 @@ public class ApplicationDbContext : DbContext
             e.HasIndex(u => u.Username).IsUnique();
             e.HasIndex(u => u.PlayerId).IsUnique();
         });
+
+        modelBuilder.Entity<MatchRecord>()
+            .HasIndex(m => new { m.Difficulty, m.HighestWave });
+
     }
 }
 

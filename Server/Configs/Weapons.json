@@ -19,6 +19,7 @@
     "soundFire": "ball-shoot",
     "canDrop": true,
     "availableInShop": true,
+    "AllowDuplicates": true,
     "statBonuses": {
       "movementSpeed": 5,
       "critChance": 0.5,
@@ -32,7 +33,9 @@
       "burning"
     ],
     "grantedSkills": [
-      "barrier"
+      "barrier",
+      "skill_heal_shot_2",
+      "tank"
     ],
     "statRollChance": 0.50,
     "maxRandomStats": 2,
@@ -74,6 +77,7 @@
     "defaultFacingRight": true,
     "attackAnimType": "recoil",
     "soundFire": "ball-shoot",
+    "AllowDuplicates": true,
     "statBonuses": {
       "movementSpeed": 5
     },
@@ -124,6 +128,7 @@
     "defaultFacingRight": true,
     "attackAnimType": "recoil",
     "soundFire": "ball-shoot",
+    "AllowDuplicates": true,
     "statBonuses": {},
     "damageScaling": {
       "rangedDamage": 0.25
@@ -269,7 +274,7 @@
     "defaultFacingRight": true,
     "attackAnimType": "recoil",
     "soundFire": "sfx_rocket_fire",
-    "maxlevel":9,
+    "maxlevel": 9,
     "statBonuses": {
       "armor": -1
     },
@@ -414,6 +419,7 @@
     "defaultFacingRight": true,
     "attackAnimType": "swing",
     "soundFire": "sfx_hammer_swing",
+    "AllowDuplicates": true,
     "maxLevel": 7,
     "statBonuses": {
       "armor": 2,

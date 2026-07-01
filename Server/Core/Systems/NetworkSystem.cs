@@ -64,7 +64,10 @@ public class NetworkSystem : IGameSystem
         });
     }
 
-    public void Update(float dt, GameState state) { }
+    public void Update(float dt, GameState state)
+    {
+
+    }
 
     public async Task BroadcastFrameAsync(GameState gameState, ConfigManager configManager, List<ProjectileEntity> tickNewProjectiles, List<string> tickDestroyedProjectiles, CancellationToken stoppingToken)
     {
@@ -114,6 +117,7 @@ public class NetworkSystem : IGameSystem
                 ph = (byte)gameState.Phase,
                 w = gameState.CurrentWave,
                 tr = Math.Max(0, (int)gameState.PhaseTimer),
+
             };
 
             byte[] compressedBytes = CompressPayload(payload);
@@ -171,9 +175,9 @@ public class NetworkSystem : IGameSystem
                 p.CurrentCastingSkillId, Math.Round(p.CurrentCastTimer, 1), Math.Round(p.MaxCastTimer, 1),
                 p.Weapons.Select(w => new object[] {
                     w.ConfigId, w.SlotIndex, w.Level,
-                    w.RolledStats ?? _emptyStats, // <--- Cache Fix
+                    w.RolledStats ?? _emptyStats,
                     w.WeaponSkills != null ? w.WeaponSkills.Select(s => s.ConfigId).ToList() : new List<string>(),
-                    w.TotalBaseStats ?? _emptyStats // <--- Cache Fix
+                    w.TotalBaseStats ?? _emptyStats
                 }).ToList(),
                 p.FiredWeaponsThisTick.ToList(),
                 p.ActiveEffects.Select(e => e.ConfigId).ToList(),

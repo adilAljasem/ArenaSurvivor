@@ -133,7 +133,35 @@ public class MovementSystem : IGameSystem
             if (foundTarget)
             {
                 enemy.AimX = targetX; enemy.AimY = targetY;
-                float attackRadiusSq = config.AttackRadius * config.AttackRadius;
+
+                // --- DYNAMIC ATTACK RADIUS CALCULATION ---
+                float effectiveAttackRadius = config.AttackRadius;
+                if (enemy.Weapons.Count > 0)
+                {
+                    float minWeaponRange = float.MaxValue;
+                    float bonusRange = enemy.GetTotalStat("range", _configs);
+
+                    foreach (var weapon in enemy.Weapons)
+                    {
+                        if (_configs.Weapons.TryGetValue(weapon.ConfigId, out var wCfg))
+                        {
+                            // Ensure range doesn't drop below 0 if they have negative range stats
+                            float currentWeaponRange = Math.Max(0f, wCfg.Range + bonusRange);
+                            if (currentWeaponRange < minWeaponRange)
+                            {
+                                minWeaponRange = currentWeaponRange;
+                            }
+                        }
+                    }
+
+                    if (minWeaponRange != float.MaxValue)
+                    {
+                        effectiveAttackRadius = minWeaponRange;
+                    }
+                }
+
+                float attackRadiusSq = effectiveAttackRadius * effectiveAttackRadius;
+
                 if (closestDistSq <= attackRadiusSq)
                 {
                     if (enemy.AttackCooldown <= 0) { enemy.ActionState = "Attacking"; enemy.AttackCooldown = config.AttackDuration; }

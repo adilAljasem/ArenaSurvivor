@@ -435,29 +435,97 @@ public class MatchHub : Hub
     {
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
         if (room == null || !room.State.Players.TryGetValue(Context.ConnectionId, out var player)) return;
+
+        // We will store the result of the lock here so we can await it outside the lock
+        string errorMessage = null;
+        bool isSuccess = false;
+
         lock (player)
         {
             var shopItem = player.CurrentShop.FirstOrDefault(i => i.ConfigId == configId && !i.IsLocked);
-            if (shopItem == null || player.Gold < shopItem.Price) return;
-            bool success = false;
-            if (_configManager.Weapons.TryGetValue(configId, out _))
+
+            if (shopItem == null) { errorMessage = "Item no longer available!"; }
+            else if (player.Gold < shopItem.Price) { errorMessage = "Not enough gold!"; }
+            else
             {
-                var w = new EquippedWeapon { ConfigId = shopItem.ConfigId, Level = 1, RolledStats = shopItem.RolledStats ?? new(), TotalBaseStats = shopItem.TotalBaseStats ?? new() };
-                w.MergedConfigIds.Add(configId);
-                if (shopItem.WeaponSkills != null) foreach (var sid in shopItem.WeaponSkills) if (_configManager.Skills.TryGetValue(sid, out var sc)) w.WeaponSkills.Add(new ActiveSkill { ConfigId = sid, CurrentCooldown = sc.CooldownSeconds });
-                success = player.TryAddOrMergeWeapon(w, _configManager);
+                bool isWeapon = _configManager.Weapons.TryGetValue(configId, out var wCfg);
+                bool isItem = _configManager.Items.TryGetValue(configId, out var iCfg);
+
+                bool allowDupes = isWeapon ? wCfg.AllowDuplicates : (isItem ? iCfg.AllowDuplicates : false);
+                string family = isWeapon ? wCfg.WeaponFamily : (isItem ? iCfg.ItemFamily : string.Empty);
+
+                bool conflict = false;
+                if (!allowDupes)
+                {
+                    if (isWeapon)
+                    {
+                        foreach (var eq in player.Weapons)
+                        {
+                            if (eq.ConfigId == configId) continue;
+                            if (_configManager.Weapons.TryGetValue(eq.ConfigId, out var eqCfg) && !string.IsNullOrEmpty(family) && eqCfg.WeaponFamily == family) conflict = true;
+                        }
+                    }
+                    else if (isItem)
+                    {
+                        foreach (var eq in player.OwnedItems)
+                        {
+                            if (eq.ConfigId == configId) continue;
+                            if (_configManager.Items.TryGetValue(eq.ConfigId, out var eqCfg) && !string.IsNullOrEmpty(family) && eqCfg.ItemFamily == family) conflict = true;
+                        }
+                    }
+                }
+
+                if (conflict) { errorMessage = "Cannot equip duplicates of this type!"; }
+                else if (isItem)
+                {
+                    int maxSlots = player.GetMaxItemSlots(_configManager);
+                    bool isMerge = player.OwnedItems.Any(i => i.ConfigId == configId);
+                    if (!isMerge && player.OwnedItems.Count >= maxSlots) { errorMessage = "Inventory is Full!"; }
+                }
+
+                if (errorMessage == null)
+                {
+                    if (isWeapon)
+                    {
+                        var w = new EquippedWeapon { ConfigId = shopItem.ConfigId, Level = 1, RolledStats = shopItem.RolledStats ?? new(), TotalBaseStats = shopItem.TotalBaseStats ?? new() };
+                        w.MergedConfigIds.Add(configId);
+                        if (shopItem.WeaponSkills != null) foreach (var sid in shopItem.WeaponSkills) if (_configManager.Skills.TryGetValue(sid, out var sc)) w.WeaponSkills.Add(new ActiveSkill { ConfigId = sid, CurrentCooldown = sc.CooldownSeconds });
+                        isSuccess = player.TryAddOrMergeWeapon(w, _configManager);
+                    }
+                    else if (isItem)
+                    {
+                        var it = new EquippedItem { ConfigId = shopItem.ConfigId, Level = 1, RolledStats = shopItem.RolledStats ?? new(), TotalBaseStats = shopItem.TotalBaseStats ?? new() };
+                        it.MergedConfigIds.Add(configId);
+                        if (shopItem.WeaponSkills != null) foreach (var sid in shopItem.WeaponSkills) if (_configManager.Skills.TryGetValue(sid, out var sc)) it.ItemSkills.Add(new ActiveSkill { ConfigId = sid, CurrentCooldown = sc.CooldownSeconds });
+                        isSuccess = player.TryAddOrMergeItem(it, _configManager);
+                        if (isSuccess && iCfg.Traits != null) { bool g = false; foreach (var t in iCfg.Traits) if (!player.Traits.Contains(t)) { player.Traits.Add(t); g = true; } if (g) player.StatsNeedRecalculation = true; }
+                    }
+
+                    if (isSuccess)
+                    {
+                        player.Gold -= shopItem.Price;
+                        player.CurrentShop.Remove(shopItem);
+                    }
+                    else
+                    {
+                        errorMessage = "Cannot equip this item!";
+                    }
+                }
             }
-            else if (_configManager.Items.TryGetValue(configId, out var itemConfig))
-            {
-                var it = new EquippedItem { ConfigId = shopItem.ConfigId, Level = 1, RolledStats = shopItem.RolledStats ?? new(), TotalBaseStats = shopItem.TotalBaseStats ?? new() };
-                it.MergedConfigIds.Add(configId);
-                if (shopItem.WeaponSkills != null) foreach (var sid in shopItem.WeaponSkills) if (_configManager.Skills.TryGetValue(sid, out var sc)) it.ItemSkills.Add(new ActiveSkill { ConfigId = sid, CurrentCooldown = sc.CooldownSeconds });
-                success = player.TryAddOrMergeItem(it, _configManager);
-                if (success && itemConfig.Traits != null) { bool g = false; foreach (var t in itemConfig.Traits) if (!player.Traits.Contains(t)) { player.Traits.Add(t); g = true; } if (g) player.StatsNeedRecalculation = true; }
-            }
-            if (success) { player.Gold -= shopItem.Price; player.CurrentShop.Remove(shopItem); }
         }
-        await SendPlayerUI(player, room.State);
+
+        // --- SEND MESSAGES OUTSIDE THE LOCK WITH AWAIT ---
+        if (errorMessage != null)
+        {
+            await Clients.Caller.SendAsync("ShopError", errorMessage);
+            return;
+        }
+
+        if (isSuccess)
+        {
+            await Clients.Caller.SendAsync("ShopSuccess");
+            await SendPlayerUI(player, room.State);
+        }
     }
 
     public async Task SelectLevelUpStat(string cardId)
@@ -507,19 +575,134 @@ public class MatchHub : Hub
     {
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
         if (room == null || !room.State.Players.TryGetValue(Context.ConnectionId, out var player)) return;
+
+        string? errorMessage = null;
+        bool isSuccess = false;
+
+        // >>> NEW VARIABLES TO TRACK ICON <<<
+        string pickedUpItemName = "";
+        int itemTier = 1;
+        string textureKey = "";
+        int iconFrame = 0;
+
         lock (player)
         {
             if (!room.State.Pickups.TryGetValue(pickupId, out var pickup)) return;
             float dx = player.X - pickup.X, dy = player.Y - pickup.Y;
-            if (dx * dx + dy * dy > 2500) return;
-            bool success = false;
-            if (pickup.Type == PickupType.Weapon && pickup.DroppedWeapon != null) { pickup.DroppedWeapon.Level = 1; pickup.DroppedWeapon.MergedConfigIds.Clear(); pickup.DroppedWeapon.MergedConfigIds.Add(pickup.DroppedWeapon.ConfigId); success = player.TryAddOrMergeWeapon(pickup.DroppedWeapon, _configManager); }
-            else if (pickup.Type == PickupType.Item && pickup.DroppedItem != null) { pickup.DroppedItem.Level = 1; pickup.DroppedItem.MergedConfigIds.Clear(); pickup.DroppedItem.MergedConfigIds.Add(pickup.DroppedItem.ConfigId); success = player.TryAddOrMergeItem(pickup.DroppedItem, _configManager); }
-            if (success) room.State.Pickups.TryRemove(pickupId, out _);
+            if (dx * dx + dy * dy > 2500) return; // Must be standing near it
+
+            bool isWeapon = pickup.Type == PickupType.Weapon;
+            bool isItem = pickup.Type == PickupType.Item;
+
+            // --- WEAPON CHECKS ---
+            if (isWeapon && pickup.DroppedWeapon != null)
+            {
+                var cfg = _configManager.Weapons.GetValueOrDefault(pickup.DroppedWeapon.ConfigId);
+                // ... (Keep your existing duplicate checks here) ...
+                if (cfg != null && !cfg.AllowDuplicates)
+                {
+                    if (player.Weapons.Any(w => w.ConfigId != pickup.DroppedWeapon.ConfigId && _configManager.Weapons.TryGetValue(w.ConfigId, out var eqCfg) && eqCfg.WeaponFamily == cfg.WeaponFamily))
+                        errorMessage = "Cannot equip duplicates of this type!";
+                }
+
+                if (errorMessage == null)
+                {
+                    pickup.DroppedWeapon.Level = 1; pickup.DroppedWeapon.MergedConfigIds.Clear(); pickup.DroppedWeapon.MergedConfigIds.Add(pickup.DroppedWeapon.ConfigId);
+                    if (player.TryAddOrMergeWeapon(pickup.DroppedWeapon, _configManager))
+                    {
+                        room.State.Pickups.TryRemove(pickupId, out _);
+                        isSuccess = true;
+
+                        // >>> CAPTURE WEAPON DATA <<<
+                        pickedUpItemName = cfg?.Name ?? "Weapon";
+                        itemTier = cfg?.Tier ?? 1;
+                        textureKey = cfg?.TextureKey ?? "";
+                        iconFrame = cfg?.IconFrame ?? 0;
+                    }
+                    else errorMessage = "Cannot equip this weapon!";
+                }
+            }
+            // --- ITEM CHECKS ---
+            else if (isItem && pickup.DroppedItem != null)
+            {
+                var cfg = _configManager.Items.GetValueOrDefault(pickup.DroppedItem.ConfigId);
+                // ... (Keep your existing duplicate & inventory checks here) ...
+                if (cfg != null && !cfg.AllowDuplicates)
+                {
+                    if (player.OwnedItems.Any(i => i.ConfigId != pickup.DroppedItem.ConfigId && _configManager.Items.TryGetValue(i.ConfigId, out var eqCfg) && eqCfg.ItemFamily == cfg.ItemFamily))
+                        errorMessage = "Cannot equip duplicates of this type!";
+                }
+
+                if (errorMessage == null)
+                {
+                    int maxSlots = player.GetMaxItemSlots(_configManager);
+                    bool isMerge = player.OwnedItems.Any(i => i.ConfigId == pickup.DroppedItem!.ConfigId);
+
+                    if (!isMerge && player.OwnedItems.Count >= maxSlots)
+                    {
+                        errorMessage = "Inventory is Full!";
+                    }
+                    else
+                    {
+                        pickup.DroppedItem.Level = 1; pickup.DroppedItem.MergedConfigIds.Clear(); pickup.DroppedItem.MergedConfigIds.Add(pickup.DroppedItem.ConfigId);
+                        if (player.TryAddOrMergeItem(pickup.DroppedItem, _configManager))
+                        {
+                            room.State.Pickups.TryRemove(pickupId, out _);
+                            isSuccess = true;
+
+                            // >>> CAPTURE ITEM DATA <<<
+                            pickedUpItemName = cfg?.Name ?? "Item";
+                            itemTier = cfg?.Tier ?? 1;
+                            textureKey = cfg?.TextureKey ?? "";
+                            iconFrame = cfg?.IconFrame ?? 0;
+                        }
+                        else errorMessage = "Cannot equip this item!";
+                    }
+                }
+            }
         }
+
+        if (errorMessage != null)
+        {
+            await Clients.Caller.SendAsync("ShopError", errorMessage);
+            return;
+        }
+
+        if (isSuccess)
+        {
+            // >>> ADD TEXTURE KEY AND FRAME TO THE BROADCAST <<<
+            var connectionIds = room.State.Players.Keys.ToList();
+            await Clients.Clients(connectionIds).SendAsync("LootNotification", player.Name ?? "Player", pickedUpItemName, itemTier, textureKey, iconFrame);
+        }
+
         await SendPlayerUI(player, room.State);
     }
+    public async Task RequestScoreboard()
+    {
+        // 1. Get the player's ID from their secure token
+        string? playerId = Context.User?.FindFirst("PlayerId")?.Value;
+        if (string.IsNullOrEmpty(playerId)) return;
 
+        // 2. Use our new helper method to find their exact room!
+        var room = _roomManager.GetRoomByPlayerId(playerId);
+        if (room == null) return;
+
+        // 3. Build the data
+        var scoreboardData = room.State.Players.Values.Select(p => new object[] {
+            p.ConnectionId,
+            p.Name,
+            p.ConfigId,
+            (int)p.TotalDamageDealt,
+            (int)p.TotalDamageTaken,
+            (int)p.TotalHealingDone,
+            (int)p.TotalShieldingDone,
+            p.Kills,
+            p.Deaths
+        }).ToList();
+
+        // 4. Send back to the caller
+        await Clients.Caller.SendAsync("ReceiveScoreboard", scoreboardData);
+    }
     public async Task RecycleGear(bool isWeapon, int slotIndex)
     {
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
@@ -532,70 +715,74 @@ public class MatchHub : Hub
 
             if (isWeapon)
             {
-                // 1. Safely find the actual weapon matching the SlotIndex
                 var w = player.Weapons.FirstOrDefault(x => x.SlotIndex == slotIndex);
                 if (w != null)
                 {
                     if (_configManager.Weapons.TryGetValue(w.ConfigId, out var wc)) basePrice = wc.Price;
-
-                    // 2. Remove the weapon from the list first
                     player.Weapons.Remove(w);
-
-                    // 3. Strip skills that came from this weapon and are no longer granted by any remaining gear
-                    if (w.WeaponSkills != null)
-                    {
-                        foreach (var ws in w.WeaponSkills)
-                        {
-                            bool grantedElsewhere =
-                                player.Weapons.Any(ow => ow.WeaponSkills?.Any(s => s.ConfigId == ws.ConfigId) == true) ||
-                                player.OwnedItems.Any(oi => oi.ItemSkills?.Any(s => s.ConfigId == ws.ConfigId) == true);
-                            if (!grantedElsewhere)
-                                player.SynergizedSkills.RemoveAll(s => s.ConfigId == ws.ConfigId);
-                        }
-                    }
-
-                    // 4. Attempt the full rebuild (may crash if it relies on the weapon still being in the list)
                     try { player.RemoveWeapon(slotIndex, _configManager); } catch { }
                 }
             }
             else
             {
-                // 1. Safely find the actual item matching the SlotIndex
                 var it = player.OwnedItems.FirstOrDefault(x => x.SlotIndex == slotIndex);
                 if (it != null)
                 {
                     if (_configManager.Items.TryGetValue(it.ConfigId, out var ic)) basePrice = ic.Price;
-
-                    // 2. Remove the item from the list first
                     player.OwnedItems.Remove(it);
-
-                    // 3. Strip skills that came from this item and are no longer granted by any remaining gear
-                    if (it.ItemSkills != null)
-                    {
-                        foreach (var itemSkill in it.ItemSkills)
-                        {
-                            bool grantedElsewhere =
-                                player.Weapons.Any(ow => ow.WeaponSkills?.Any(s => s.ConfigId == itemSkill.ConfigId) == true) ||
-                                player.OwnedItems.Any(oi => oi.ItemSkills?.Any(s => s.ConfigId == itemSkill.ConfigId) == true);
-                            if (!grantedElsewhere)
-                                player.SynergizedSkills.RemoveAll(s => s.ConfigId == itemSkill.ConfigId);
-                        }
-                    }
-
-                    // 4. Attempt the full rebuild
                     try { player.RemoveItem(slotIndex, _configManager); } catch { }
                 }
             }
 
-            // 4. Grant the gold payout (Guaranteed minimum of 1 gold)
+            // --- 4. ROBUST SKILL CLEANUP ---
+            HashSet<string> validSkillIds = new HashSet<string>();
+
+            if (_configManager.Characters.TryGetValue(player.ConfigId, out var charCfg))
+            {
+                if (charCfg.StartingSkills != null) foreach (var s in charCfg.StartingSkills) validSkillIds.Add(s);
+                if (charCfg.DynamicSkills != null) foreach (var ds in charCfg.DynamicSkills) validSkillIds.Add(ds.SkillId);
+            }
+
+            var activeTraits = player.GetActiveTraits(_configManager);
+            foreach (var tId in activeTraits)
+            {
+                if (_configManager.Traits.TryGetValue(tId, out var tCfg) && tCfg.GrantedSkills != null)
+                    foreach (var s in tCfg.GrantedSkills) validSkillIds.Add(s);
+            }
+
+            foreach (var wp in player.Weapons)
+            {
+                if (wp.WeaponSkills != null) foreach (var s in wp.WeaponSkills) validSkillIds.Add(s.ConfigId);
+            }
+
+            foreach (var itm in player.OwnedItems)
+            {
+                if (itm.ItemSkills != null) foreach (var s in itm.ItemSkills) validSkillIds.Add(s.ConfigId);
+            }
+
+            // Surgically remove any active skill that is no longer in the valid list!
+            player.SynergizedSkills.RemoveAll(s => !validSkillIds.Contains(s.ConfigId));
+
+            // >>> NEW FIX: INTERRUPT ONGOING ACTIONS <<<
+            // If the player is currently casting or channeling a skill that was just deleted, cancel it!
+            if (!string.IsNullOrEmpty(player.CurrentCastingSkillId) && !validSkillIds.Contains(player.CurrentCastingSkillId))
+            {
+                player.CurrentCastingSkillId = string.Empty;
+                player.CurrentCastTimer = 0f;
+
+                // Unfreeze the player so they can move and shoot again
+                if (player.ActionState == "Casting" || player.ActionState == "Attacking")
+                {
+                    player.ActionState = "Idle";
+                }
+            }
+
+            // --- 5. FINALIZE ---
             int payout = (int)Math.Floor(basePrice * 0.25f * diff.RecycleValueMultiplier);
             player.Gold += Math.Max(1, payout);
-
-            // 5. Force stats to completely recalculate without the gear equipped
             player.StatsNeedRecalculation = true;
         }
 
-        // 6. Because we didn't crash, the UI will successfully update!
         await SendPlayerUI(player, room.State);
     }
 }

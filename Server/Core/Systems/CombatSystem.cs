@@ -152,11 +152,35 @@ public class CombatSystem : IGameSystem
                 float distSq = (summon.X - enemy.X) * (summon.X - enemy.X) + (summon.Y - enemy.Y) * (summon.Y - enemy.Y);
                 if (distSq < bestDistSq) { bestDistSq = distSq; targetX = summon.X; targetY = summon.Y; foundTarget = true; }
             }
-
             if (!foundTarget) return;
             enemy.AimX = targetX; enemy.AimY = targetY;
 
+            // --- DYNAMIC ATTACK RADIUS CALCULATION ---
             float attackRadius = _configs.Enemies.TryGetValue(enemy.ConfigId, out var enemyCfg) ? enemyCfg.AttackRadius : 300f;
+
+            if (enemy.Weapons.Count > 0)
+            {
+                float minWeaponRange = float.MaxValue;
+                float bonusRange = enemy.GetTotalStat("range", _configs);
+
+                foreach (var weapon in enemy.Weapons)
+                {
+                    if (_configs.Weapons.TryGetValue(weapon.ConfigId, out var wCfg))
+                    {
+                        float currentWeaponRange = Math.Max(0f, wCfg.Range + bonusRange);
+                        if (currentWeaponRange < minWeaponRange)
+                        {
+                            minWeaponRange = currentWeaponRange;
+                        }
+                    }
+                }
+
+                if (minWeaponRange != float.MaxValue)
+                {
+                    attackRadius = minWeaponRange;
+                }
+            }
+
             if (bestDistSq > attackRadius * attackRadius) return;
 
             foreach (var weapon in enemy.Weapons)

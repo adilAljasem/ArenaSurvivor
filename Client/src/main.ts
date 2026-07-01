@@ -1,11 +1,12 @@
 import * as Phaser from 'phaser';
 import { HubConnectionBuilder, HubConnectionState } from '@microsoft/signalr';
-import { ShopUI, SkillActionBar, Tooltip } from './ui/UI';
+import { ShopUI, SkillActionBar, Tooltip, LootNotifier } from './ui/UI';
 import { EscMenu } from './ui/EscMenu';
 import { ActorRenderer, VfxRenderer, WorldRenderer } from './RenderSystems';
 import { AudioManager } from './AudioManager';
 import { LobbyUI, AuthUI } from './LobbyUI';
 import { world } from './ECS';
+import { ScoreboardUI } from './ui/ScoreboardUI';
 
 // 1. Define the worker code as a string, using a CDN for pako
 const workerCode = `
@@ -137,6 +138,7 @@ class GameScene extends Phaser.Scene {
     private escMenu!: EscMenu;
     private perfText!: Phaser.GameObjects.Text;
     private versionText!: Phaser.GameObjects.Text;
+    private lootNotifier!: LootNotifier;
 
     private activeEnemiesArray: ServerEnemy[] = [];
     private enemiesDirty: boolean = true;
@@ -181,8 +183,8 @@ class GameScene extends Phaser.Scene {
 
     private fpsText!: Phaser.GameObjects.Text;
 
-
-
+    private scoreboardUI!: ScoreboardUI;
+    private latestGameStatePayload: GameStatePayload | null = null;
 
 
 
@@ -218,6 +220,9 @@ class GameScene extends Phaser.Scene {
         this.load.audio('ui_recycle', '/assets/Audio/ui_recycle.wav');
         this.load.audio('ui_levelup', '/assets/audio/ui_levelup.wav');
         this.load.audio('ui_click', '/assets/Audio/UI/btnclick.mp3');
+        this.load.audio('ui_error', '/assets/Audio/ui_error.mp3');
+
+        this.load.spritesheet('tex_gold', '/assets/obstacles/spinning coin.png', { frameWidth: 20.6, frameHeight: 18 });
 
         this.load.bitmapFont('damageFont', 'assets/fonts/fon.png', 'assets/fonts/fon.xml');
     }
@@ -234,8 +239,41 @@ class GameScene extends Phaser.Scene {
         this.skillActionBar = new SkillActionBar(this);
         this.skillActionBar.updateLayout(this.scale.width, this.scale.height);
         this.hpGraphics = this.add.graphics().setDepth(50);
+        this.lootNotifier = new LootNotifier(this);
+
+        this.scoreboardUI = new ScoreboardUI(this);
+
+        // In GameScene.create()
+        this.input.keyboard?.addCapture('TAB');
+
+        this.input.keyboard?.on('keydown-TAB', (e: KeyboardEvent) => {
+            e.preventDefault();
+
+            this.scoreboardUI.show();
+
+            if (matchConnection.state === HubConnectionState.Connected) {
+                // >>> FIX: Remove 'currentRoomId'. Just ask the server directly! <<<
+                matchConnection.invoke("RequestScoreboard").catch(console.error);
+            }
+        });
+
+        this.input.keyboard?.on('keyup-TAB', (e: KeyboardEvent) => {
+            e.preventDefault();
+            this.scoreboardUI.hide();
+        });
 
         AudioManager.getInstance().init(this);
+
+        // --- GOLD COIN ANIMATION ---
+        if (!this.anims.exists('gold_spin')) {
+            this.anims.create({
+                key: 'gold_spin',
+                // Adjust the 'end' frame to match how many frames your sprite sheet has (e.g., 5 means frames 0, 1, 2, 3, 4, 5)
+                frames: this.anims.generateFrameNumbers('tex_gold', { start: 0, end: 5 }),
+                frameRate: 8, // Speed of the animation (frames per second)
+                repeat: -1     // -1 means loop infinitely
+            });
+        }
 
         const g = this.add.graphics();
         g.fillStyle(0xffffff, 1);
@@ -852,6 +890,10 @@ class GameScene extends Phaser.Scene {
                 beamEndedEvents: rawState.be?.map((b: any[]) => ({ casterId: b[0], skillId: b[1] })) || []
             };
 
+            this.latestGameStatePayload = state;
+
+
+
             // ==========================================
             // 6. RENDER VFX & UI
             // ==========================================
@@ -1021,6 +1063,28 @@ class GameScene extends Phaser.Scene {
             this.applyHandshakePayload(payload);
         });
 
+        matchConnection.off("ReceiveScoreboard");
+        matchConnection.on("ReceiveScoreboard", (rawScoreboardData: any[]) => {
+
+            // 1. Map the raw C# arrays back into the objects the UI expects!
+            const mappedData = rawScoreboardData.map((s: any[]) => ({
+                connectionId: s[0],
+                name: s[1],
+                configId: s[2],
+                totalDamageDealt: s[3] || 0,
+                totalDamageTaken: s[4] || 0,
+                totalHealingDone: s[5] || 0,
+                totalShieldingDone: s[6] || 0,
+                kills: s[7] || 0,
+                deaths: s[8] || 0
+            }));
+
+            // 2. Pass the nicely formatted mappedData to the UI
+            if (this.scoreboardUI && document.getElementById('scoreboard-overlay')?.style.display === 'flex') {
+                this.scoreboardUI.update(mappedData, masterConfigs, matchConnection.connectionId);
+            }
+        });
+
 
         matchConnection.off("UpdatePlayerUI");
         matchConnection.on("UpdatePlayerUI", (uiData: any) => {
@@ -1033,6 +1097,49 @@ class GameScene extends Phaser.Scene {
             if (this.shopUIModule) {
                 this.shopUIModule.updateUIData(uiData, masterConfigs);
             }
+        });
+
+        matchConnection.off("LootNotification");
+        // >>> ADD textureKey and iconFrame TO THE LISTENER <<<
+        matchConnection.on("LootNotification", (playerName: string, itemName: string, tier: number, textureKey: string, iconFrame: number) => {
+            this.lootNotifier.show(playerName, itemName, tier, textureKey, iconFrame);
+        });
+
+        matchConnection.off("ShopSuccess");
+        matchConnection.on("ShopSuccess", () => {
+            // Server confirmed purchase!
+            AudioManager.getInstance().playUiSfx('ui_buy');
+        });
+
+        matchConnection.off("ShopError");
+        matchConnection.on("ShopError", (errorMessage: string) => {
+            // Server rejected purchase!
+            AudioManager.getInstance().playUiSfx('ui_error'); // Make sure you load ui_error in preload()
+
+            // Spawn the floating text at the mouse pointer
+            const pointer = this.input.activePointer;
+            const x = pointer.x;
+            const y = pointer.y - 20;
+
+            const toast = this.add.text(x, y, errorMessage, {
+                fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+                fontSize: '22px',
+                color: '#ff5555',
+                fontStyle: 'bold',
+                stroke: '#000000',
+                strokeThickness: 5,
+                resolution: 3
+            }).setOrigin(0.5, 1).setDepth(10000).setScrollFactor(0);
+
+            // Float up and fade out
+            this.tweens.add({
+                targets: toast,
+                y: y - 60,
+                alpha: 0,
+                duration: 3500,
+                ease: 'Power2',
+                onComplete: () => toast.destroy()
+            });
         });
 
         matchConnection.off("UpdateStateCompressed");

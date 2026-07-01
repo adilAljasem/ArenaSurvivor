@@ -22,6 +22,64 @@ namespace Server.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Server.Configs.MatchRecord", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ConfigId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Deaths")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Difficulty")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("HighestWave")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Kills")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("MatchDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("PlayerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RoomId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<float>("TotalDamageDealt")
+                        .HasColumnType("real");
+
+                    b.Property<float>("TotalDamageTaken")
+                        .HasColumnType("real");
+
+                    b.Property<float>("TotalHealingDone")
+                        .HasColumnType("real");
+
+                    b.Property<float>("TotalShieldingDone")
+                        .HasColumnType("real");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Difficulty", "HighestWave");
+
+                    b.ToTable("MatchRecords");
+                });
+
             modelBuilder.Entity("Server.Configs.User", b =>
                 {
                     b.Property<Guid>("Id")

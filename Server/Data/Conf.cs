@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace Server.Configs;
 
 public class EmailSettings
@@ -44,3 +46,41 @@ public class User
     public string? ResetToken { get; set; }
     public DateTime? ResetTokenExpiresAt { get; set; }
 }
+
+public class MatchRecord
+{
+    [Key]
+    public int Id { get; set; }
+    public Guid PlayerId { get; set; }
+    public string RoomId { get; set; } = string.Empty;
+    public string Username { get; set; } = string.Empty;
+    public string ConfigId { get; set; } = string.Empty; // The character they played
+    
+    public string Difficulty { get; set; } = string.Empty;
+    public int HighestWave { get; set; }
+    
+    public float TotalDamageDealt { get; set; }
+    public float TotalDamageTaken { get; set; }
+    public float TotalHealingDone { get; set; }
+    public float TotalShieldingDone { get; set; }
+    public int Kills { get; set; }
+    public int Deaths { get; set; }
+    
+    public DateTime MatchDate { get; set; } = DateTime.UtcNow;
+}
+
+public class AchievementConfig
+{
+    public string Id { get; set; }
+    public string Name { get; set; }
+    public string Description { get; set; }
+    public int Tier { get; set; }              // 1-4, same scale as gear
+    public string TextureKey { get; set; }
+    public int IconFrame { get; set; }
+    public bool Hidden { get; set; }            // secret until unlocked
+    public string Scope { get; set; }           // "Lifetime" | "SingleMatch"
+    public string ConditionType { get; set; }   // "TotalKills", "HighestWaveReached", "TotalDamageDealt", "CharacterWaveCleared", etc.
+    public string ConditionStat { get; set; }   // optional: characterId/difficulty for scoped conditions
+    public float Threshold { get; set; }
+}
+

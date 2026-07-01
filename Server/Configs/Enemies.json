@@ -7,7 +7,7 @@
     "tier": 1,
     "isBoss": false,
     "minWave": 1,
-    "maxWave": 200,
+    "maxWave": 2000,
     "spawnWeight": 100,
     "textureKey": "spring_enemy",
     "VisualHeight": 20.0,
@@ -40,11 +40,14 @@
       "magicDefense": 5,
       "armor": 2
     },
-    "startingWeapons": [],
+    "startingWeapons": [
+      "smg",
+      "hammer"
+    ],
     "startingItems": [
       "ugly_tooth"
     ],
-    "weaponDropChance": 0.05,
+    "weaponDropChance": 0.20,
     "itemDropChance": 0.10,
     "dynamicModifiers": [],
     "StartingSkills": []
@@ -281,7 +284,7 @@
     ],
     "weaponDropChance": 0.9,
     "itemDropChance": 0.10,
-    "AttackRadius": 600,
+    "AttackRadius": 400,
     "dynamicSkills": [
       {
         "conditionType": "MissingHealthPercent",
@@ -298,7 +301,7 @@
     "tier": 1,
     "VisualHeight": 35.0,
     "isBoss": false,
-    "minWave":20,
+    "minWave": 20,
     "maxWave": 200,
     "spawnWeight": 100,
     "textureKey": "Enemies1_sheet",

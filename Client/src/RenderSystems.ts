@@ -784,12 +784,34 @@ export class WorldRenderer {
             sprite = scene.add.rectangle(pickup.x, pickup.y, 14, 14, 0x00aaff).setStrokeStyle(2, 0xffffff) as any;
           }
         } else {
-          sprite = scene.textures.exists('items_sheet')
-            ? scene.add.sprite(pickup.x, pickup.y, 'items_sheet', 6)
-            : scene.add.rectangle(pickup.x, pickup.y, 12, 12, 0x000000).setStrokeStyle(2, 0x00ff00) as any;
+          // --- DROPPED GOLD ---
+          if (scene.textures.exists('tex_gold')) {
+            const goldSprite = scene.add.sprite(pickup.x, pickup.y, 'tex_gold');
+            goldSprite.setScale(1.5); // Adjust scale to your preference
+
+            // Play the spinning animation!
+            if (scene.anims.exists('gold_spin')) {
+              goldSprite.play('gold_spin');
+            }
+            sprite = goldSprite;
+          } else {
+            sprite = scene.add.rectangle(pickup.x, pickup.y, 12, 12, 0xffd700).setStrokeStyle(2, 0xffaa00) as any;
+          }
         }
 
         (sprite as any).setDepth(5);
+
+        // --- SLOW MOTION HOVER ANIMATION ---
+        scene.tweens.add({
+          targets: sprite,
+          y: pickup.y - 12,                         // Float up 12 pixels
+          duration: 1500 + Math.random() * 500,     // 1.5s to 2.0s per float
+          ease: 'Sine.easeInOut',                   // Smooth slow-mo easing at top/bottom
+          yoyo: true,                               // Go back down automatically
+          repeat: -1,                               // Loop infinitely
+          delay: Math.random() * 500                // Desync so they don't all bob at the exact same time
+        });
+
         pickups.set(safeId, sprite as any);
       }
     });
