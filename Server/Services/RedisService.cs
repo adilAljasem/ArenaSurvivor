@@ -1,3 +1,4 @@
+using Server.DTOs;
 using StackExchange.Redis;
 using System;
 using System.Text.Json;
@@ -106,20 +107,3 @@ public class RedisService
     }
 }
 
-public class RoomTransferDto
-{
-    public string RoomId { get; set; } = string.Empty;
-    public string RoomName { get; set; } = string.Empty;
-    public string HostConnectionId { get; set; } = string.Empty;
-    public string CurrentMapId { get; set; } = string.Empty;
-    public string Difficulty { get; set; } = string.Empty;
-    public List<PlayerTransferDto> Players { get; set; } = new();
-}
-
-public class PlayerTransferDto
-{
-    public string OldConnectionId { get; set; } = string.Empty;
-    public string PlayerId { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
-    public string ConfigId { get; set; } = string.Empty;
-}

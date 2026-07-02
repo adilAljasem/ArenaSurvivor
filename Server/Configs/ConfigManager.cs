@@ -22,6 +22,7 @@ public class ConfigManager
     public Dictionary<string, MapConfig> Maps { get; private set; } = new(); // <<< ADD THIS
     public Dictionary<string, TraitConfig> Traits { get; private set; } = new(); // <<< ADD THIS
     public Dictionary<string, DifficultyConfig> Difficulties { get; private set; } = new();
+    public Dictionary<string, AchievementConfig> Achievements { get; private set; } = new();
 
     public ConfigManager()
     {
@@ -102,6 +103,16 @@ public class ConfigManager
             var newDifficulties = File.Exists("Configs/Difficulties.json") ? JsonSerializer.Deserialize<Dictionary<string, DifficultyConfig>>(
             File.ReadAllText("Configs/Difficulties.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
 
+            var newAchievements = File.Exists("Configs/Achievements.json") ? JsonSerializer.Deserialize<Dictionary<string, AchievementConfig>>(
+            File.ReadAllText("Configs/Achievements.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
+
+            // The dictionary KEY is the single source of truth for an achievement's identity —
+            // force Id to match it regardless of what's typed in the JSON "Id" field. This is
+            // what RequiredAchievements on gear, UserAchievement rows, and the client's name/icon
+            // lookups all key off of, so a stray typo in "Id" can never silently break matching.
+            foreach (var kvp in newAchievements)
+                kvp.Value.Id = kvp.Key;
+
             // 2. ATOMIC SWAP: Reassign everything at the exact same time!
             Enemies = newEnemies;
             Weapons = newWeapons;
@@ -115,6 +126,7 @@ public class ConfigManager
             AllStats = newStats;
             Traits = newTraits;
             Difficulties = newDifficulties;
+            Achievements = newAchievements;
 
             Console.WriteLine($"[CONFIG] Loaded successfully: {Enemies.Count} Enemies, {Weapons.Count} Weapons, {Projectiles.Count} Projectiles.");
         }

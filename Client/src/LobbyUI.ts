@@ -21,6 +21,17 @@ export const LOBBY_ASSETS = {
     colorMuted: '#a1a1aa'
 };
 
+// Tier→color scheme (Tier 1-4), matching item/weapon rarity coloring.
+export const TIER_COLORS: Record<number, string> = {
+    1: '#9e9e9e', // Common - gray
+    2: '#4a90e2', // Uncommon - blue
+    3: '#a259e6', // Rare - purple
+    4: '#e5b35c', // Legendary - gold
+};
+export function getTierColor(tier: number): string {
+    return TIER_COLORS[tier] || TIER_COLORS[1];
+}
+
 // ==========================================
 // 1. AUTHENTICATION UI
 // ==========================================
@@ -532,6 +543,42 @@ export class LobbyUI {
         }, 4000);
     }
 
+    private isCharacterLocked(char: any): { locked: boolean, missing: { id: string, name: string, textureKey: string, iconFrame: number }[] } {
+        return this.isGearLocked(char.requiredAchievements || char.RequiredAchievements || []);
+    }
+
+    private isGearLocked(required: string[]): { locked: boolean, missing: { id: string, name: string, textureKey: string, iconFrame: number }[] } {
+        if (!required || required.length === 0) return { locked: false, missing: [] };
+
+        const unlocked: string[] = this.masterConfigs?.myUnlockedAchievements || this.masterConfigs?.MyUnlockedAchievements || [];
+        const missingIds = required.filter(id => !unlocked.includes(id));
+        if (missingIds.length === 0) return { locked: false, missing: [] };
+
+        const achievements = this.masterConfigs?.achievements || this.masterConfigs?.Achievements || {};
+        const missing = missingIds.map(id => {
+            const a = achievements[id];
+            return {
+                id,
+                name: a ? (this.pick(a, 'name') || id) : id,
+                textureKey: a ? (this.pick(a, 'textureKey') || '') : '',
+                iconFrame: a ? (this.pick(a, 'iconFrame') ?? 0) : 0
+            };
+        });
+        return { locked: true, missing };
+    }
+
+    // Icon + name badges for the roomier Collection cards.
+    private buildLockOverlay(missing: { id: string, name: string, textureKey: string, iconFrame: number }[]): string {
+        const badges = missing.map(m => {
+            const base64Img = m.textureKey ? this.getIconBase64(m.textureKey, m.iconFrame) : null;
+            const iconHtml = base64Img
+                ? `<img src="${base64Img}" style="width:18px; height:18px; object-fit:contain; image-rendering:pixelated;" />`
+                : `<span style="font-size:13px;">🏆</span>`;
+            return `<div class="lock-req-badge">${iconHtml}<span>${m.name}</span></div>`;
+        }).join('');
+        return `<div class="lock-overlay"><div class="lock-icon">🔒</div><div class="lock-req-label">Requires</div><div class="lock-req-list">${badges}</div></div>`;
+    }
+
     private renderCharacterGrid() {
         if (!this.masterConfigs?.characters) return;
         const grid = document.getElementById('character-grid')!;
@@ -557,19 +604,494 @@ export class LobbyUI {
             <div style="font-weight:bold; font-size:14px; margin-bottom: 5px;">${char.name || char.Id}</div>
         `;
 
-            if (isLocalPlayerReady) {
+            const { locked, missing } = this.isCharacterLocked(char);
+
+            if (locked) {
+                const overlay = document.createElement('div');
+                overlay.className = 'lock-overlay';
+                overlay.innerHTML = `<div class="lock-icon">🔒</div><div class="lock-req">Requires: ${missing.map(m => m.name).join(', ')}</div>`;
+                card.appendChild(overlay);
+            } else if (isLocalPlayerReady) {
                 card.style.opacity = '0.5';
                 card.style.cursor = 'not-allowed';
             }
 
             card.onclick = () => {
-                if (isLocalPlayerReady) return;
+                if (locked || isLocalPlayerReady) return;
                 this.connection.invoke("SelectCharacter", char.id || char.Id);
                 document.querySelectorAll('.char-card').forEach(c => c.classList.remove('selected'));
                 card.classList.add('selected');
             };
             grid.appendChild(card);
         });
+    }
+
+    private cachedAchievements: any[] = [];
+    private activeAchFilter: string = 'all';
+    private activeCollectionTab: string = 'enemies';
+
+    private loadAchievements() {
+        const grid = document.getElementById('achievements-grid')!;
+        grid.innerHTML = `<div style="padding: 20px; color: ${LOBBY_ASSETS.colorMuted};">Loading...</div>`;
+
+        this.connection.invoke("GetAchievementCatalog").then((catalog: any[]) => {
+            this.cachedAchievements = catalog || [];
+            this.renderAchievementGrid();
+        }).catch(err => {
+            console.error("Failed to load achievements:", err);
+            grid.innerHTML = `<div style="padding: 20px; color: #ff6666;">Failed to load achievements.</div>`;
+        });
+    }
+
+    private renderAchievementGrid() {
+        const grid = document.getElementById('achievements-grid')!;
+        grid.innerHTML = '';
+
+        if (this.cachedAchievements.length === 0) {
+            grid.innerHTML = `<div style="padding: 20px; color: ${LOBBY_ASSETS.colorMuted};">No achievements available yet.</div>`;
+            return;
+        }
+
+        const filtered = this.cachedAchievements.filter(a => {
+            switch (this.activeAchFilter) {
+                case 'unlocked': return !!a.isUnlocked;
+                case 'locked': return !a.isUnlocked;
+                case 'tier1': return (a.tier ?? 1) === 1;
+                case 'tier2': return (a.tier ?? 1) === 2;
+                case 'tier3': return (a.tier ?? 1) === 3;
+                case 'tier4': return (a.tier ?? 1) === 4;
+                default: return true;
+            }
+        });
+
+        if (filtered.length === 0) {
+            grid.innerHTML = `<div style="padding: 20px; color: ${LOBBY_ASSETS.colorMuted};">No achievements match this filter.</div>`;
+            return;
+        }
+
+        // Unlocked first, then by tier descending, so the good stuff isn't buried.
+        const sorted = [...filtered].sort((a, b) => {
+            if (a.isUnlocked !== b.isUnlocked) return a.isUnlocked ? -1 : 1;
+            return (b.tier || 0) - (a.tier || 0);
+        });
+
+        sorted.forEach(a => this.renderAchievementCard(grid, a));
+    }
+
+    private renderAchievementCard(grid: HTMLElement, a: any) {
+        const tier = a.tier ?? 1;
+        const color = getTierColor(tier);
+        const isUnlocked = !!a.isUnlocked;
+        const isHidden = !!a.isHidden;
+
+        const card = document.createElement('div');
+        card.className = `ach-card ${isUnlocked ? 'unlocked' : 'locked'}`;
+        // Border always reflects tier color; the .locked class's grayscale/opacity filter
+        // handles the "not yet earned" dimming on top of it.
+        card.style.borderColor = color;
+
+        if (isHidden) {
+            card.innerHTML = `
+                <div class="ach-icon" style="background:#1a1a1a; color:#555; border: 2px solid ${color};">?</div>
+                <div class="ach-body">
+                    <div class="ach-name" style="color:#666;">Hidden Achievement</div>
+                    <div class="ach-desc">Keep playing to discover this one.</div>
+                </div>
+            `;
+            grid.appendChild(card);
+            return;
+        }
+
+        const base64Img = a.textureKey ? this.getIconBase64(a.textureKey, a.iconFrame || 0) : null;
+        const iconHtml = base64Img
+            ? `<img src="${base64Img}" style="width:100%; height:100%; object-fit:contain; image-rendering:pixelated;" />`
+            : (a.name || "A").charAt(0).toUpperCase();
+
+        const threshold = a.threshold || 1;
+        const progress = Math.min(a.progress || 0, threshold);
+        const pct = Math.max(0, Math.min(100, (progress / threshold) * 100));
+
+        const progressHtml = isUnlocked
+            ? `<div class="ach-progress-label">Unlocked${a.unlockedAt ? ' — ' + new Date(a.unlockedAt).toLocaleDateString() : ''}</div>`
+            : `
+                <div class="ach-progress-track"><div class="ach-progress-fill" style="width:${pct}%; background:${color};"></div></div>
+                <div class="ach-progress-label">${Math.floor(progress)} / ${threshold}</div>
+            `;
+
+        card.innerHTML = `
+            ${isUnlocked ? `<div class="ach-unlocked-badge">✅</div>` : ''}
+            <div class="ach-icon" style="background:${color}22; border: 2px solid ${color};">${iconHtml}</div>
+            <div class="ach-body">
+                <div class="ach-name" style="color:${isUnlocked ? color : '#ccc'};">${a.name}</div>
+                <div class="ach-desc">${a.description || ''}</div>
+                ${progressHtml}
+            </div>
+        `;
+        grid.appendChild(card);
+    }
+
+    // --- Collection ---
+
+    // The server sends handshake payloads with inconsistent casing depending on source
+    // (anonymous SignalR objects vs raw config dictionaries), so read defensively both ways —
+    // same pattern already used for char.textureKey / char.TextureKey elsewhere in this file.
+    private pick(obj: any, key: string): any {
+        if (!obj) return undefined;
+        const lower = key.charAt(0).toLowerCase() + key.slice(1);
+        const upper = key.charAt(0).toUpperCase() + key.slice(1);
+        return obj[lower] !== undefined ? obj[lower] : obj[upper];
+    }
+
+    private formatStatName(key: string): string {
+        const withSpaces = key.replace(/([A-Z])/g, ' $1').trim();
+        return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1);
+    }
+
+    private formatNumber(n: number): string {
+        if (n === undefined || n === null || isNaN(n)) return '0';
+        if (Number.isInteger(n)) return n.toString();
+        return n.toFixed(2).replace(/\.?0+$/, '');
+    }
+
+    private buildIconHtml(entry: any, fallbackLetter: string): string {
+        const textureKey = this.pick(entry, 'textureKey');
+        const frame = this.pick(entry, 'iconFrame') ?? 0;
+        const base64Img = textureKey ? this.getIconBase64(textureKey, frame) : null;
+        return base64Img ? `<img src="${base64Img}" />` : fallbackLetter;
+    }
+
+    // Renders a badge for a skill/effect id, resolving its display name + icon from the
+    // matching config dictionary (masterConfigs.skills or masterConfigs.effects) so the
+    // collection shows readable names/art instead of raw config ids.
+    private buildRefBadge(id: string, sourceDict: any): string {
+        const cfg = sourceDict ? sourceDict[id] : null;
+        const name = cfg ? (this.pick(cfg, 'name') || id) : id;
+        const textureKey = cfg ? this.pick(cfg, 'textureKey') : null;
+        const frame = cfg ? (this.pick(cfg, 'iconFrame') ?? 0) : 0;
+        const base64Img = textureKey ? this.getIconBase64(textureKey, frame) : null;
+        const iconHtml = base64Img
+            ? `<img src="${base64Img}" style="width:16px; height:16px; object-fit:contain; image-rendering:pixelated; margin-right:5px; vertical-align:middle;" />`
+            : '';
+        return `<span class="coll-badge">${iconHtml}${name}</span>`;
+    }
+
+    private buildRefBadgeRow(ids: string[], sourceDict: any): string {
+        if (!ids || ids.length === 0) return '';
+        return ids.map(id => this.buildRefBadge(id, sourceDict)).join('');
+    }
+
+    // Always re-fetches, unlike the initial handshake — otherwise newly-unlocked achievements
+    // earned mid-session (after Collection was first opened) would stay stale until reload.
+    private refreshCollectionCatalog() {
+        const grid = document.getElementById('collection-grid')!;
+        grid.innerHTML = `<div class="coll-empty">Loading collection data...</div>`;
+
+        this.connection.invoke("GetCollectionCatalog").then((payload: any) => {
+            this.masterConfigs = { ...(this.masterConfigs || {}), ...payload };
+            this.renderCollectionGrid();
+        }).catch(err => {
+            console.error("Failed to load collection catalog:", err);
+            grid.innerHTML = `<div class="coll-empty">Failed to load collection data.</div>`;
+        });
+    }
+
+    private renderCollectionGrid() {
+        const grid = document.getElementById('collection-grid')!;
+
+        if (!this.masterConfigs) {
+            this.refreshCollectionCatalog();
+            return;
+        }
+
+        grid.innerHTML = '';
+
+        const sourceMap: Record<string, any> = {
+            enemies: this.masterConfigs.enemies || this.masterConfigs.Enemies || {},
+            weapons: this.masterConfigs.weapons || this.masterConfigs.Weapons || {},
+            items: this.masterConfigs.items || this.masterConfigs.Items || {},
+            characters: this.masterConfigs.characters || this.masterConfigs.Characters || {},
+        };
+
+        const searchQuery = (document.getElementById('coll-search') as HTMLInputElement).value.trim().toLowerCase();
+        let entries: any[] = Object.values(sourceMap[this.activeCollectionTab] || {});
+
+        if (searchQuery) {
+            entries = entries.filter(e => {
+                const name = (this.pick(e, 'name') || this.pick(e, 'id') || '').toString().toLowerCase();
+                return name.includes(searchQuery);
+            });
+        }
+
+        if (entries.length === 0) {
+            grid.innerHTML = `<div class="coll-empty">No entries found.</div>`;
+            return;
+        }
+
+        // Tier ascending (weaker/common first), then alphabetical within a tier.
+        entries.sort((a, b) => {
+            const tierA = this.pick(a, 'tier') ?? 0;
+            const tierB = this.pick(b, 'tier') ?? 0;
+            if (tierA !== tierB) return tierA - tierB;
+            return (this.pick(a, 'name') || '').localeCompare(this.pick(b, 'name') || '');
+        });
+
+        entries.forEach(entry => {
+            let card: HTMLElement;
+            switch (this.activeCollectionTab) {
+                case 'weapons': card = this.buildWeaponCard(entry); break;
+                case 'items': card = this.buildItemCard(entry); break;
+                case 'characters': card = this.buildCharacterCollectionCard(entry); break;
+                default: card = this.buildEnemyCard(entry); break;
+            }
+            grid.appendChild(card);
+        });
+    }
+
+    private buildEnemyCard(e: any): HTMLElement {
+        const card = document.createElement('div');
+        card.className = 'coll-card';
+        const tier = this.pick(e, 'tier') ?? 1;
+        const color = getTierColor(tier);
+
+        const name = this.pick(e, 'name') || this.pick(e, 'id');
+        const isBoss = !!this.pick(e, 'isBoss');
+        const minWave = this.pick(e, 'minWave') ?? 1;
+        const maxWave = this.pick(e, 'maxWave') ?? 999;
+        const baseStats = this.pick(e, 'baseStats') || {};
+        const movesRandomly = !!this.pick(e, 'movesRandomly');
+        const hitRadius = this.pick(e, 'hitRadius') ?? 0;
+        const attackRadius = this.pick(e, 'attackRadius') ?? 0;
+        const weaponDropChance = this.pick(e, 'weaponDropChance') ?? 0;
+        const itemDropChance = this.pick(e, 'itemDropChance') ?? 0;
+        const startingWeapons: string[] = this.pick(e, 'startingWeapons') || [];
+        const startingItems: string[] = this.pick(e, 'startingItems') || [];
+        const startingSkills: string[] = this.pick(e, 'startingSkills') || [];
+        const onDeathSkills: string[] = this.pick(e, 'onDeathSkills') || [];
+        const skillsSource = this.masterConfigs?.skills || this.masterConfigs?.Skills || {};
+
+        const statBadges = Object.entries(baseStats)
+            .filter(([, v]) => (v as number) !== 0)
+            .map(([k, v]) => `<div class="coll-stat"><span class="coll-stat-label">${this.formatStatName(k)}</span><span class="coll-stat-value">${this.formatNumber(v as number)}</span></div>`)
+            .join('');
+
+        card.innerHTML = `
+            <div class="coll-card-header">
+                <div class="coll-icon" style="border: 2px solid ${color};">${this.buildIconHtml(e, (name || '?').charAt(0).toUpperCase())}</div>
+                <div class="coll-title-block">
+                    <div class="coll-name">${name}</div>
+                    <div class="coll-subtitle">Wave ${minWave}${maxWave < 999 ? '-' + maxWave : '+'}${movesRandomly ? ' • Wanders' : ''}</div>
+                </div>
+            </div>
+            <div class="coll-tags">
+                <span class="coll-tag coll-tag-tier" style="background:${color};">Tier ${tier}</span>
+                ${isBoss ? `<span class="coll-tag coll-tag-boss">Boss</span>` : ''}
+            </div>
+            <div class="coll-stat-grid">
+                ${statBadges}
+                <div class="coll-stat"><span class="coll-stat-label">Hit Radius</span><span class="coll-stat-value">${hitRadius}</span></div>
+                <div class="coll-stat"><span class="coll-stat-label">Attack Range</span><span class="coll-stat-value">${attackRadius}</span></div>
+                ${weaponDropChance > 0 ? `<div class="coll-stat"><span class="coll-stat-label">Weapon Drop</span><span class="coll-stat-value">${Math.round(weaponDropChance * 100)}%</span></div>` : ''}
+                ${itemDropChance > 0 ? `<div class="coll-stat"><span class="coll-stat-label">Item Drop</span><span class="coll-stat-value">${Math.round(itemDropChance * 100)}%</span></div>` : ''}
+            </div>
+            ${(startingWeapons.length || startingItems.length) ? `
+                <div>
+                    <div class="coll-section-label">Starting Gear</div>
+                    <div class="coll-badge-row">
+                        ${startingWeapons.map(w => `<span class="coll-badge">${w}</span>`).join('')}
+                        ${startingItems.map(i => `<span class="coll-badge">${i}</span>`).join('')}
+                    </div>
+                </div>` : ''}
+            ${startingSkills.length ? `
+                <div>
+                    <div class="coll-section-label">Skills</div>
+                    <div class="coll-badge-row">${this.buildRefBadgeRow(startingSkills, skillsSource)}</div>
+                </div>` : ''}
+            ${onDeathSkills.length ? `
+                <div>
+                    <div class="coll-section-label">On Death</div>
+                    <div class="coll-badge-row">${this.buildRefBadgeRow(onDeathSkills, skillsSource)}</div>
+                </div>` : ''}
+        `;
+        card.style.borderColor = color;
+        return card;
+    }
+
+    private buildWeaponCard(w: any): HTMLElement {
+        const card = document.createElement('div');
+        card.className = 'coll-card';
+        const tier = this.pick(w, 'tier') ?? 1;
+        const color = getTierColor(tier);
+
+        const name = this.pick(w, 'name') || this.pick(w, 'id');
+        const family = this.pick(w, 'weaponFamily') || '';
+        const price = this.pick(w, 'price') ?? 0;
+        const cooldown = this.pick(w, 'cooldownSeconds') ?? 0;
+        const melee = this.pick(w, 'meleeDamage') ?? 0;
+        const ranged = this.pick(w, 'rangedDamage') ?? 0;
+        const magic = this.pick(w, 'magicDamage') ?? 0;
+        const range = this.pick(w, 'range') ?? 0;
+        const projCount = this.pick(w, 'projectileCount') ?? 1;
+        const maxLevel = this.pick(w, 'maxLevel') ?? 5;
+        const allowDupes = !!this.pick(w, 'allowDuplicates');
+        const statBonuses = this.pick(w, 'statBonuses') || {};
+        const grantedSkills: string[] = this.pick(w, 'grantedSkills') || [];
+        const onHitEffects: string[] = this.pick(w, 'applyEffectsOnHit') || [];
+        const skillsSource = this.masterConfigs?.skills || this.masterConfigs?.Skills || {};
+        const effectsSource = this.masterConfigs?.effects || this.masterConfigs?.Effects || {};
+        const required: string[] = this.pick(w, 'requiredAchievements') || [];
+        const { locked, missing } = this.isGearLocked(required);
+
+        const dmgBadges = [
+            melee > 0 ? `<div class="coll-stat"><span class="coll-stat-label">Melee Dmg</span><span class="coll-stat-value">${this.formatNumber(melee)}</span></div>` : '',
+            ranged > 0 ? `<div class="coll-stat"><span class="coll-stat-label">Ranged Dmg</span><span class="coll-stat-value">${this.formatNumber(ranged)}</span></div>` : '',
+            magic > 0 ? `<div class="coll-stat"><span class="coll-stat-label">Magic Dmg</span><span class="coll-stat-value">${this.formatNumber(magic)}</span></div>` : '',
+        ].join('');
+
+        const bonusBadges = Object.entries(statBonuses)
+            .map(([k, v]) => `<span class="coll-badge">${this.formatStatName(k)} +${this.formatNumber(v as number)}</span>`)
+            .join('');
+
+        card.innerHTML = `
+            ${locked ? this.buildLockOverlay(missing) : ''}
+            <div class="coll-card-header">
+                <div class="coll-icon" style="border: 2px solid ${color};">${this.buildIconHtml(w, (name || '?').charAt(0).toUpperCase())}</div>
+                <div class="coll-title-block">
+                    <div class="coll-name">${name}</div>
+                    <div class="coll-subtitle">${family || 'Weapon'} • ${price}g</div>
+                </div>
+            </div>
+            <div class="coll-tags">
+                <span class="coll-tag coll-tag-tier" style="background:${color};">Tier ${tier}</span>
+                ${allowDupes ? `<span class="coll-tag" style="background:#444;">Stackable</span>` : ''}
+            </div>
+            <div class="coll-stat-grid">
+                ${dmgBadges}
+                <div class="coll-stat"><span class="coll-stat-label">Cooldown</span><span class="coll-stat-value">${this.formatNumber(cooldown)}s</span></div>
+                <div class="coll-stat"><span class="coll-stat-label">Range</span><span class="coll-stat-value">${this.formatNumber(range)}</span></div>
+                <div class="coll-stat"><span class="coll-stat-label">Projectiles</span><span class="coll-stat-value">${projCount}</span></div>
+                <div class="coll-stat"><span class="coll-stat-label">Max Level</span><span class="coll-stat-value">${maxLevel}</span></div>
+            </div>
+            ${bonusBadges ? `<div><div class="coll-section-label">Bonus Stats</div><div class="coll-badge-row">${bonusBadges}</div></div>` : ''}
+            ${grantedSkills.length ? `<div><div class="coll-section-label">Granted Skills</div><div class="coll-badge-row">${this.buildRefBadgeRow(grantedSkills, skillsSource)}</div></div>` : ''}
+            ${onHitEffects.length ? `<div><div class="coll-section-label">On-Hit Effects</div><div class="coll-badge-row">${this.buildRefBadgeRow(onHitEffects, effectsSource)}</div></div>` : ''}
+        `;
+        card.style.borderColor = color;
+        if (locked) card.classList.add('locked');
+        return card;
+    }
+
+    private buildItemCard(it: any): HTMLElement {
+        const card = document.createElement('div');
+        card.className = 'coll-card';
+        const tier = this.pick(it, 'tier') ?? 1;
+        const color = getTierColor(tier);
+
+        const name = this.pick(it, 'name') || this.pick(it, 'id');
+        const family = this.pick(it, 'itemFamily') || '';
+        const price = this.pick(it, 'price') ?? 0;
+        const maxLevel = this.pick(it, 'maxLevel') ?? 5;
+        const allowDupes = !!this.pick(it, 'allowDuplicates');
+        const statBonuses = this.pick(it, 'statBonuses') || {};
+        const statMultipliers = this.pick(it, 'statMultipliers') || {};
+        const grantedSkills: string[] = this.pick(it, 'grantedSkills') || [];
+        const effectsOnPurchase: string[] = this.pick(it, 'effectsOnPurchase') || [];
+        const effectsAtWaveEnd: any[] = this.pick(it, 'effectsAtWaveEnd') || [];
+        const skillsSource = this.masterConfigs?.skills || this.masterConfigs?.Skills || {};
+        const effectsSource = this.masterConfigs?.effects || this.masterConfigs?.Effects || {};
+        const required: string[] = this.pick(it, 'requiredAchievements') || [];
+        const { locked, missing } = this.isGearLocked(required);
+
+        const bonusBadges = Object.entries(statBonuses)
+            .map(([k, v]) => `<span class="coll-badge">${this.formatStatName(k)} +${this.formatNumber(v as number)}</span>`)
+            .join('');
+        const multBadges = Object.entries(statMultipliers)
+            .map(([k, v]) => `<span class="coll-badge">${this.formatStatName(k)} +${Math.round((v as number) * 100)}%</span>`)
+            .join('');
+        const waveEndBadges = effectsAtWaveEnd.map(we => {
+            const statName = this.pick(we, 'statName') || '';
+            const amount = this.pick(we, 'amount') ?? 0;
+            return `<span class="coll-badge">${this.formatStatName(statName)} +${this.formatNumber(amount)}/wave</span>`;
+        }).join('');
+
+        card.innerHTML = `
+            ${locked ? this.buildLockOverlay(missing) : ''}
+            <div class="coll-card-header">
+                <div class="coll-icon" style="border: 2px solid ${color};">${this.buildIconHtml(it, (name || '?').charAt(0).toUpperCase())}</div>
+                <div class="coll-title-block">
+                    <div class="coll-name">${name}</div>
+                    <div class="coll-subtitle">${family || 'Item'} • ${price}g</div>
+                </div>
+            </div>
+            <div class="coll-tags">
+                <span class="coll-tag coll-tag-tier" style="background:${color};">Tier ${tier}</span>
+                ${allowDupes ? `<span class="coll-tag" style="background:#444;">Stackable</span>` : ''}
+            </div>
+            <div class="coll-stat-grid">
+                <div class="coll-stat"><span class="coll-stat-label">Max Level</span><span class="coll-stat-value">${maxLevel}</span></div>
+            </div>
+            ${(bonusBadges || multBadges) ? `<div><div class="coll-section-label">Bonus Stats</div><div class="coll-badge-row">${bonusBadges}${multBadges}</div></div>` : ''}
+            ${grantedSkills.length ? `<div><div class="coll-section-label">Granted Skills</div><div class="coll-badge-row">${this.buildRefBadgeRow(grantedSkills, skillsSource)}</div></div>` : ''}
+            ${effectsOnPurchase.length ? `<div><div class="coll-section-label">On Purchase</div><div class="coll-badge-row">${this.buildRefBadgeRow(effectsOnPurchase, effectsSource)}</div></div>` : ''}
+            ${waveEndBadges ? `<div><div class="coll-section-label">Wave-End Bonus</div><div class="coll-badge-row">${waveEndBadges}</div></div>` : ''}
+        `;
+        card.style.borderColor = color;
+        if (locked) card.classList.add('locked');
+        return card;
+    }
+
+    private buildCharacterCollectionCard(c: any): HTMLElement {
+        const card = document.createElement('div');
+        card.className = 'coll-card';
+        const color = LOBBY_ASSETS.colorPrimary;
+
+        const name = this.pick(c, 'name') || this.pick(c, 'id');
+        const hitRadius = this.pick(c, 'hitRadius') ?? 0;
+        const baseStats = this.pick(c, 'baseStats') || {};
+        const startingWeapons: string[] = this.pick(c, 'startingWeapons') || [];
+        const startingItems: string[] = this.pick(c, 'startingItems') || [];
+        const startingSkills: string[] = this.pick(c, 'startingSkills') || [];
+        const onDeathSkills: string[] = this.pick(c, 'onDeathSkills') || [];
+        const skillsSource = this.masterConfigs?.skills || this.masterConfigs?.Skills || {};
+        const required: string[] = this.pick(c, 'requiredAchievements') || [];
+        const { locked, missing } = this.isGearLocked(required);
+
+        const statBadges = Object.entries(baseStats)
+            .filter(([, v]) => (v as number) !== 0)
+            .map(([k, v]) => `<div class="coll-stat"><span class="coll-stat-label">${this.formatStatName(k)}</span><span class="coll-stat-value">${this.formatNumber(v as number)}</span></div>`)
+            .join('');
+
+        card.innerHTML = `
+            ${locked ? this.buildLockOverlay(missing) : ''}
+            <div class="coll-card-header">
+                <div class="coll-icon" style="border: 2px solid ${color};">${this.buildIconHtml(c, (name || '?').charAt(0).toUpperCase())}</div>
+                <div class="coll-title-block">
+                    <div class="coll-name">${name}</div>
+                    <div class="coll-subtitle">Hit Radius ${hitRadius}</div>
+                </div>
+            </div>
+            <div class="coll-stat-grid">${statBadges}</div>
+            ${(startingWeapons.length || startingItems.length) ? `
+                <div>
+                    <div class="coll-section-label">Starting Gear</div>
+                    <div class="coll-badge-row">
+                        ${startingWeapons.map(w => `<span class="coll-badge">${w}</span>`).join('')}
+                        ${startingItems.map(i => `<span class="coll-badge">${i}</span>`).join('')}
+                    </div>
+                </div>` : ''}
+            ${startingSkills.length ? `
+                <div>
+                    <div class="coll-section-label">Skills</div>
+                    <div class="coll-badge-row">${this.buildRefBadgeRow(startingSkills, skillsSource)}</div>
+                </div>` : ''}
+            ${onDeathSkills.length ? `
+                <div>
+                    <div class="coll-section-label">On Death</div>
+                    <div class="coll-badge-row">${this.buildRefBadgeRow(onDeathSkills, skillsSource)}</div>
+                </div>` : ''}
+        `;
+        card.style.borderColor = color;
+        if (locked) card.classList.add('locked');
+        return card;
     }
 
     private refreshRooms() {
@@ -674,6 +1196,60 @@ export class LobbyUI {
         @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; transform: translateY(-10px); } }
         #password-modal-overlay { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 200001; display: flex; justify-content: center; align-items: center; }
         .modal-box { background: ${LOBBY_ASSETS.colorBtnBgTop}; border: 2px solid ${LOBBY_ASSETS.colorPrimary}; padding: 40px; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.8); width: 400px; text-align: center; }
+
+        /* --- Achievements --- */
+        .ach-filter-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 15px; flex-wrap: wrap; }
+        .ach-filter-sep { width: 2px; height: 20px; background: #333; margin: 0 4px; }
+        .ach-filter-btn { --tier-color: ${LOBBY_ASSETS.colorPrimary}; background: rgba(0,0,0,0.5); border: 2px solid #333; color: ${LOBBY_ASSETS.colorMuted}; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; transition: 0.2s; }
+        .ach-filter-btn:hover { border-color: var(--tier-color); color: #fff; }
+        .ach-filter-btn.active { background: var(--tier-color); border-color: var(--tier-color); color: #fff; }
+        .ach-grid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 15px; padding-right: 10px; padding-bottom: 20px; align-content: start; }
+        .ach-card { position: relative; background: rgba(0,0,0,0.5); border: 2px solid #333; border-radius: 8px; padding: 16px; display: flex; gap: 12px; align-items: flex-start; min-height: 92px; }
+        .ach-card.unlocked { background: rgba(0,0,0,0.6); padding-right: 36px; }
+        .ach-card.locked { opacity: 0.55; filter: grayscale(0.6); }
+        .ach-icon { width: 44px; height: 44px; min-width: 44px; border-radius: 6px; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; color: #fff; background: #111; overflow: hidden; }
+        .ach-body { flex: 1; min-width: 0; }
+        .ach-name { font-weight: bold; font-size: 14px; margin-bottom: 4px; color: #fff; line-height: 1.3; word-wrap: break-word; }
+        .ach-desc { font-size: 12px; color: ${LOBBY_ASSETS.colorMuted}; margin-bottom: 8px; line-height: 1.4; word-wrap: break-word; }
+        .ach-progress-track { width: 100%; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.1); overflow: hidden; }
+        .ach-progress-fill { height: 100%; border-radius: 3px; transition: width 0.3s ease; }
+        .ach-progress-label { font-size: 11px; color: ${LOBBY_ASSETS.colorMuted}; margin-top: 4px; text-align: right; }
+        .ach-unlocked-badge { position: absolute; top: 8px; right: 8px; font-size: 16px; }
+        .lock-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.65); display: flex; flex-direction: column; justify-content: center; align-items: center; border-radius: 6px; z-index: 5; text-align: center; padding: 6px; cursor: not-allowed; }
+        .lock-overlay .lock-icon { font-size: 22px; margin-bottom: 4px; }
+        .lock-overlay .lock-req { font-size: 13px; color: #ddd; line-height: 1.4; font-weight: bold; padding: 0 8px; }
+        .lock-overlay .lock-req-label { font-size: 11px; color: ${LOBBY_ASSETS.colorMuted}; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+        .lock-req-list { display: flex; flex-direction: column; gap: 6px; align-items: center; max-width: 90%; }
+        .lock-req-badge { display: flex; align-items: center; gap: 7px; background: rgba(0,0,0,0.6); border: 1px solid ${LOBBY_ASSETS.colorPrimary}; border-radius: 20px; padding: 5px 12px; font-size: 12px; font-weight: bold; color: #fff; }
+        .char-card { position: relative; }
+
+        /* --- Collection --- */
+        .coll-tab-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; }
+        .coll-tab-btn { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.5); border: 2px solid #333; color: ${LOBBY_ASSETS.colorMuted}; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; transition: 0.2s; }
+        .coll-tab-icon { font-size: 16px; }
+        .coll-tab-btn:hover { border-color: ${LOBBY_ASSETS.colorPrimary}; color: #fff; }
+        .coll-tab-btn.active { background: linear-gradient(180deg, ${LOBBY_ASSETS.colorBtnBgTop} 0%, ${LOBBY_ASSETS.colorBtnBgBot} 100%); border-color: ${LOBBY_ASSETS.colorPrimary}; color: #fff; box-shadow: 0 0 12px rgba(229, 179, 92, 0.25); }
+        .coll-grid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; padding-right: 10px; padding-bottom: 20px; align-content: start; }
+        .coll-card { position: relative; background: rgba(0,0,0,0.5); border: 2px solid #333; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+        .coll-card-header { display: flex; gap: 12px; align-items: center; }
+        .coll-icon { width: 52px; height: 52px; min-width: 52px; border-radius: 6px; display: flex; justify-content: center; align-items: center; font-size: 22px; font-weight: bold; color: #fff; background: #111; overflow: hidden; }
+        .coll-icon img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+        .coll-title-block { flex: 1; min-width: 0; }
+        .coll-name { font-weight: bold; font-size: 16px; color: #fff; line-height: 1.3; word-wrap: break-word; }
+        .coll-subtitle { font-size: 11px; color: ${LOBBY_ASSETS.colorMuted}; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+        .coll-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+        .coll-tag { font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; padding: 3px 8px; border-radius: 4px; color: #fff; }
+        .coll-tag-boss { background: #8b0000; }
+        .coll-tag-tier { }
+        .coll-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+        .coll-stat { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 8px; background: rgba(255,255,255,0.04); border-radius: 4px; }
+        .coll-stat-label { color: ${LOBBY_ASSETS.colorMuted}; }
+        .coll-stat-value { color: #fff; font-weight: bold; }
+        .coll-section-label { font-size: 10px; color: ${LOBBY_ASSETS.colorMuted}; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+        .coll-badge-row { display: flex; gap: 6px; flex-wrap: wrap; }
+        .coll-badge { font-size: 11px; padding: 4px 9px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid #333; color: #ddd; }
+        .coll-empty { padding: 20px; color: ${LOBBY_ASSETS.colorMuted}; grid-column: 1 / -1; text-align: center; }
+        .coll-card.locked { opacity: 0.55; filter: grayscale(0.6); }
         `;
         document.head.appendChild(style);
     }
@@ -704,6 +1280,7 @@ export class LobbyUI {
                     <img src="${LOBBY_ASSETS.gameLogo}" class="logo-img" alt="Mage Arena" />
                 </div>
                 <button id="btn-play" class="lobby-btn">NEW GAME</button>
+                <button id="btn-achievements" class="lobby-btn">ACHIEVEMENTS</button>
                 <button id="btn-collection" class="lobby-btn">COLLECTION</button>
                 <button id="btn-settings" class="lobby-btn">OPTIONS</button>
                 <button id="btn-fullscreen" class="lobby-btn">TOGGLE FULLSCREEN</button>
@@ -729,6 +1306,39 @@ export class LobbyUI {
                     </div>
                 </div>
                 <div id="room-list-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; padding-right: 10px;"></div>
+            </div>
+
+            <div id="screen-achievements" class="full-screen-panel hidden">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="margin:0; border:none; padding:0;">Achievements</h2>
+                    <button id="btn-back-from-achievements" class="lobby-btn danger" style="width: auto; padding: 10px 30px; margin:0;">Back</button>
+                </div>
+                <div id="ach-filter-bar" class="ach-filter-bar">
+                    <button class="ach-filter-btn active" data-filter="all">All</button>
+                    <button class="ach-filter-btn" data-filter="unlocked">Unlocked</button>
+                    <button class="ach-filter-btn" data-filter="locked">Locked</button>
+                    <span class="ach-filter-sep"></span>
+                    <button class="ach-filter-btn" data-filter="tier1" style="--tier-color:${TIER_COLORS[1]}">Tier 1</button>
+                    <button class="ach-filter-btn" data-filter="tier2" style="--tier-color:${TIER_COLORS[2]}">Tier 2</button>
+                    <button class="ach-filter-btn" data-filter="tier3" style="--tier-color:${TIER_COLORS[3]}">Tier 3</button>
+                    <button class="ach-filter-btn" data-filter="tier4" style="--tier-color:${TIER_COLORS[4]}">Tier 4</button>
+                </div>
+                <div id="achievements-grid" class="ach-grid"></div>
+            </div>
+
+            <div id="screen-collection" class="full-screen-panel hidden">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="margin:0; border:none; padding:0;">Collection</h2>
+                    <button id="btn-back-from-collection" class="lobby-btn danger" style="width: auto; padding: 10px 30px; margin:0;">Back</button>
+                </div>
+                <div class="coll-tab-bar">
+                    <button class="coll-tab-btn active" data-tab="enemies"><span class="coll-tab-icon">☠</span> Enemies</button>
+                    <button class="coll-tab-btn" data-tab="weapons"><span class="coll-tab-icon">⚔</span> Weapons</button>
+                    <button class="coll-tab-btn" data-tab="items"><span class="coll-tab-icon">◆</span> Items</button>
+                    <button class="coll-tab-btn" data-tab="characters"><span class="coll-tab-icon">☺</span> Characters</button>
+                    <input type="text" id="coll-search" class="lobby-input" placeholder="Search..." style="margin: 0 0 0 auto; width: 220px; padding: 8px 14px;" />
+                </div>
+                <div id="collection-grid" class="coll-grid"></div>
             </div>
 
             <div id="screen-waiting" class="full-screen-panel hidden">
@@ -818,7 +1428,38 @@ export class LobbyUI {
             this.refreshRooms();
         };
 
-        document.getElementById('btn-collection')!.onclick = () => this.showToast("Collection", "Collection menu coming soon!");
+        document.getElementById('btn-collection')!.onclick = () => {
+            switchScreen('screen-menu', 'screen-collection');
+            this.refreshCollectionCatalog();
+        };
+        document.getElementById('btn-back-from-collection')!.onclick = () => switchScreen('screen-collection', 'screen-menu');
+
+        document.querySelectorAll('.coll-tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.coll-tab-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.activeCollectionTab = (btn as HTMLElement).dataset.tab || 'enemies';
+                (document.getElementById('coll-search') as HTMLInputElement).value = '';
+                this.renderCollectionGrid();
+            });
+        });
+
+        document.getElementById('coll-search')!.addEventListener('input', () => this.renderCollectionGrid());
+        document.getElementById('btn-achievements')!.onclick = () => {
+            switchScreen('screen-menu', 'screen-achievements');
+            this.loadAchievements();
+        };
+        document.getElementById('btn-back-from-achievements')!.onclick = () => switchScreen('screen-achievements', 'screen-menu');
+
+        document.querySelectorAll('.ach-filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.ach-filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.activeAchFilter = (btn as HTMLElement).dataset.filter || 'all';
+                this.renderAchievementGrid();
+            });
+        });
+
         document.getElementById('btn-settings')!.onclick = () => this.showToast("Settings", "Settings menu coming soon!");
         document.getElementById('btn-fullscreen')!.onclick = () => {
             if (!document.fullscreenElement) {
@@ -931,6 +1572,35 @@ export class LobbyUI {
         this.connection.on("ReceiveHandshake", (payload: any) => {
             this.masterConfigs = payload;
             this.renderCharacterGrid();
+        });
+
+        // NOTE: achievements currently only unlock mid-match (server-side, via GameRoom →
+        // MatchHub's connection), so this fires only if you later add lobby-side unlock
+        // triggers. The character grid still updates correctly on lobby (re)join either way,
+        // since InnerJoinRoom re-fetches UnlockedAchievementIds from the DB every time.
+        this.connection.on("AchievementUnlocked", (achievementIds: string[]) => {
+            if (!achievementIds || achievementIds.length === 0) return;
+
+            // Keep the local unlocked-set in sync so lock overlays update immediately
+            // without waiting for the next handshake.
+            if (this.masterConfigs) {
+                this.masterConfigs.myUnlockedAchievements = [
+                    ...(this.masterConfigs.myUnlockedAchievements || []),
+                    ...achievementIds
+                ];
+            }
+
+            const achievements = this.masterConfigs?.achievements || {};
+            achievementIds.forEach(id => {
+                const a = achievements[id];
+                const name = a ? (a.name || a.Name || id) : id;
+                this.showToast("🏆 Achievement Unlocked", name, "success");
+            });
+
+            this.renderCharacterGrid();
+            if (!document.getElementById('screen-achievements')!.classList.contains('hidden')) {
+                this.loadAchievements();
+            }
         });
 
         this.connection.on("LobbyListUpdated", () => {

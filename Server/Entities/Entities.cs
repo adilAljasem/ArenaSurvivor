@@ -287,6 +287,25 @@ public class PlayerEntity : BaseActorEntity
     public int Kills { get; set; } = 0;
     public int Deaths { get; set; } = 0;
 
+    // Populated once when the player joins the lobby (LobbyHub.InnerJoinRoom) from the DB,
+    // and carried across to the Worker node via PlayerTransferDto on match handoff.
+    // Used to gate character selection and filter locked gear out of the shop.
+    [JsonIgnore]
+    public HashSet<string> UnlockedAchievementIds { get; set; } = new();
+
+    // --- Achievement tracking (match-scoped, not networked) ---
+    // Highest number of weapon slots ever filled at once this match (used by achievements
+    // like "clear wave 20 with only 2 weapons").
+    [JsonIgnore]
+    public int PeakWeaponsEquipped { get; set; } = 0;
+
+    // Highest value ever reached this match for EVERY stat (keyed by the same stat names as
+    // CachedStats/ConfigManager.AllStats — "maxHp", "critChance", "luck", whatever exists).
+    // Powers generic "reach X of stat Y before wave Z" achievements without hardcoding a
+    // dedicated field per stat. Updated in StatSystem.RecalculatePlayer.
+    [JsonIgnore]
+    public Dictionary<string, float> PeakStats { get; set; } = new();
+
 
     // The formula for how much XP you need to reach the next level
     public float GetXpRequirement() => 5 + (Level * 3);

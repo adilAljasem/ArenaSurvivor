@@ -9,6 +9,7 @@ public class ApplicationDbContext : DbContext
 
     public DbSet<User> Users => Set<User>();
     public DbSet<MatchRecord> MatchRecords => Set<MatchRecord>();
+    public DbSet<UserAchievement> UserAchievements => Set<UserAchievement>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -25,8 +26,8 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<MatchRecord>()
             .HasIndex(m => new { m.Difficulty, m.HighestWave });
 
+        modelBuilder.Entity<UserAchievement>()
+            .HasIndex(u => new { u.UserId, u.AchievementId }).IsUnique();
+
     }
 }
-
-
-

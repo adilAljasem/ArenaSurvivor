@@ -50,6 +50,13 @@ namespace Server.Migrations
                     b.Property<DateTime>("MatchDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("PeakStatsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("PeakWeaponsEquipped")
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("PlayerId")
                         .HasColumnType("uuid");
 
@@ -133,6 +140,32 @@ namespace Server.Migrations
                         .IsUnique();
 
                     b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("Server.Configs.UserAchievement", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AchievementId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UnlockedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "AchievementId")
+                        .IsUnique();
+
+                    b.ToTable("UserAchievements");
                 });
 #pragma warning restore 612, 618
         }

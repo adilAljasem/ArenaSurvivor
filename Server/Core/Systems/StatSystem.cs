@@ -116,6 +116,10 @@ public class StatSystem : IGameSystem
                 player.PendingStatDiff[statName] = finalValue;
 
             player.CachedStats[statName] = finalValue;
+
+            // Achievement tracking: remember the highest value this stat ever reached this match.
+            if (!player.PeakStats.TryGetValue(statName, out float peakVal) || finalValue > peakVal)
+                player.PeakStats[statName] = finalValue;
         }
 
         player.CurrentMaxHp = Math.Max(1f, player.CachedStats.GetValueOrDefault("maxHp", 100f));

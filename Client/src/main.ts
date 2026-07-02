@@ -208,6 +208,11 @@ class GameScene extends Phaser.Scene {
         this.load.spritesheet('Enemies1_sheet', '/assets/Enemies/mosquito-fly devil - fly fortest.png', { frameWidth: 64, frameHeight: 64 });
         this.load.spritesheet('effects3', '/assets/Effects/Bullet 24x24 Part 7B Free.png', { frameWidth: 24, frameHeight: 24 });
 
+        this.load.spritesheet('ui_achievements', '/assets/menu/ui_achievements.png', { frameWidth: 234, frameHeight: 219 });
+
+
+        
+
         this.load.image('tex_grass', '/assets/obstacles/grass map.jpg');
         this.load.image('tex_sand', '/assets/obstacles/map1.jpg');
 
@@ -1103,6 +1108,27 @@ class GameScene extends Phaser.Scene {
         // >>> ADD textureKey and iconFrame TO THE LISTENER <<<
         matchConnection.on("LootNotification", (playerName: string, itemName: string, tier: number, textureKey: string, iconFrame: number) => {
             this.lootNotifier.show(playerName, itemName, tier, textureKey, iconFrame);
+        });
+
+        matchConnection.off("AchievementUnlocked");
+        matchConnection.on("AchievementUnlocked", (achievementIds: string[]) => {
+            if (!achievementIds || achievementIds.length === 0) return;
+
+            const achievements = masterConfigs?.achievements || masterConfigs?.Achievements || {};
+            const localName = localStorage.getItem('arena_username') ?? "You";
+
+            achievementIds.forEach(id => {
+                const a = achievements[id];
+                if (!a) return;
+                const name = a.name || a.Name || id;
+                const tier = a.tier ?? a.Tier ?? 1;
+                const textureKey = a.textureKey || a.TextureKey || '';
+                const iconFrame = a.iconFrame ?? a.IconFrame ?? 0;
+
+                // Reuses the existing loot popup so achievement toasts automatically match
+                // your item/weapon tier coloring without a separate UI component.
+                this.lootNotifier.show(localName, `🏆 ${name}`, tier, textureKey, iconFrame);
+            });
         });
 
         matchConnection.off("ShopSuccess");

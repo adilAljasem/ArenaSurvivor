@@ -65,22 +65,28 @@ public class MatchRecord
     public float TotalShieldingDone { get; set; }
     public int Kills { get; set; }
     public int Deaths { get; set; }
-    
+
+    // Peak values reached during the match — used by achievements that need more than the
+    // final/cumulative totals (e.g. "clear wave 20 with only 2 weapons", "reach 5000 max HP").
+    public int PeakWeaponsEquipped { get; set; }
+
+    // JSON-serialized Dictionary<string,float> of the highest value every stat reached this
+    // match (keyed by the same stat names as ConfigManager.AllStats). Stored as a blob rather
+    // than one column per stat so new stats never require a migration.
+    public string PeakStatsJson { get; set; } = "{}";
+
     public DateTime MatchDate { get; set; } = DateTime.UtcNow;
 }
 
-public class AchievementConfig
+public class UserAchievement
 {
-    public string Id { get; set; }
-    public string Name { get; set; }
-    public string Description { get; set; }
-    public int Tier { get; set; }              // 1-4, same scale as gear
-    public string TextureKey { get; set; }
-    public int IconFrame { get; set; }
-    public bool Hidden { get; set; }            // secret until unlocked
-    public string Scope { get; set; }           // "Lifetime" | "SingleMatch"
-    public string ConditionType { get; set; }   // "TotalKills", "HighestWaveReached", "TotalDamageDealt", "CharacterWaveCleared", etc.
-    public string ConditionStat { get; set; }   // optional: characterId/difficulty for scoped conditions
-    public float Threshold { get; set; }
-}
+    [Key]
+    public int Id { get; set; }
+    public Guid UserId { get; set; }
 
+    // Matches AchievementConfig.Id (data-driven, not an FK — config can be hot-reloaded/edited
+    // freely without touching the DB).
+    public string AchievementId { get; set; } = string.Empty;
+
+    public DateTime UnlockedAt { get; set; } = DateTime.UtcNow;
+}

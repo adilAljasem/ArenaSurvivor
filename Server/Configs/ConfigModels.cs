@@ -66,6 +66,13 @@ public abstract class BaseGearConfig
     /// <summary>Whether this gear appears in the player shop. Default: true.</summary>
     public bool AvailableInShop { get; set; } = true;
     public int MaxLevel { get; set; } = 5;
+
+    /// <summary>
+    /// Achievement ids the player must have ALL of to see/purchase this gear.
+    /// Empty (default) = unlocked for everyone. Enforced server-side in
+    /// MatchHub.GenerateShopForPlayer, so locked gear simply never rolls in the shop.
+    /// </summary>
+    public List<string> RequiredAchievements { get; set; } = new();
 }
 
 // =================================================================================
@@ -108,6 +115,12 @@ public class CharacterConfig
     public List<string> StartingSkills { get; set; } = new();
     public List<string> OnDeathSkills { get; set; } = new();
     public List<DynamicSkillTrigger> DynamicSkills { get; set; } = new();
+
+    /// <summary>
+    /// Achievement ids the player must have ALL of to select this character.
+    /// Empty (default) = unlocked for everyone. Enforced server-side in LobbyHub.SelectCharacter.
+    /// </summary>
+    public List<string> RequiredAchievements { get; set; } = new();
 }
 
 public class EnemyConfig
@@ -437,4 +450,50 @@ public class DifficultyConfig
     public int RerollInflation { get; set; } = 2;
 
     public float RecycleValueMultiplier { get; set; } = 1.0f;
+}
+
+// =================================================================================
+// ACHIEVEMENTS (data-driven, loaded from Configs/Achievements.json like everything else)
+// =================================================================================
+
+public class AchievementConfig
+{
+    // --- Identity ---
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+
+    // --- Visuals (same Tier scale/coloring as WeaponConfig/ItemConfig) ---
+    public int Tier { get; set; } = 1;
+    public string TextureKey { get; set; } = string.Empty;
+    public int IconFrame { get; set; }
+
+    // If true, Name/Description/icon are hidden from the catalog until unlocked.
+    public bool Hidden { get; set; } = false;
+
+    // "Lifetime"    -> evaluated against aggregated stats across ALL of the player's matches.
+    // "SingleMatch" -> evaluated against a single match's own stats; does not persist/carry
+    //                  over if the match ends without hitting the threshold.
+    public string Scope { get; set; } = "Lifetime";
+
+    // Drives which stat AchievementService checks. See AchievementService.ConditionType
+    // handling for the supported list (e.g. "LifetimeStat", "SingleMatchStat",
+    // "HighestWaveReached", "MaxStatByWave", "MaxStatReached", "CharacterWaveCleared",
+    // "DifficultyWaveCleared"...).
+    public string ConditionType { get; set; } = string.Empty;
+
+    // Optional scoping value used by conditions like CharacterWaveCleared (a characterId),
+    // DifficultyWaveCleared (a difficultyId), LimitedWeaponsWaveCleared (max weapon count),
+    // or MaxStatByWave (the wave limit — paired with StatName below).
+    public string ConditionStat { get; set; } = string.Empty;
+
+    // Which stat to read for stat-based conditions:
+    //   - "LifetimeStat" / "SingleMatchStat": one of "kills", "deaths", "damageDealt",
+    //     "damageTaken", "healingDone", "shieldingDone" (fixed MatchRecord columns).
+    //   - "MaxStatByWave" / "MaxStatReached": ANY key from ConfigManager.AllStats
+    //     (e.g. "maxHp", "critChance", "luck") — reads from the player's PeakStats map,
+    //     so any stat that exists in your stat config works without server changes.
+    public string StatName { get; set; } = string.Empty;
+
+    public float Threshold { get; set; }
 }

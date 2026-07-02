@@ -75,6 +75,7 @@ builder.Services.AddAuthorization();
 // ─── GAME SERVICES ────────────────────────────────────────────────────────────
 builder.Services.AddSingleton<Server.Configs.ConfigManager>();
 builder.Services.AddSingleton<RoomManager>();
+builder.Services.AddSingleton<Server.Core.Services.AchievementService>();
 
 // ─── ROLE-BASED SERVICES ─────────────────────────────────────────────────────
 var serverRole = serverConfig.Role;

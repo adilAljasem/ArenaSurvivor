@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 
 namespace Server.Core;
@@ -199,6 +200,11 @@ public class GameRoom
         {
             using var scope = _serviceProvider.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var achievementService = scope.ServiceProvider.GetRequiredService<Server.Core.Services.AchievementService>();
+
+            // Track which MatchRecord belongs to which player so we can evaluate
+            // achievements against it right after it's saved.
+            var savedRecordsByPlayerId = new Dictionary<Guid, MatchRecord>();
 
             foreach (var player in State.Players.Values)
             {
@@ -218,12 +224,15 @@ public class GameRoom
                     existingRecord.TotalShieldingDone = player.TotalShieldingDone;
                     existingRecord.Kills = player.Kills;
                     existingRecord.Deaths = player.Deaths;
+                    existingRecord.PeakWeaponsEquipped = player.PeakWeaponsEquipped;
+                    existingRecord.PeakStatsJson = JsonSerializer.Serialize(player.PeakStats);
                     // Note: We don't update MatchDate so it reflects when the match started
+                    savedRecordsByPlayerId[parsedPlayerId] = existingRecord;
                 }
                 else
                 {
                     // 3. INSERT new record (happens on Wave 1)
-                    db.MatchRecords.Add(new MatchRecord
+                    var newRecord = new MatchRecord
                     {
                         RoomId = RoomId,  // Link it to this room!
                         PlayerId = parsedPlayerId,
@@ -237,14 +246,35 @@ public class GameRoom
                         TotalShieldingDone = player.TotalShieldingDone,
                         Kills = player.Kills,
                         Deaths = player.Deaths,
+                        PeakWeaponsEquipped = player.PeakWeaponsEquipped,
+                        PeakStatsJson = JsonSerializer.Serialize(player.PeakStats),
                         MatchDate = DateTime.UtcNow
-                    });
+                    };
+                    db.MatchRecords.Add(newRecord);
+                    savedRecordsByPlayerId[parsedPlayerId] = newRecord;
                 }
             }
 
             // 4. Save all changes (both updates and inserts) at once
             await db.SaveChangesAsync();
             Console.WriteLine($"[DB] Match Records synced for Room {RoomId} at Wave {State.CurrentWave}.");
+
+            // 5. Achievement evaluation — runs after the match state is safely persisted,
+            //    so both "Lifetime" (aggregated across all matches) and "SingleMatch"
+            //    (this match's own row) conditions see up-to-date numbers.
+            foreach (var player in State.Players.Values)
+            {
+                if (!Guid.TryParse(player.PlayerId, out Guid parsedPlayerId)) continue;
+                if (!savedRecordsByPlayerId.TryGetValue(parsedPlayerId, out var record)) continue;
+
+                var newlyUnlocked = await achievementService.EvaluateAndUnlockAsync(db, parsedPlayerId, record);
+                if (newlyUnlocked.Count > 0)
+                {
+                    player.UnlockedAchievementIds.UnionWith(newlyUnlocked);
+                    await _matchHubContext.Clients.Client(player.ConnectionId)
+                        .SendAsync("AchievementUnlocked", newlyUnlocked);
+                }
+            }
         }
         catch (Exception ex)
         {

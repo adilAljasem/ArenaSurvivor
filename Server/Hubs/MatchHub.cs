@@ -3,7 +3,9 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
 using Server.Configs;
 using Server.Core;
+using Server.Core.Services;
 using Server.Core.Systems;
+using Server.Data;
 using Server.DTOs;
 using Server.Entities;
 using Server.Services;
@@ -19,15 +21,19 @@ public class MatchHub : Hub
     private readonly RedisService _redisService;
     private readonly RoomConfig _roomConfig;
     private readonly ServerConfig _serverConfig;
+    private readonly ApplicationDbContext _db;
+    private readonly AchievementService _achievementService;
 
     public MatchHub(RoomManager roomManager, ConfigManager configManager, RedisService redisService, IOptions<RoomConfig> roomConfig,
-                      IOptions<ServerConfig> serverConfig)
+                      IOptions<ServerConfig> serverConfig, ApplicationDbContext db, AchievementService achievementService)
     {
         _roomManager = roomManager;
         _configManager = configManager;
         _redisService = redisService;
         _roomConfig = roomConfig.Value;
         _serverConfig = serverConfig.Value;
+        _db = db;
+        _achievementService = achievementService;
     }
 
     public override async Task OnConnectedAsync()
@@ -178,7 +184,10 @@ public class MatchHub : Hub
                         Team = "Player",
                         X = 640,
                         Y = 360,
-                        ConfigId = dto.ConfigId
+                        ConfigId = dto.ConfigId,
+                        UnlockedAchievementIds = dto.UnlockedAchievementIds != null
+                            ? new HashSet<string>(dto.UnlockedAchievementIds)
+                            : new HashSet<string>()
                     };
                     if (_configManager.Characters.ContainsKey(dto.ConfigId))
                         entity.Initialize(_configManager.Characters[dto.ConfigId], _configManager);
@@ -272,6 +281,7 @@ public class MatchHub : Hub
             skills = _configManager.Skills,
             maps = _configManager.Maps,
             traits = _configManager.Traits,
+            achievements = _configManager.Achievements,
             currentMapId = room.CurrentMapId
         });
 
@@ -401,6 +411,14 @@ public class MatchHub : Hub
         }
     }
 
+    // Gear with an empty RequiredAchievements list is unlocked for everyone. Otherwise the
+    // player needs ALL listed achievement ids.
+    private static bool IsUnlockedFor(List<string> requiredAchievements, PlayerEntity player)
+    {
+        if (requiredAchievements == null || requiredAchievements.Count == 0) return true;
+        return requiredAchievements.All(id => player.UnlockedAchievementIds.Contains(id));
+    }
+
     public static void GenerateShopForPlayer(PlayerEntity player, ConfigManager configManager, int currentWave)
     {
         float luck = player.GetTotalStat("luck", configManager);
@@ -410,10 +428,10 @@ public class MatchHub : Hub
         for (int i = 0; i < slots; i++)
         {
             int tier = RollRarityTier(luck, 4);
-            var weapons = configManager.Weapons.Values.Where(w => w.Tier == tier && w.AvailableInShop).ToList();
-            var items = configManager.Items.Values.Where(it => it.Tier == tier && it.AvailableInShop).ToList();
-            if (!weapons.Any()) weapons = configManager.Weapons.Values.Where(w => w.Tier <= tier && w.AvailableInShop).ToList();
-            if (!items.Any()) items = configManager.Items.Values.Where(it => it.Tier <= tier && it.AvailableInShop).ToList();
+            var weapons = configManager.Weapons.Values.Where(w => w.Tier == tier && w.AvailableInShop && IsUnlockedFor(w.RequiredAchievements, player)).ToList();
+            var items = configManager.Items.Values.Where(it => it.Tier == tier && it.AvailableInShop && IsUnlockedFor(it.RequiredAchievements, player)).ToList();
+            if (!weapons.Any()) weapons = configManager.Weapons.Values.Where(w => w.Tier <= tier && w.AvailableInShop && IsUnlockedFor(w.RequiredAchievements, player)).ToList();
+            if (!items.Any()) items = configManager.Items.Values.Where(it => it.Tier <= tier && it.AvailableInShop && IsUnlockedFor(it.RequiredAchievements, player)).ToList();
 
             bool spawnWeapon = Random.Shared.Next(2) == 0 || !items.Any();
             if (spawnWeapon && weapons.Any())
@@ -439,6 +457,7 @@ public class MatchHub : Hub
         // We will store the result of the lock here so we can await it outside the lock
         string errorMessage = null;
         bool isSuccess = false;
+        bool anyGearMaxed = false;
 
         lock (player)
         {
@@ -491,6 +510,7 @@ public class MatchHub : Hub
                         w.MergedConfigIds.Add(configId);
                         if (shopItem.WeaponSkills != null) foreach (var sid in shopItem.WeaponSkills) if (_configManager.Skills.TryGetValue(sid, out var sc)) w.WeaponSkills.Add(new ActiveSkill { ConfigId = sid, CurrentCooldown = sc.CooldownSeconds });
                         isSuccess = player.TryAddOrMergeWeapon(w, _configManager);
+                        if (isSuccess && player.Weapons.Count > player.PeakWeaponsEquipped) player.PeakWeaponsEquipped = player.Weapons.Count;
                     }
                     else if (isItem)
                     {
@@ -505,6 +525,10 @@ public class MatchHub : Hub
                     {
                         player.Gold -= shopItem.Price;
                         player.CurrentShop.Remove(shopItem);
+
+                        // "Level a weapon/item to its max level" achievement check.
+                        anyGearMaxed = player.Weapons.Any(w2 => _configManager.Weapons.TryGetValue(w2.ConfigId, out var wc2) && w2.Level >= wc2.MaxLevel)
+                                    || player.OwnedItems.Any(i2 => _configManager.Items.TryGetValue(i2.ConfigId, out var ic2) && i2.Level >= ic2.MaxLevel);
                     }
                     else
                     {
@@ -525,6 +549,16 @@ public class MatchHub : Hub
         {
             await Clients.Caller.SendAsync("ShopSuccess");
             await SendPlayerUI(player, room.State);
+
+            if (anyGearMaxed)
+            {
+                var newlyUnlocked = await _achievementService.EvaluateFlagAsync(_db, Guid.Parse(GetPlayerId()), "GearMaxLevel");
+                if (newlyUnlocked.Count > 0)
+                {
+                    player.UnlockedAchievementIds.UnionWith(newlyUnlocked);
+                    await Clients.Caller.SendAsync("AchievementUnlocked", newlyUnlocked);
+                }
+            }
         }
     }
 

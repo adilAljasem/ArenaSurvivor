@@ -3,6 +3,9 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
 using Server.Configs;
 using Server.Core;
+using Server.Core.Services;
+using Server.Data;
+using Server.DTOs;
 using Server.Entities;
 using Server.Services;
 using StackExchange.Redis;
@@ -18,15 +21,19 @@ public class LobbyHub : Hub
     private readonly RedisService _redisService;
     private readonly IConnectionMultiplexer _redis;
     private readonly ServerConfig _serverConfig;
+    private readonly ApplicationDbContext _db;
+    private readonly AchievementService _achievementService;
 
     public LobbyHub(RoomManager roomManager, ConfigManager configManager, RedisService redisService,
-        IConnectionMultiplexer redis, IOptions<ServerConfig> serverConfig)
+        IConnectionMultiplexer redis, IOptions<ServerConfig> serverConfig, ApplicationDbContext db, AchievementService achievementService)
     {
         _roomManager = roomManager;
         _configManager = configManager;
         _redisService = redisService;
         _redis = redis;
         _serverConfig = serverConfig.Value;
+        _db = db;
+        _achievementService = achievementService;
     }
 
     // Reads the PlayerId claim from the validated JWT — the client cannot forge this.
@@ -38,6 +45,33 @@ public class LobbyHub : Hub
         Context.User?.FindFirst("Username")?.Value ?? "Player";
 
     public string GetServerVersion() => _serverConfig.GameVersion;
+
+    // Full config catalog for the main-menu Collection window — deliberately independent of
+    // room join, since ReceiveHandshake (sent in InnerJoinRoom) only fires once a player has
+    // created/joined a room, but Collection is reachable straight from the main menu.
+    public async Task<object> GetCollectionCatalog()
+    {
+        Guid userId = Guid.Parse(GetPlayerId());
+        var unlockedAchievements = await _achievementService.GetUnlockedAchievementIdsAsync(_db, userId);
+
+        return new
+        {
+            enemies = _configManager.Enemies,
+            weapons = _configManager.Weapons,
+            items = _configManager.Items,
+            characters = _configManager.Characters,
+            achievements = _configManager.Achievements,
+            myUnlockedAchievements = unlockedAchievements
+        };
+    }
+
+    // Full achievement catalog + this player's unlock state + progress, for the
+    // lobby main-menu "Achievements" button.
+    public async Task<List<Server.DTOs.AchievementProgressDto>> GetAchievementCatalog()
+    {
+        Guid userId = Guid.Parse(GetPlayerId());
+        return await _achievementService.GetCatalogWithProgressAsync(_db, userId);
+    }
 
     public override async Task OnConnectedAsync()
     {
@@ -134,6 +168,8 @@ public class LobbyHub : Hub
     {
         _roomManager.AssignPlayerToRoom(Context.ConnectionId, room.RoomId);
 
+        var unlockedAchievements = await _achievementService.GetUnlockedAchievementIdsAsync(_db, Guid.Parse(playerId));
+
         var existingKvp = room.State.Players.FirstOrDefault(p => p.Value.PlayerId == playerId);
 
         if (existingKvp.Value != null)
@@ -142,6 +178,7 @@ public class LobbyHub : Hub
             var existing = existingKvp.Value;
             room.State.Players.TryRemove(existingKvp.Key, out _);
             existing.ConnectionId = Context.ConnectionId;
+            existing.UnlockedAchievementIds = unlockedAchievements;
             room.State.Players.TryAdd(Context.ConnectionId, existing);
 
             if (room.HostConnectionId == existingKvp.Key)
@@ -161,7 +198,8 @@ public class LobbyHub : Hub
                 X = 640,
                 Y = 360,
                 IsReady = false,
-                ConfigId = string.Empty
+                ConfigId = string.Empty,
+                UnlockedAchievementIds = unlockedAchievements
             };
 
             room.State.Players.TryAdd(Context.ConnectionId, newPlayer);
@@ -187,6 +225,8 @@ public class LobbyHub : Hub
             skills = _configManager.Skills,
             maps = _configManager.Maps,
             traits = _configManager.Traits,
+            achievements = _configManager.Achievements,
+            myUnlockedAchievements = unlockedAchievements,
             currentMapId = room.CurrentMapId
         });
 
@@ -225,7 +265,14 @@ public class LobbyHub : Hub
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
         if (room == null || !room.State.Players.TryGetValue(Context.ConnectionId, out var player)) return;
         if (room.State.Phase != GamePhase.WaitingForPlayers || player.IsReady) return;
-        if (!_configManager.Characters.ContainsKey(characterId)) return;
+        if (!_configManager.Characters.TryGetValue(characterId, out var charConfig)) return;
+
+        if (charConfig.RequiredAchievements != null && charConfig.RequiredAchievements.Count > 0 &&
+            !charConfig.RequiredAchievements.All(player.UnlockedAchievementIds.Contains))
+        {
+            await Clients.Caller.SendAsync("LobbyError", "This character is locked. Complete the required achievement(s) to unlock it.");
+            return;
+        }
 
         player.ConfigId = characterId;
         player.Initialize(_configManager.Characters[characterId], _configManager);
@@ -356,7 +403,14 @@ public class LobbyHub : Hub
             CurrentMapId = room.CurrentMapId,
             Difficulty = room.State.CurrentDifficulty,
             Players = room.State.Players.Values
-                .Select(p => new PlayerTransferDto { OldConnectionId = p.ConnectionId, PlayerId = p.PlayerId, Name = p.Name, ConfigId = p.ConfigId })
+                .Select(p => new PlayerTransferDto
+                {
+                    OldConnectionId = p.ConnectionId,
+                    PlayerId = p.PlayerId,
+                    Name = p.Name,
+                    ConfigId = p.ConfigId,
+                    UnlockedAchievementIds = p.UnlockedAchievementIds.ToList()
+                })
                 .ToList()
         };
 
