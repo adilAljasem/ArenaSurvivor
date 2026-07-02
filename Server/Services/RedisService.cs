@@ -105,5 +105,27 @@ public class RedisService
         // If it already exists the request was made within the last 60 s → deny.
         return await db.StringSetAsync(key, "1", TimeSpan.FromSeconds(60), When.NotExists);
     }
-}
 
+    // --- Online player tracking (for the admin dashboard's "players online" count) ---
+    // A player only ever holds one hub connection at a time in this architecture (Lobby OR
+    // Match, never both — they transfer between them), so simple add-on-connect/remove-on-
+    // disconnect per hub is sufficient; the brief blip during a Lobby→Worker handoff is fine
+    // for a coarse dashboard counter, not something requiring strict consistency.
+    public async Task AddOnlinePlayer(string playerId)
+    {
+        var db = _redis.GetDatabase();
+        await db.SetAddAsync("online_players", playerId);
+    }
+
+    public async Task RemoveOnlinePlayer(string playerId)
+    {
+        var db = _redis.GetDatabase();
+        await db.SetRemoveAsync("online_players", playerId);
+    }
+
+    public async Task<long> GetOnlinePlayerCount()
+    {
+        var db = _redis.GetDatabase();
+        return await db.SetLengthAsync("online_players");
+    }
+}

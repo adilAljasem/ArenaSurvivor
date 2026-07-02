@@ -61,6 +61,11 @@ public class LobbyHub : Hub
             items = _configManager.Items,
             characters = _configManager.Characters,
             achievements = _configManager.Achievements,
+            skills = _configManager.Skills,
+            effects = _configManager.Effects,
+            traits = _configManager.Traits,
+            maps = _configManager.Maps,
+            difficulties = _configManager.Difficulties,
             myUnlockedAchievements = unlockedAchievements
         };
     }
@@ -87,12 +92,20 @@ public class LobbyHub : Hub
             return;
         }
 
+        await _redisService.AddOnlinePlayer(playerId);
         Console.WriteLine($"[LOBBY] {GetUsername()} ({Context.ConnectionId}) connected.");
         await base.OnConnectedAsync();
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
+        // Best-effort: player might be transferring to a Worker (about to reconnect there and
+        // re-add itself), so this can cause a brief blip in the admin dashboard's online count
+        // rather than a wrong-forever state — acceptable for a coarse counter.
+        string? playerId = Context.User?.FindFirst("PlayerId")?.Value;
+        if (!string.IsNullOrEmpty(playerId))
+            await _redisService.RemoveOnlinePlayer(playerId);
+
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
 
         if (room == null || room.State.Phase == GamePhase.WaitingForPlayers)
@@ -112,7 +125,7 @@ public class LobbyHub : Hub
 
     public async Task<IEnumerable<object>> RequestLobbyData() => _roomManager.GetRoomSummaries();
 
-    public async Task CreateRoom(string playerName, string roomName, string password, string difficulty)
+    public async Task CreateRoom(string playerName, string roomName, string password, string difficulty, string mapId)
     {
         string playerId = GetPlayerId();
 
@@ -143,7 +156,7 @@ public class LobbyHub : Hub
         room.Password = password ?? string.Empty;
         room.HostConnectionId = Context.ConnectionId;
         room.State.CurrentDifficulty = string.IsNullOrWhiteSpace(difficulty) ? "normal" : difficulty;
-        room.CurrentMapId = "map_forest";
+        room.CurrentMapId = !string.IsNullOrWhiteSpace(mapId) && _configManager.Maps.ContainsKey(mapId) ? mapId : "map_forest";
 
         _roomManager.RegisterPlayerInRoom(playerId, roomId);
 

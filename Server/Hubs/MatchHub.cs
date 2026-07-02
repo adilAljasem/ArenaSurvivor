@@ -9,6 +9,7 @@ using Server.Data;
 using Server.DTOs;
 using Server.Entities;
 using Server.Services;
+using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
 namespace Server.Hubs;
@@ -50,6 +51,8 @@ public class MatchHub : Hub
                 Context.Abort();
                 return;
             }
+
+            await _redisService.AddOnlinePlayer(playerId);
         }
         await base.OnConnectedAsync();
     }
@@ -60,6 +63,10 @@ public class MatchHub : Hub
         ?? throw new HubException("Not authenticated.");
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
+        string? playerId = Context.User?.FindFirst("PlayerId")?.Value;
+        if (!string.IsNullOrEmpty(playerId))
+            await _redisService.RemoveOnlinePlayer(playerId);
+
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
         string? disconnectName = null;
 
@@ -329,7 +336,27 @@ public class MatchHub : Hub
         if (room == null) return;
 
         if (message.StartsWith("/"))
+        {
+            // Cheat commands (setwave, givegold, killall, spawnenemy, etc.) are dangerous in a
+            // multiplayer game — gate them behind a LIVE admin check, not the JWT's "IsAdmin"
+            // claim, so a demoted admin loses cheat access immediately rather than whenever
+            // their token happens to expire. Same posture as AdminOnlyAttribute.
+            bool isAdmin = false;
+            string? playerIdClaim = Context.User?.FindFirst("PlayerId")?.Value;
+            if (!string.IsNullOrEmpty(playerIdClaim) && Guid.TryParse(playerIdClaim, out var pid))
+            {
+                var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.PlayerId == pid);
+                isAdmin = user != null && user.IsAdmin && !user.IsBanned;
+            }
+
+            if (!isAdmin)
+            {
+                await Clients.Caller.SendAsync("ReceiveChatMessage", "System", "You don't have permission to use commands.");
+                return;
+            }
+
             await Server.Commands.CommandDispatcher.ExecuteAsync(message, room, _configManager, Context.ConnectionId, Clients.Caller);
+        }
         else
         {
             string sender = room.State.Players.TryGetValue(Context.ConnectionId, out var player) ? player.Name : "Player";

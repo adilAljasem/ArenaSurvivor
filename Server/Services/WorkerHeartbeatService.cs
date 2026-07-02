@@ -5,6 +5,7 @@ using Server.Core;
 using Server.Configs; // <-- Add this
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -65,6 +66,28 @@ public class WorkerHeartbeatService : BackgroundService
             });
 
             await db.HashSetAsync("active_workers", _workerId, data);
+
+            // Publish per-room detail for the admin "Live Games" page. Short TTL (15s, longer
+            // than this loop's 5s interval) so a crashed/killed worker's rooms disappear on
+            // their own instead of needing explicit cleanup.
+            foreach (var room in _roomManager.GetAllRooms())
+            {
+                var roomData = JsonSerializer.Serialize(new
+                {
+                    RoomId = room.RoomId,
+                    RoomName = room.RoomName,
+                    Difficulty = room.State.CurrentDifficulty,
+                    Wave = room.State.CurrentWave,
+                    Phase = room.State.Phase.ToString(),
+                    MapId = room.CurrentMapId,
+                    PlayerCount = room.State.Players.Count,
+                    PlayerNames = room.State.Players.Values.Select(p => p.Name).ToList(),
+                    WorkerId = _workerId,
+                    WorkerUrl = _serverConfig.PublicUrl,
+                    LastUpdated = DateTime.UtcNow
+                });
+                await db.StringSetAsync($"room_stats:{room.RoomId}", roomData, TimeSpan.FromSeconds(15));
+            }
 
             await Task.Delay(5000, stoppingToken); 
         }

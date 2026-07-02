@@ -146,6 +146,9 @@ public class AuthController : ControllerBase
             if (!user.IsEmailVerified)
                 return Unauthorized(new { error = "Please verify your email before logging in." });
 
+            if (user.IsBanned)
+                return StatusCode(403, new { error = $"This account has been banned.{(string.IsNullOrWhiteSpace(user.BanReason) ? "" : $" Reason: {user.BanReason}")}" });
+
             // >>> NEW: 1. Kick old connections across the entire cluster
             var redisService = HttpContext.RequestServices.GetRequiredService<RedisService>();
             await redisService.PublishForceLogout(user.PlayerId.ToString());
@@ -178,7 +181,8 @@ public class AuthController : ControllerBase
             new Claim("PlayerId", user.PlayerId.ToString()),
             new Claim("Username", user.Username),
             new Claim(ClaimTypes.Name, user.Username),
-            new Claim("SessionId", sessionId) // <<< NEW: Bake the session into the token
+            new Claim("SessionId", sessionId), // <<< NEW: Bake the session into the token
+            new Claim("IsAdmin", user.IsAdmin.ToString()) // Convenience claim — AdminOnlyAttribute still re-checks the DB live, so a stale token can't grant/retain admin after a demotion.
         };
 
         var tokenDescriptor = new JwtSecurityToken(
@@ -304,4 +308,3 @@ public record LoginRequest(string Email, string Password);
 public record ForgotPasswordRequest(string Email);
 public record ResetPasswordRequest(string Token, string NewPassword);
 public record ResendVerificationRequest(string Email);
-

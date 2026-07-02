@@ -145,6 +145,7 @@ if (serverRole == "Master" || serverRole == "Dev")
     app.UseStaticFiles();
     app.MapHub<LobbyHub>("/lobbyHub");
     app.MapControllers();
+
     Console.WriteLine("[BOOT] Mapped: /lobbyHub, /api/auth/*");
 }
 

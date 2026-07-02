@@ -288,6 +288,7 @@ public class EffectConfig
 {
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
     public bool IsBuff { get; set; }
     public float GrantedShield { get; set; }
     // --- Visuals ---
@@ -313,6 +314,7 @@ public class SkillConfig
 {
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
     public string NextLevelId { get; set; } = string.Empty;
     public bool ShowCastBar { get; set; } = true;
 

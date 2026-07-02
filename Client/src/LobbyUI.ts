@@ -1,4 +1,5 @@
 import { HubConnection } from '@microsoft/signalr';
+import { AdminDashboard } from './AdminDashboard';
 
 // ==========================================
 // MEDIA & THEME VARIABLES
@@ -30,6 +31,18 @@ export const TIER_COLORS: Record<number, string> = {
 };
 export function getTierColor(tier: number): string {
     return TIER_COLORS[tier] || TIER_COLORS[1];
+}
+
+// Difficulty id -> color. Falls back to a neutral gray for any custom difficulty id not
+// listed here, so new difficulties added server-side (Configs/Difficulties.json) never break.
+const DIFFICULTY_COLORS: Record<string, string> = {
+    easy: '#4caf50',
+    normal: '#4a90e2',
+    hard: '#e5b35c',
+    nightmare: '#8b0000',
+};
+export function getDifficultyColor(id: string): string {
+    return DIFFICULTY_COLORS[(id || '').toLowerCase()] || '#888';
 }
 
 // ==========================================
@@ -481,6 +494,8 @@ export class LobbyUI {
     private wrapper: HTMLDivElement;
     private playerName: string = "Guest";
     private cachedRooms: any[] = [];
+    private selectedCreateDifficulty: string = '';
+    private selectedCreateMapId: string = '';
     private masterConfigs: any = null;
 
     private connection: HubConnection;
@@ -495,6 +510,8 @@ export class LobbyUI {
     private resendCooldownTimer: ReturnType<typeof setInterval> | null = null;
     private audioJoin = new Audio(LOBBY_ASSETS.sfxJoin);
     private audioMessage = new Audio(LOBBY_ASSETS.sfxMessage);
+
+    private adminDashboard: AdminDashboard | null = null;
 
     constructor(connection: HubConnection, getIconBase64: (key: string, frame: number) => string | null, onJoinMatch: () => void, playerId: string) {
         this.playerId = playerId;
@@ -513,6 +530,13 @@ export class LobbyUI {
         this.injectCSS();
         document.body.appendChild(this.wrapper);
         this.buildHTML();
+
+        // Only shows the Admin Panel button if this account actually is one — checked
+        // server-side (AdminOnlyAttribute re-verifies live against the DB), this is just
+        // whether to bother showing the button at all.
+        AdminDashboard.checkIsAdmin().then(isAdmin => {
+            if (isAdmin) document.getElementById('btn-admin-panel')?.classList.remove('hidden');
+        });
     }
 
     private playSound(audio: HTMLAudioElement) {
@@ -579,51 +603,159 @@ export class LobbyUI {
         return `<div class="lock-overlay"><div class="lock-icon">🔒</div><div class="lock-req-label">Requires</div><div class="lock-req-list">${badges}</div></div>`;
     }
 
+    private showInfoModal(kind: 'skill' | 'effect' | 'trait', id: string) {
+        const content = document.getElementById('info-modal-content')!;
+        const sourceMap: any = {
+            skill: this.masterConfigs?.skills || this.masterConfigs?.Skills || {},
+            effect: this.masterConfigs?.effects || this.masterConfigs?.Effects || {},
+            trait: this.masterConfigs?.traits || this.masterConfigs?.Traits || {},
+        };
+        const cfg = sourceMap[kind][id];
+
+        if (!cfg) {
+            content.innerHTML = `<div class="info-modal-header"><div class="info-modal-title">${id}</div></div><div class="info-modal-desc">No data found for this ${kind}.</div>`;
+            document.getElementById('info-modal-overlay')!.classList.remove('hidden');
+            return;
+        }
+
+        const name = this.pick(cfg, 'name') || id;
+        const description = this.pick(cfg, 'description') || 'No description available.';
+        const textureKey = this.pick(cfg, 'textureKey');
+        const frame = this.pick(cfg, 'iconFrame') ?? 0;
+        const base64Img = textureKey ? this.getIconBase64(textureKey, frame) : null;
+        const iconHtml = base64Img
+            ? `<img src="${base64Img}" />`
+            : (kind === 'trait' ? '★' : name.charAt(0).toUpperCase());
+
+        let detailsHtml = '';
+        if (kind === 'skill') {
+            const cooldown = this.pick(cfg, 'cooldownSeconds') ?? 0;
+            const castTime = this.pick(cfg, 'castTimeSeconds') ?? 0;
+            const channelTime = this.pick(cfg, 'channelDurationSeconds') ?? 0;
+            const baseDamage = this.pick(cfg, 'baseDamage') ?? 0;
+            const range = this.pick(cfg, 'range') ?? 0;
+            const radius = this.pick(cfg, 'radius') ?? 0;
+            const actionType = this.pick(cfg, 'actionType') ?? '';
+            const targetType = this.pick(cfg, 'targetType') ?? '';
+            const applyEffects: string[] = this.pick(cfg, 'applyEffects') || [];
+            const effectsSource = this.masterConfigs?.effects || this.masterConfigs?.Effects || {};
+
+            detailsHtml = `
+                <div class="coll-stat-grid">
+                    ${actionType ? `<div class="coll-stat"><span class="coll-stat-label">Type</span><span class="coll-stat-value">${actionType}</span></div>` : ''}
+                    ${targetType ? `<div class="coll-stat"><span class="coll-stat-label">Target</span><span class="coll-stat-value">${targetType}</span></div>` : ''}
+                    ${cooldown > 0 ? `<div class="coll-stat"><span class="coll-stat-label">Cooldown</span><span class="coll-stat-value">${this.formatNumber(cooldown)}s</span></div>` : ''}
+                    ${castTime > 0 ? `<div class="coll-stat"><span class="coll-stat-label">Cast Time</span><span class="coll-stat-value">${this.formatNumber(castTime)}s</span></div>` : ''}
+                    ${channelTime > 0 ? `<div class="coll-stat"><span class="coll-stat-label">Channel</span><span class="coll-stat-value">${this.formatNumber(channelTime)}s</span></div>` : ''}
+                    ${baseDamage > 0 ? `<div class="coll-stat"><span class="coll-stat-label">Base Damage</span><span class="coll-stat-value">${this.formatNumber(baseDamage)}</span></div>` : ''}
+                    ${range > 0 ? `<div class="coll-stat"><span class="coll-stat-label">Range</span><span class="coll-stat-value">${this.formatNumber(range)}</span></div>` : ''}
+                    ${radius > 0 ? `<div class="coll-stat"><span class="coll-stat-label">Radius</span><span class="coll-stat-value">${this.formatNumber(radius)}</span></div>` : ''}
+                </div>
+                ${applyEffects.length ? `<div style="margin-top:12px;"><div class="coll-section-label">💥 Applies Effects</div><div class="coll-badge-row">${this.buildRefBadgeRow(applyEffects, effectsSource, 'effect')}</div></div>` : ''}
+            `;
+        } else if (kind === 'effect') {
+            const isBuff = !!this.pick(cfg, 'isBuff');
+            const duration = this.pick(cfg, 'duration') ?? 0;
+            const tickRate = this.pick(cfg, 'tickRate') ?? 0;
+            const tickDamage = this.pick(cfg, 'tickDamage') ?? 0;
+            const grantedShield = this.pick(cfg, 'grantedShield') ?? 0;
+            const statModifiers = this.pick(cfg, 'statModifiers') || {};
+            const statMultipliers = this.pick(cfg, 'statMultipliers') || {};
+            const modBadges = Object.entries(statModifiers).map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, false)).join('');
+            const multBadges = Object.entries(statMultipliers).map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, true)).join('');
+
+            detailsHtml = `
+                <div class="coll-tags" style="margin-bottom:12px;">
+                    <span class="coll-tag" style="background:${isBuff ? '#2e7d32' : '#8b0000'};">${isBuff ? 'Buff' : 'Debuff'}</span>
+                </div>
+                <div class="coll-stat-grid">
+                    ${duration > 0 ? `<div class="coll-stat"><span class="coll-stat-label">Duration</span><span class="coll-stat-value">${this.formatNumber(duration)}s</span></div>` : ''}
+                    ${tickRate > 0 ? `<div class="coll-stat"><span class="coll-stat-label">Tick Rate</span><span class="coll-stat-value">${this.formatNumber(tickRate)}s</span></div>` : ''}
+                    ${tickDamage > 0 ? `<div class="coll-stat"><span class="coll-stat-label">Tick Damage</span><span class="coll-stat-value">${this.formatNumber(tickDamage)}</span></div>` : ''}
+                    ${grantedShield > 0 ? `<div class="coll-stat"><span class="coll-stat-label">Shield</span><span class="coll-stat-value">${this.formatNumber(grantedShield)}</span></div>` : ''}
+                </div>
+                ${(modBadges || multBadges) ? `<div style="margin-top:12px;"><div class="coll-section-label">✨ Stat Effects</div><div class="coll-badge-row">${modBadges}${multBadges}</div></div>` : ''}
+            `;
+        } else {
+            const isNegative = !!this.pick(cfg, 'isNegative');
+            const statBonuses = this.pick(cfg, 'statBonuses') || {};
+            const statMultipliers = this.pick(cfg, 'statMultipliers') || {};
+            const grantedSkills: string[] = this.pick(cfg, 'grantedSkills') || [];
+            const skillsSource = this.masterConfigs?.skills || this.masterConfigs?.Skills || {};
+            const bonusBadges = Object.entries(statBonuses).map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, false)).join('');
+            const multBadges = Object.entries(statMultipliers).map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, true)).join('');
+
+            detailsHtml = `
+                <div class="coll-tags" style="margin-bottom:12px;">
+                    <span class="coll-tag" style="background:${isNegative ? '#8b0000' : '#2e7d32'};">${isNegative ? 'Negative' : 'Positive'}</span>
+                </div>
+                ${(bonusBadges || multBadges) ? `<div><div class="coll-section-label">✨ Stat Effects</div><div class="coll-badge-row">${bonusBadges}${multBadges}</div></div>` : ''}
+                ${grantedSkills.length ? `<div style="margin-top:12px;"><div class="coll-section-label">⚡ Grants Skills</div><div class="coll-badge-row">${this.buildRefBadgeRow(grantedSkills, skillsSource, 'skill')}</div></div>` : ''}
+            `;
+        }
+
+        content.innerHTML = `
+            <div class="info-modal-header">
+                <div class="info-modal-icon">${iconHtml}</div>
+                <div>
+                    <div class="info-modal-title">${name}</div>
+                    <div class="info-modal-kind">${kind}</div>
+                </div>
+            </div>
+            <div class="info-modal-desc">${description}</div>
+            ${detailsHtml}
+        `;
+        document.getElementById('info-modal-overlay')!.classList.remove('hidden');
+    }
+
+    private selectedDetailCharacterId: string = '';
+
     private renderCharacterGrid() {
         if (!this.masterConfigs?.characters) return;
-        const grid = document.getElementById('character-grid')!;
-        grid.innerHTML = '';
+        const list = document.getElementById('character-picker-list')!;
+        list.innerHTML = '';
 
         const readyBtn = document.getElementById('btn-toggle-ready')!;
         const isLocalPlayerReady = readyBtn.innerText.includes("CANCEL");
+        const characters = this.masterConfigs.characters;
+        const entries = Object.values(characters) as any[];
 
-        Object.values(this.masterConfigs.characters).forEach((char: any) => {
-            const card = document.createElement('div');
-            card.className = 'char-card';
+        if (!this.selectedDetailCharacterId || !characters[this.selectedDetailCharacterId]) {
+            const firstUnlocked = entries.find(c => !this.isCharacterLocked(c).locked);
+            this.selectedDetailCharacterId = (firstUnlocked ? this.pick(firstUnlocked, 'id') : this.pick(entries[0], 'id')) || '';
+        }
 
-            const textureKey = char.textureKey || char.TextureKey;
-            const frame = char.iconFrame ?? char.IconFrame ?? 0;
-            const base64Img = this.getIconBase64(textureKey, frame);
+        entries.forEach(char => {
+            const id = this.pick(char, 'id');
+            const name = this.pick(char, 'name') || id;
+            const { locked } = this.isCharacterLocked(char);
 
-            const iconHtml = base64Img
-                ? `<img src="${base64Img}" style="width: 48px; height: 48px; margin-bottom: 10px; image-rendering: pixelated; object-fit: contain;" />`
-                : `<div style="width: 48px; height: 48px; background: #111; border-radius: 4px; margin-bottom: 10px; display:flex; justify-content:center; align-items:center; font-size:24px; font-weight:bold; color:${LOBBY_ASSETS.colorPrimary};">${(char.name || "C").charAt(0).toUpperCase()}</div>`;
-
-            card.innerHTML = `
-            ${iconHtml}
-            <div style="font-weight:bold; font-size:14px; margin-bottom: 5px;">${char.name || char.Id}</div>
-        `;
-
-            const { locked, missing } = this.isCharacterLocked(char);
-
-            if (locked) {
-                const overlay = document.createElement('div');
-                overlay.className = 'lock-overlay';
-                overlay.innerHTML = `<div class="lock-icon">🔒</div><div class="lock-req">Requires: ${missing.map(m => m.name).join(', ')}</div>`;
-                card.appendChild(overlay);
-            } else if (isLocalPlayerReady) {
-                card.style.opacity = '0.5';
-                card.style.cursor = 'not-allowed';
-            }
-
-            card.onclick = () => {
-                if (locked || isLocalPlayerReady) return;
-                this.connection.invoke("SelectCharacter", char.id || char.Id);
-                document.querySelectorAll('.char-card').forEach(c => c.classList.remove('selected'));
-                card.classList.add('selected');
+            const item = document.createElement('div');
+            item.className = `char-picker-item ${id === this.selectedDetailCharacterId ? 'selected' : ''} ${locked ? 'locked' : ''}`;
+            item.innerHTML = `
+                <div class="char-picker-icon">${this.buildIconHtml(char, (name || 'C').charAt(0).toUpperCase())}</div>
+                <div class="char-picker-name">${name}</div>
+                ${locked ? `<span class="char-picker-lock">🔒</span>` : ''}
+            `;
+            item.onclick = () => {
+                this.selectedDetailCharacterId = id;
+                this.renderCharacterGrid();
+                if (!locked && !isLocalPlayerReady) {
+                    this.connection.invoke("SelectCharacter", id);
+                }
             };
-            grid.appendChild(card);
+            list.appendChild(item);
         });
+
+        this.renderCharacterDetail();
+    }
+
+    private renderCharacterDetail() {
+        const panel = document.getElementById('character-detail-panel')!;
+        panel.innerHTML = '';
+        const char = this.masterConfigs?.characters?.[this.selectedDetailCharacterId];
+        if (!char) return;
+        panel.appendChild(this.buildCharacterCollectionCard(char));
     }
 
     private cachedAchievements: any[] = [];
@@ -753,6 +885,15 @@ export class LobbyUI {
         return n.toFixed(2).replace(/\.?0+$/, '');
     }
 
+    // Sign-colored stat badge: green for positive, red for negative, neutral gray for zero.
+    // isPercent controls whether the value is shown as "+12" or "+12%".
+    private buildStatBadge(label: string, value: number, isPercent: boolean, suffix: string = ''): string {
+        const color = value > 0 ? '#4caf50' : (value < 0 ? '#f44336' : '#999');
+        const sign = value > 0 ? '+' : '';
+        const displayValue = isPercent ? `${sign}${Math.round(value * 100)}%` : `${sign}${this.formatNumber(value)}${suffix}`;
+        return `<span class="coll-badge" style="color:${color}; border-color:${color}66;">${label} ${displayValue}</span>`;
+    }
+
     private buildIconHtml(entry: any, fallbackLetter: string): string {
         const textureKey = this.pick(entry, 'textureKey');
         const frame = this.pick(entry, 'iconFrame') ?? 0;
@@ -762,8 +903,9 @@ export class LobbyUI {
 
     // Renders a badge for a skill/effect id, resolving its display name + icon from the
     // matching config dictionary (masterConfigs.skills or masterConfigs.effects) so the
-    // collection shows readable names/art instead of raw config ids.
-    private buildRefBadge(id: string, sourceDict: any): string {
+    // collection shows readable names/art instead of raw config ids. Clickable — opens the
+    // info modal with that skill/effect's full data.
+    private buildRefBadge(id: string, sourceDict: any, kind: 'skill' | 'effect'): string {
         const cfg = sourceDict ? sourceDict[id] : null;
         const name = cfg ? (this.pick(cfg, 'name') || id) : id;
         const textureKey = cfg ? this.pick(cfg, 'textureKey') : null;
@@ -772,12 +914,25 @@ export class LobbyUI {
         const iconHtml = base64Img
             ? `<img src="${base64Img}" style="width:16px; height:16px; object-fit:contain; image-rendering:pixelated; margin-right:5px; vertical-align:middle;" />`
             : '';
-        return `<span class="coll-badge">${iconHtml}${name}</span>`;
+        return `<span class="coll-badge clickable" data-kind="${kind}" data-id="${id}">${iconHtml}${name}</span>`;
     }
 
-    private buildRefBadgeRow(ids: string[], sourceDict: any): string {
+    private buildRefBadgeRow(ids: string[], sourceDict: any, kind: 'skill' | 'effect'): string {
         if (!ids || ids.length === 0) return '';
-        return ids.map(id => this.buildRefBadge(id, sourceDict)).join('');
+        return ids.map(id => this.buildRefBadge(id, sourceDict, kind)).join('');
+    }
+
+    // Traits have no icon in their config, just name/description/stat data.
+    private buildTraitBadge(id: string, sourceDict: any): string {
+        const cfg = sourceDict ? sourceDict[id] : null;
+        const name = cfg ? (this.pick(cfg, 'name') || id) : id;
+        const isNegative = cfg ? !!this.pick(cfg, 'isNegative') : false;
+        return `<span class="coll-badge clickable" data-kind="trait" data-id="${id}" style="${isNegative ? 'border-color:#8b0000;' : ''}">${name}</span>`;
+    }
+
+    private buildTraitBadgeRow(ids: string[], sourceDict: any): string {
+        if (!ids || ids.length === 0) return '';
+        return ids.map(id => this.buildTraitBadge(id, sourceDict)).join('');
     }
 
     // Always re-fetches, unlike the initial handshake — otherwise newly-unlocked achievements
@@ -895,7 +1050,7 @@ export class LobbyUI {
             </div>
             ${(startingWeapons.length || startingItems.length) ? `
                 <div>
-                    <div class="coll-section-label">Starting Gear</div>
+                    <div class="coll-section-label">🎒 Starting Gear</div>
                     <div class="coll-badge-row">
                         ${startingWeapons.map(w => `<span class="coll-badge">${w}</span>`).join('')}
                         ${startingItems.map(i => `<span class="coll-badge">${i}</span>`).join('')}
@@ -903,13 +1058,13 @@ export class LobbyUI {
                 </div>` : ''}
             ${startingSkills.length ? `
                 <div>
-                    <div class="coll-section-label">Skills</div>
-                    <div class="coll-badge-row">${this.buildRefBadgeRow(startingSkills, skillsSource)}</div>
+                    <div class="coll-section-label">⚡ Skills</div>
+                    <div class="coll-badge-row">${this.buildRefBadgeRow(startingSkills, skillsSource, 'skill')}</div>
                 </div>` : ''}
             ${onDeathSkills.length ? `
                 <div>
-                    <div class="coll-section-label">On Death</div>
-                    <div class="coll-badge-row">${this.buildRefBadgeRow(onDeathSkills, skillsSource)}</div>
+                    <div class="coll-section-label">☠ On Death</div>
+                    <div class="coll-badge-row">${this.buildRefBadgeRow(onDeathSkills, skillsSource, 'skill')}</div>
                 </div>` : ''}
         `;
         card.style.borderColor = color;
@@ -936,8 +1091,10 @@ export class LobbyUI {
         const statBonuses = this.pick(w, 'statBonuses') || {};
         const grantedSkills: string[] = this.pick(w, 'grantedSkills') || [];
         const onHitEffects: string[] = this.pick(w, 'applyEffectsOnHit') || [];
+        const traits: string[] = this.pick(w, 'traits') || [];
         const skillsSource = this.masterConfigs?.skills || this.masterConfigs?.Skills || {};
         const effectsSource = this.masterConfigs?.effects || this.masterConfigs?.Effects || {};
+        const traitsSource = this.masterConfigs?.traits || this.masterConfigs?.Traits || {};
         const required: string[] = this.pick(w, 'requiredAchievements') || [];
         const { locked, missing } = this.isGearLocked(required);
 
@@ -948,7 +1105,7 @@ export class LobbyUI {
         ].join('');
 
         const bonusBadges = Object.entries(statBonuses)
-            .map(([k, v]) => `<span class="coll-badge">${this.formatStatName(k)} +${this.formatNumber(v as number)}</span>`)
+            .map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, false))
             .join('');
 
         card.innerHTML = `
@@ -971,9 +1128,10 @@ export class LobbyUI {
                 <div class="coll-stat"><span class="coll-stat-label">Projectiles</span><span class="coll-stat-value">${projCount}</span></div>
                 <div class="coll-stat"><span class="coll-stat-label">Max Level</span><span class="coll-stat-value">${maxLevel}</span></div>
             </div>
-            ${bonusBadges ? `<div><div class="coll-section-label">Bonus Stats</div><div class="coll-badge-row">${bonusBadges}</div></div>` : ''}
-            ${grantedSkills.length ? `<div><div class="coll-section-label">Granted Skills</div><div class="coll-badge-row">${this.buildRefBadgeRow(grantedSkills, skillsSource)}</div></div>` : ''}
-            ${onHitEffects.length ? `<div><div class="coll-section-label">On-Hit Effects</div><div class="coll-badge-row">${this.buildRefBadgeRow(onHitEffects, effectsSource)}</div></div>` : ''}
+            ${bonusBadges ? `<div><div class="coll-section-label">📊 Bonus Stats</div><div class="coll-badge-row">${bonusBadges}</div></div>` : ''}
+            ${traits.length ? `<div><div class="coll-section-label">🏷 Traits</div><div class="coll-badge-row">${this.buildTraitBadgeRow(traits, traitsSource)}</div></div>` : ''}
+            ${grantedSkills.length ? `<div><div class="coll-section-label">⚡ Granted Skills</div><div class="coll-badge-row">${this.buildRefBadgeRow(grantedSkills, skillsSource, 'skill')}</div></div>` : ''}
+            ${onHitEffects.length ? `<div><div class="coll-section-label">💥 On-Hit Effects</div><div class="coll-badge-row">${this.buildRefBadgeRow(onHitEffects, effectsSource, 'effect')}</div></div>` : ''}
         `;
         card.style.borderColor = color;
         if (locked) card.classList.add('locked');
@@ -996,21 +1154,23 @@ export class LobbyUI {
         const grantedSkills: string[] = this.pick(it, 'grantedSkills') || [];
         const effectsOnPurchase: string[] = this.pick(it, 'effectsOnPurchase') || [];
         const effectsAtWaveEnd: any[] = this.pick(it, 'effectsAtWaveEnd') || [];
+        const traits: string[] = this.pick(it, 'traits') || [];
         const skillsSource = this.masterConfigs?.skills || this.masterConfigs?.Skills || {};
         const effectsSource = this.masterConfigs?.effects || this.masterConfigs?.Effects || {};
+        const traitsSource = this.masterConfigs?.traits || this.masterConfigs?.Traits || {};
         const required: string[] = this.pick(it, 'requiredAchievements') || [];
         const { locked, missing } = this.isGearLocked(required);
 
         const bonusBadges = Object.entries(statBonuses)
-            .map(([k, v]) => `<span class="coll-badge">${this.formatStatName(k)} +${this.formatNumber(v as number)}</span>`)
+            .map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, false))
             .join('');
         const multBadges = Object.entries(statMultipliers)
-            .map(([k, v]) => `<span class="coll-badge">${this.formatStatName(k)} +${Math.round((v as number) * 100)}%</span>`)
+            .map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, true))
             .join('');
         const waveEndBadges = effectsAtWaveEnd.map(we => {
             const statName = this.pick(we, 'statName') || '';
             const amount = this.pick(we, 'amount') ?? 0;
-            return `<span class="coll-badge">${this.formatStatName(statName)} +${this.formatNumber(amount)}/wave</span>`;
+            return this.buildStatBadge(this.formatStatName(statName), amount, false, "/wave");
         }).join('');
 
         card.innerHTML = `
@@ -1029,10 +1189,11 @@ export class LobbyUI {
             <div class="coll-stat-grid">
                 <div class="coll-stat"><span class="coll-stat-label">Max Level</span><span class="coll-stat-value">${maxLevel}</span></div>
             </div>
-            ${(bonusBadges || multBadges) ? `<div><div class="coll-section-label">Bonus Stats</div><div class="coll-badge-row">${bonusBadges}${multBadges}</div></div>` : ''}
-            ${grantedSkills.length ? `<div><div class="coll-section-label">Granted Skills</div><div class="coll-badge-row">${this.buildRefBadgeRow(grantedSkills, skillsSource)}</div></div>` : ''}
-            ${effectsOnPurchase.length ? `<div><div class="coll-section-label">On Purchase</div><div class="coll-badge-row">${this.buildRefBadgeRow(effectsOnPurchase, effectsSource)}</div></div>` : ''}
-            ${waveEndBadges ? `<div><div class="coll-section-label">Wave-End Bonus</div><div class="coll-badge-row">${waveEndBadges}</div></div>` : ''}
+            ${(bonusBadges || multBadges) ? `<div><div class="coll-section-label">📊 Bonus Stats</div><div class="coll-badge-row">${bonusBadges}${multBadges}</div></div>` : ''}
+            ${traits.length ? `<div><div class="coll-section-label">🏷 Traits</div><div class="coll-badge-row">${this.buildTraitBadgeRow(traits, traitsSource)}</div></div>` : ''}
+            ${grantedSkills.length ? `<div><div class="coll-section-label">⚡ Granted Skills</div><div class="coll-badge-row">${this.buildRefBadgeRow(grantedSkills, skillsSource, 'skill')}</div></div>` : ''}
+            ${effectsOnPurchase.length ? `<div><div class="coll-section-label">🛒 On Purchase</div><div class="coll-badge-row">${this.buildRefBadgeRow(effectsOnPurchase, effectsSource, 'effect')}</div></div>` : ''}
+            ${waveEndBadges ? `<div><div class="coll-section-label">🌊 Wave-End Bonus</div><div class="coll-badge-row">${waveEndBadges}</div></div>` : ''}
         `;
         card.style.borderColor = color;
         if (locked) card.classList.add('locked');
@@ -1047,17 +1208,24 @@ export class LobbyUI {
         const name = this.pick(c, 'name') || this.pick(c, 'id');
         const hitRadius = this.pick(c, 'hitRadius') ?? 0;
         const baseStats = this.pick(c, 'baseStats') || {};
+        const statMultipliers = this.pick(c, 'statMultipliers') || {};
+        const traits: string[] = this.pick(c, 'traits') || [];
         const startingWeapons: string[] = this.pick(c, 'startingWeapons') || [];
         const startingItems: string[] = this.pick(c, 'startingItems') || [];
         const startingSkills: string[] = this.pick(c, 'startingSkills') || [];
         const onDeathSkills: string[] = this.pick(c, 'onDeathSkills') || [];
         const skillsSource = this.masterConfigs?.skills || this.masterConfigs?.Skills || {};
+        const traitsSource = this.masterConfigs?.traits || this.masterConfigs?.Traits || {};
         const required: string[] = this.pick(c, 'requiredAchievements') || [];
         const { locked, missing } = this.isGearLocked(required);
 
         const statBadges = Object.entries(baseStats)
             .filter(([, v]) => (v as number) !== 0)
             .map(([k, v]) => `<div class="coll-stat"><span class="coll-stat-label">${this.formatStatName(k)}</span><span class="coll-stat-value">${this.formatNumber(v as number)}</span></div>`)
+            .join('');
+        const multBadges = Object.entries(statMultipliers)
+            .filter(([, v]) => (v as number) !== 0)
+            .map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, true))
             .join('');
 
         card.innerHTML = `
@@ -1069,10 +1237,13 @@ export class LobbyUI {
                     <div class="coll-subtitle">Hit Radius ${hitRadius}</div>
                 </div>
             </div>
+            <div class="coll-section-label">📈 Base Stats</div>
             <div class="coll-stat-grid">${statBadges}</div>
+            ${multBadges ? `<div><div class="coll-section-label">✨ Stat Multipliers</div><div class="coll-badge-row">${multBadges}</div></div>` : ''}
+            ${traits.length ? `<div><div class="coll-section-label">🏷 Traits</div><div class="coll-badge-row">${this.buildTraitBadgeRow(traits, traitsSource)}</div></div>` : ''}
             ${(startingWeapons.length || startingItems.length) ? `
                 <div>
-                    <div class="coll-section-label">Starting Gear</div>
+                    <div class="coll-section-label">🎒 Starting Gear</div>
                     <div class="coll-badge-row">
                         ${startingWeapons.map(w => `<span class="coll-badge">${w}</span>`).join('')}
                         ${startingItems.map(i => `<span class="coll-badge">${i}</span>`).join('')}
@@ -1080,13 +1251,13 @@ export class LobbyUI {
                 </div>` : ''}
             ${startingSkills.length ? `
                 <div>
-                    <div class="coll-section-label">Skills</div>
-                    <div class="coll-badge-row">${this.buildRefBadgeRow(startingSkills, skillsSource)}</div>
+                    <div class="coll-section-label">⚡ Skills</div>
+                    <div class="coll-badge-row">${this.buildRefBadgeRow(startingSkills, skillsSource, 'skill')}</div>
                 </div>` : ''}
             ${onDeathSkills.length ? `
                 <div>
-                    <div class="coll-section-label">On Death</div>
-                    <div class="coll-badge-row">${this.buildRefBadgeRow(onDeathSkills, skillsSource)}</div>
+                    <div class="coll-section-label">☠ On Death</div>
+                    <div class="coll-badge-row">${this.buildRefBadgeRow(onDeathSkills, skillsSource, 'skill')}</div>
                 </div>` : ''}
         `;
         card.style.borderColor = color;
@@ -1114,17 +1285,29 @@ export class LobbyUI {
         }
 
         rooms.forEach(room => {
+            const difficulty: string = room.difficulty || room.Difficulty || '';
+            const diffColor = getDifficultyColor(difficulty);
+            const maxPlayers = room.maxPlayers || room.MaxPlayers || 4;
+            const playerCount = room.playerCount ?? room.PlayerCount ?? 0;
+            const mapName = (room.mapId || room.MapId || 'map_forest').replace('map_', '').replace(/_/g, ' ');
+
+            const pips = Array.from({ length: maxPlayers }, (_, i) =>
+                `<span class="player-pip ${i < playerCount ? 'filled' : ''}"></span>`
+            ).join('');
+
             const card = document.createElement('div');
             card.className = 'room-card';
             card.innerHTML = `
-                <div>
-                    <div class="card-title">${room.roomName} ${room.hasPassword ? '🔒' : ''}</div>
-                    <div class="card-meta">Map: ${room.mapId.replace('map_', '')} | Wave: ${room.wave}</div>
+                <div class="room-card-accent" style="background:${diffColor};"></div>
+                <div class="room-card-main">
+                    <div class="room-card-top">
+                        <div class="card-title">${room.roomName}${room.hasPassword ? ' <span title="Password protected">🔒</span>' : ''}</div>
+                        ${difficulty ? `<span class="coll-tag" style="background:${diffColor};">${difficulty}</span>` : ''}
+                    </div>
+                    <div class="card-meta">🗺 ${mapName} &nbsp;•&nbsp; 🌊 Wave ${room.wave}</div>
+                    <div class="room-card-pips" title="${playerCount}/${maxPlayers} players">${pips}</div>
                 </div>
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <span style="color: ${LOBBY_ASSETS.colorPrimary}; font-weight: bold; margin-right: 15px;">${room.playerCount} Players</span>
-                    <button class="card-btn lobby-btn" style="width:auto; padding: 8px 24px; margin:0; min-height: 0; font-size: 14px;">JOIN</button>
-                </div>
+                <button class="card-btn lobby-btn btn-green" style="width:auto; padding: 10px 28px; margin:0; min-height: 0; font-size: 14px;">JOIN</button>
             `;
 
             card.querySelector('.card-btn')!.addEventListener('click', () => {
@@ -1136,6 +1319,61 @@ export class LobbyUI {
                 }
             });
             container.appendChild(card);
+        });
+    }
+
+    private renderCreateRoomOptions() {
+        const diffContainer = document.getElementById('create-room-difficulty-cards')!;
+        const mapContainer = document.getElementById('create-room-map-cards')!;
+
+        const difficulties = this.masterConfigs?.difficulties || this.masterConfigs?.Difficulties || {};
+        const maps = this.masterConfigs?.maps || this.masterConfigs?.Maps || {};
+        const diffEntries: any[] = Object.values(difficulties);
+        const mapEntries: any[] = Object.values(maps);
+
+        // Default to the first available option (or a sane fallback) if nothing's picked yet,
+        // or if a previously-picked id no longer exists in a freshly-loaded config set.
+        if (!this.selectedCreateDifficulty || !diffEntries.some(d => this.pick(d, 'id') === this.selectedCreateDifficulty)) {
+            this.selectedCreateDifficulty = diffEntries.length > 0 ? (this.pick(diffEntries[0], 'id') || 'normal') : 'normal';
+        }
+        if (!this.selectedCreateMapId || !mapEntries.some(m => this.pick(m, 'id') === this.selectedCreateMapId)) {
+            this.selectedCreateMapId = mapEntries.length > 0 ? (this.pick(mapEntries[0], 'id') || 'map_forest') : 'map_forest';
+        }
+
+        diffContainer.innerHTML = diffEntries.length === 0
+            ? `<div style="color:${LOBBY_ASSETS.colorMuted}; font-size:13px;">No difficulties configured.</div>` : '';
+        diffEntries.forEach(d => {
+            const id = this.pick(d, 'id') || '';
+            const name = this.pick(d, 'name') || id;
+            const color = getDifficultyColor(id);
+            const goldMult = this.pick(d, 'goldMultiplier') ?? 1;
+            const card = document.createElement('div');
+            card.className = `picker-card ${id === this.selectedCreateDifficulty ? 'selected' : ''}`;
+            card.style.setProperty('--pc-color', color);
+            card.innerHTML = `
+                <div class="picker-card-icon" style="color:${color};">⚔</div>
+                <div class="picker-card-name">${name}</div>
+                <div class="picker-card-sub">${this.formatNumber(goldMult)}x Gold</div>
+            `;
+            card.onclick = () => { this.selectedCreateDifficulty = id; this.renderCreateRoomOptions(); };
+            diffContainer.appendChild(card);
+        });
+
+        mapContainer.innerHTML = mapEntries.length === 0
+            ? `<div style="color:${LOBBY_ASSETS.colorMuted}; font-size:13px;">No maps configured.</div>` : '';
+        mapEntries.forEach(m => {
+            const id = this.pick(m, 'id') || '';
+            const name = this.pick(m, 'name') || id.replace('map_', '');
+            const textureKey = this.pick(m, 'textureKey');
+            const base64Img = textureKey ? this.getIconBase64(textureKey, 0) : null;
+            const card = document.createElement('div');
+            card.className = `picker-card ${id === this.selectedCreateMapId ? 'selected' : ''}`;
+            card.innerHTML = `
+                <div class="picker-card-icon">${base64Img ? `<img src="${base64Img}" />` : '🗺'}</div>
+                <div class="picker-card-name">${name}</div>
+            `;
+            card.onclick = () => { this.selectedCreateMapId = id; this.renderCreateRoomOptions(); };
+            mapContainer.appendChild(card);
         });
     }
 
@@ -1170,16 +1408,50 @@ export class LobbyUI {
         .btn-green:hover:not(:disabled) { background: linear-gradient(180deg, #388e3c 0%, #2e7d32 100%); border-color: #81c784; }
         .danger { background: linear-gradient(180deg, #8b0000 0%, #4a0000 100%); border-color: #ff4444; }
         .danger:hover:not(:disabled) { background: linear-gradient(180deg, #a50000 0%, #660000 100%); }
-        .room-card { background: rgba(0,0,0,0.6); border: 2px solid #333; border-radius: 8px; padding: 20px; display: flex; justify-content: space-between; align-items: center; transition: 0.2s; }
-        .room-card:hover { border-color: ${LOBBY_ASSETS.colorPrimary}; background: rgba(0,0,0,0.8); }
-        .card-title { font-size: 20px; font-weight: bold; margin-bottom: 5px; color: #fff; text-shadow: 1px 1px 2px #000; }
-        .card-meta { font-size: 14px; color: ${LOBBY_ASSETS.colorMuted}; }
-        .waiting-layout { display: grid; grid-template-columns: 350px 1fr; grid-template-rows: 1fr auto; gap: 20px; height: calc(100% - 70px); overflow: hidden; width: 100%; }
+        .room-card { position: relative; background: rgba(0,0,0,0.6); border: 2px solid #333; border-radius: 8px; padding: 18px 20px 18px 24px; display: flex; justify-content: space-between; align-items: center; transition: 0.2s; overflow: hidden; }
+        .room-card:hover { border-color: ${LOBBY_ASSETS.colorPrimary}; background: rgba(0,0,0,0.8); transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,0,0,0.5); }
+        .room-card-accent { position: absolute; left: 0; top: 0; bottom: 0; width: 5px; }
+        .room-card-main { flex: 1; min-width: 0; }
+        .room-card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+        .card-title { font-size: 19px; font-weight: bold; color: #fff; text-shadow: 1px 1px 2px #000; }
+        .card-meta { font-size: 13px; color: ${LOBBY_ASSETS.colorMuted}; margin-bottom: 8px; text-transform: capitalize; }
+        .room-card-pips { display: flex; gap: 5px; }
+        .player-pip { width: 10px; height: 10px; border-radius: 50%; background: #333; border: 1px solid #444; }
+        .player-pip.filled { background: ${LOBBY_ASSETS.colorPrimary}; border-color: ${LOBBY_ASSETS.colorPrimary}; box-shadow: 0 0 6px rgba(229, 179, 92, 0.6); }
+
+        /* --- Create Room picker cards --- */
+        .picker-card-row { display: flex; gap: 14px; flex-wrap: wrap; }
+        .picker-card { --pc-color: ${LOBBY_ASSETS.colorPrimary}; position: relative; width: 160px; background: rgba(0,0,0,0.5); border: 2px solid #333; border-radius: 10px; padding: 16px; cursor: pointer; transition: 0.2s; text-align: center; }
+        .picker-card:hover { border-color: var(--pc-color); transform: translateY(-2px); }
+        .picker-card.selected { border-color: var(--pc-color); background: rgba(0,0,0,0.7); box-shadow: 0 0 16px var(--pc-color); }
+        .picker-card-icon { width: 100%; height: 60px; display: flex; align-items: center; justify-content: center; font-size: 28px; margin-bottom: 10px; border-radius: 6px; background: rgba(255,255,255,0.04); overflow: hidden; }
+        .picker-card-icon img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+        .picker-card-name { font-weight: bold; font-size: 14px; color: #fff; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+        .picker-card-sub { font-size: 11px; color: ${LOBBY_ASSETS.colorMuted}; }
+        .picker-card.selected .picker-card-name { color: var(--pc-color); }
+        .waiting-layout { display: grid; grid-template-columns: 280px 1fr 260px; grid-template-rows: 1fr 400px; gap: 20px; height: calc(100% - 70px); overflow: hidden; width: 100%; }
         .waiting-col { background: rgba(0,0,0,0.6); border: 2px solid #333; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; overflow: hidden; }
         .col-settings { grid-column: 1; grid-row: 1; }
-        .col-roster { grid-column: 2; grid-row: 1; }
-        .col-chars { grid-column: 1 / span 2; grid-row: 2; }
+        .col-chat { grid-column: 2; grid-row: 1; }
+        .col-roster { grid-column: 3; grid-row: 1; }
+        .col-chars { grid-column: 1 / span 3; grid-row: 2; }
+        .roster-scroll { flex: 1; overflow-y: auto; padding-right: 6px; }
+        @media (max-width: 1100px) {
+            .waiting-layout { grid-template-columns: 240px 1fr 220px; }
+        }
         .char-grid { display: flex; flex-direction: row; overflow-x: auto; gap: 15px; padding-bottom: 10px; width: 100%; align-items: center; }
+        .char-select-layout { display: flex; gap: 16px; flex: 1; overflow: hidden; }
+        .char-picker-list { width: 180px; min-width: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 6px; }
+        .char-picker-item { position: relative; display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.5); border: 2px solid #333; border-radius: 8px; padding: 8px 10px; cursor: pointer; transition: 0.2s; }
+        .char-picker-item:hover { border-color: #555; background: rgba(0,0,0,0.7); }
+        .char-picker-item.selected { border-color: ${LOBBY_ASSETS.colorPrimary}; background: rgba(229, 179, 92, 0.1); box-shadow: inset 0 0 12px rgba(229, 179, 92, 0.15); }
+        .char-picker-item.locked { opacity: 0.5; }
+        .char-picker-icon { width: 34px; height: 34px; min-width: 34px; border-radius: 5px; background: #111; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: bold; color: ${LOBBY_ASSETS.colorPrimary}; overflow: hidden; }
+        .char-picker-icon img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+        .char-picker-name { font-size: 13px; font-weight: bold; color: #fff; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .char-picker-lock { font-size: 13px; }
+        .char-detail-panel { flex: 1; overflow-y: auto; padding-right: 6px; }
+        .char-detail-panel .coll-card { min-height: 0; height: auto; }
         .char-card { min-width: 140px; flex-shrink: 0; background: rgba(0,0,0,0.5); border: 2px solid transparent; border-radius: 8px; padding: 15px; text-align: center; cursor: pointer; transition: 0.2s; display: flex; flex-direction: column; align-items: center; }
         .char-card:hover { background: rgba(0,0,0,0.8); border-color: #555; }
         .char-card.selected { border-color: ${LOBBY_ASSETS.colorPrimary}; background: rgba(229, 179, 92, 0.1); box-shadow: inset 0 0 15px rgba(229, 179, 92, 0.2); }
@@ -1196,6 +1468,21 @@ export class LobbyUI {
         @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; transform: translateY(-10px); } }
         #password-modal-overlay { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 200001; display: flex; justify-content: center; align-items: center; }
         .modal-box { background: ${LOBBY_ASSETS.colorBtnBgTop}; border: 2px solid ${LOBBY_ASSETS.colorPrimary}; padding: 40px; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.8); width: 400px; text-align: center; }
+
+        /* --- Info modal (skill/effect/trait detail popup) --- */
+        #info-modal-overlay { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 200002; display: flex; justify-content: center; align-items: center; }
+        .info-modal-box { width: 420px; text-align: left; position: relative; padding: 30px; max-height: 80vh; overflow-y: auto; }
+        .info-modal-close { position: absolute; top: 14px; right: 14px; background: rgba(0,0,0,0.5); border: 1px solid #444; color: #fff; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 14px; line-height: 1; }
+        .info-modal-close:hover { border-color: ${LOBBY_ASSETS.colorPrimary}; color: ${LOBBY_ASSETS.colorPrimary}; }
+        .info-modal-header { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; }
+        .info-modal-icon { width: 56px; height: 56px; min-width: 56px; border-radius: 8px; display: flex; justify-content: center; align-items: center; font-size: 26px; font-weight: bold; color: #fff; background: #111; overflow: hidden; }
+        .info-modal-icon img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+        .info-modal-title { font-size: 20px; font-weight: bold; color: #fff; }
+        .info-modal-kind { font-size: 11px; color: ${LOBBY_ASSETS.colorPrimary}; text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+        .info-modal-desc { font-size: 13px; color: #ccc; line-height: 1.5; margin-bottom: 16px; }
+        .coll-badge.clickable { cursor: pointer; transition: 0.15s; }
+        .coll-badge.clickable:hover { border-color: ${LOBBY_ASSETS.colorPrimary}; background: rgba(229, 179, 92, 0.12); color: #fff; }
+        .coll-tag-negative { background: #8b0000; }
 
         /* --- Achievements --- */
         .ach-filter-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 15px; flex-wrap: wrap; }
@@ -1230,7 +1517,8 @@ export class LobbyUI {
         .coll-tab-btn:hover { border-color: ${LOBBY_ASSETS.colorPrimary}; color: #fff; }
         .coll-tab-btn.active { background: linear-gradient(180deg, ${LOBBY_ASSETS.colorBtnBgTop} 0%, ${LOBBY_ASSETS.colorBtnBgBot} 100%); border-color: ${LOBBY_ASSETS.colorPrimary}; color: #fff; box-shadow: 0 0 12px rgba(229, 179, 92, 0.25); }
         .coll-grid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; padding-right: 10px; padding-bottom: 20px; align-content: start; }
-        .coll-card { position: relative; background: rgba(0,0,0,0.5); border: 2px solid #333; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+        .coll-card { position: relative; background: rgba(0,0,0,0.5); border: 2px solid #333; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 10px; transition: 0.2s; }
+        .coll-card:not(.locked):hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
         .coll-card-header { display: flex; gap: 12px; align-items: center; }
         .coll-icon { width: 52px; height: 52px; min-width: 52px; border-radius: 6px; display: flex; justify-content: center; align-items: center; font-size: 22px; font-weight: bold; color: #fff; background: #111; overflow: hidden; }
         .coll-icon img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
@@ -1275,6 +1563,13 @@ export class LobbyUI {
                 </div>
             </div>
 
+            <div id="info-modal-overlay" class="hidden">
+                <div class="modal-box info-modal-box">
+                    <button id="btn-close-info-modal" class="info-modal-close">✕</button>
+                    <div id="info-modal-content"></div>
+                </div>
+            </div>
+
             <div id="screen-menu" class="center-menu-panel">
                 <div class="game-logo">
                     <img src="${LOBBY_ASSETS.gameLogo}" class="logo-img" alt="Mage Arena" />
@@ -1284,15 +1579,22 @@ export class LobbyUI {
                 <button id="btn-collection" class="lobby-btn">COLLECTION</button>
                 <button id="btn-settings" class="lobby-btn">OPTIONS</button>
                 <button id="btn-fullscreen" class="lobby-btn">TOGGLE FULLSCREEN</button>
+                <button id="btn-admin-panel" class="lobby-btn hidden" style="background: linear-gradient(180deg, #3a2a4a 0%, #241730 100%); border-color: #9b6dff;">🛡 ADMIN PANEL</button>
                 <button id="btn-tos" class="lobby-btn danger">LOGOUT</button>
             </div>
 
+            <div id="screen-admin-panel" class="full-screen-panel hidden" style="padding: 0; position: relative;">
+                <button id="btn-back-from-admin" class="lobby-btn danger" style="position: absolute; top: 16px; right: 16px; z-index: 10; width: auto; padding: 10px 24px; margin: 0;">Back to Menu</button>
+                <div id="admin-mount-point" style="width: 100%; height: 100%;"></div>
+            </div>
+
             <div id="screen-browser" class="full-screen-panel hidden">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                     <h2 style="margin:0; border:none; padding:0;">Server Browser</h2>
                     <button id="btn-back-menu" class="lobby-btn danger" style="width: auto; padding: 10px 30px; margin:0;">Back</button>
                 </div>
-                
+                <p style="color: ${LOBBY_ASSETS.colorMuted}; margin: 0 0 20px 0; font-size: 13px;">Join an existing arena, or forge your own.</p>
+
                 <div style="display: flex; gap: 15px; margin-bottom: 20px; align-items: center;">
                     <div style="position: relative; width: 300px;">
                         <span style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); font-size: 16px;">🔍</span>
@@ -1306,6 +1608,35 @@ export class LobbyUI {
                     </div>
                 </div>
                 <div id="room-list-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; padding-right: 10px;"></div>
+            </div>
+
+            <div id="screen-create-room" class="full-screen-panel hidden">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <h2 style="margin:0; border:none; padding:0;">Forge Your Arena</h2>
+                    <button id="btn-back-from-create-room" class="lobby-btn danger" style="width: auto; padding: 10px 30px; margin:0;">Back</button>
+                </div>
+                <p style="color: ${LOBBY_ASSETS.colorMuted}; margin: 0 0 20px 0; font-size: 13px;">Choose your battlefield and challenge level.</p>
+
+                <div style="flex:1; overflow-y:auto; padding-right: 10px;">
+                    <div style="display:flex; gap:15px; margin-bottom: 24px;">
+                        <div class="input-group" style="flex:1;">
+                            <span class="input-label">Room Name</span>
+                            <input type="text" id="create-room-name" class="lobby-input" placeholder="My Arena" />
+                        </div>
+                        <div class="input-group" style="flex:1;">
+                            <span class="input-label">Password (optional)</span>
+                            <input type="password" id="create-room-password" class="lobby-input" placeholder="Leave blank for open room" />
+                        </div>
+                    </div>
+
+                    <div class="coll-section-label" style="font-size:13px; margin-bottom:10px;">Difficulty</div>
+                    <div id="create-room-difficulty-cards" class="picker-card-row"></div>
+
+                    <div class="coll-section-label" style="font-size:13px; margin: 20px 0 10px;">Map</div>
+                    <div id="create-room-map-cards" class="picker-card-row"></div>
+                </div>
+
+                <button id="btn-confirm-create-room" class="lobby-btn btn-green" style="margin-top: 20px; font-size: 20px; padding: 16px;">⚔ CREATE ROOM</button>
             </div>
 
             <div id="screen-achievements" class="full-screen-panel hidden">
@@ -1380,23 +1711,29 @@ export class LobbyUI {
                         </div>
                     </div>
 
-                    <div class="waiting-col col-roster">
-                        <h3>Players</h3>
-                        <div id="waiting-roster" style="flex: none; margin-bottom: 15px; max-height: 250px; overflow-y:auto; padding-right: 10px;"></div>
-                        
-                        <div style="flex: 1; background: rgba(0,0,0,0.4); border-radius: 8px; padding: 15px; display: flex; flex-direction: column; margin-bottom: 15px; border: 2px solid #333;">
+                    <div class="waiting-col col-chat">
+                        <h3>💬 Chat</h3>
+                        <div style="flex: 1; background: rgba(0,0,0,0.4); border-radius: 8px; padding: 15px; display: flex; flex-direction: column; overflow: hidden; border: 2px solid #333;">
                             <div id="lobby-chat-history" class="lobby-chat-box"></div>
                             <div style="display: flex; gap: 10px; align-items: center;">
                                 <input type="text" id="lobby-chat-input" class="lobby-input" placeholder="Send a message..." style="margin: 0; flex: 1;" />
-                                <button id="btn-send-chat" class="lobby-btn" style="padding: 14px 20px; margin: 0; width: auto;">💬</button>
+                                <button id="btn-send-chat" class="lobby-btn" style="padding: 14px 20px; margin: 0; width: auto;">➤</button>
                             </div>
                         </div>
-                        <p id="waiting-host-msg" style="color: ${LOBBY_ASSETS.colorMuted}; text-align: center; font-size: 13px; margin-top: auto;">Waiting for host...</p>
+                    </div>
+
+                    <div class="waiting-col col-roster">
+                        <h3>🛡 Players</h3>
+                        <div id="waiting-roster" class="roster-scroll"></div>
+                        <p id="waiting-host-msg" style="color: ${LOBBY_ASSETS.colorMuted}; text-align: center; font-size: 13px; margin-top: auto; padding-top: 12px;">Waiting for host...</p>
                     </div>
 
                     <div class="waiting-col col-chars">
                         <h3 style="flex-shrink: 0;">Select Character</h3>
-                        <div id="character-grid" class="char-grid"></div>
+                        <div class="char-select-layout">
+                            <div id="character-picker-list" class="char-picker-list"></div>
+                            <div id="character-detail-panel" class="char-detail-panel"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1451,6 +1788,22 @@ export class LobbyUI {
         };
         document.getElementById('btn-back-from-achievements')!.onclick = () => switchScreen('screen-achievements', 'screen-menu');
 
+        document.getElementById('btn-admin-panel')!.onclick = () => {
+            switchScreen('screen-menu', 'screen-admin-panel');
+            if (this.adminDashboard) {
+                this.adminDashboard.onShow();
+            } else {
+                this.adminDashboard = new AdminDashboard(
+                    document.getElementById('admin-mount-point')!,
+                    () => switchScreen('screen-admin-panel', 'screen-menu') // auth failure mid-session -> just bounce back to menu
+                );
+            }
+        };
+        document.getElementById('btn-back-from-admin')!.onclick = () => {
+            switchScreen('screen-admin-panel', 'screen-menu');
+            this.adminDashboard?.onHide();
+        };
+
         document.querySelectorAll('.ach-filter-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.ach-filter-btn').forEach(b => b.classList.remove('active'));
@@ -1493,9 +1846,27 @@ export class LobbyUI {
         });
 
         document.getElementById('btn-goto-create')!.onclick = () => {
-            const roomName = `${this.playerName}'s Game`;
-            this.connection.invoke("CreateRoom", this.playerName, roomName, "", "easy");
-            switchScreen('screen-browser', 'screen-waiting');
+            switchScreen('screen-browser', 'screen-create-room');
+            (document.getElementById('create-room-name') as HTMLInputElement).value = `${this.playerName}'s Arena`;
+            (document.getElementById('create-room-password') as HTMLInputElement).value = '';
+
+            if (!this.masterConfigs?.difficulties && !this.masterConfigs?.Difficulties) {
+                this.connection.invoke("GetCollectionCatalog").then((payload: any) => {
+                    this.masterConfigs = { ...(this.masterConfigs || {}), ...payload };
+                    this.renderCreateRoomOptions();
+                }).catch(err => console.error("Failed to load create-room options:", err));
+            } else {
+                this.renderCreateRoomOptions();
+            }
+        };
+
+        document.getElementById('btn-back-from-create-room')!.onclick = () => switchScreen('screen-create-room', 'screen-browser');
+
+        document.getElementById('btn-confirm-create-room')!.onclick = () => {
+            const roomName = (document.getElementById('create-room-name') as HTMLInputElement).value.trim() || `${this.playerName}'s Arena`;
+            const password = (document.getElementById('create-room-password') as HTMLInputElement).value;
+            this.connection.invoke("CreateRoom", this.playerName, roomName, password, this.selectedCreateDifficulty, this.selectedCreateMapId);
+            switchScreen('screen-create-room', 'screen-waiting');
         };
 
         document.getElementById('btn-leave-match')!.onclick = () => {
@@ -1519,6 +1890,28 @@ export class LobbyUI {
             this.connection.invoke("JoinRoom", this.playerName, this.targetRoomIdForPassword, pw);
             document.getElementById('password-modal-overlay')!.classList.add('hidden');
         };
+
+        document.getElementById('btn-close-info-modal')!.onclick = () => {
+            document.getElementById('info-modal-overlay')!.classList.add('hidden');
+        };
+        document.getElementById('info-modal-overlay')!.addEventListener('click', (e) => {
+            if (e.target === document.getElementById('info-modal-overlay')) {
+                document.getElementById('info-modal-overlay')!.classList.add('hidden');
+            }
+        });
+
+        // Event delegation: any .coll-badge.clickable rendered inside the Collection grid
+        // (skills/effects/traits) opens the info modal, regardless of which card built it.
+        // Event delegation on the whole UI wrapper: any .coll-badge.clickable rendered
+        // anywhere (Collection grid, room character detail panel, info modal itself for
+        // drill-down) opens the info modal, regardless of which container built it.
+        this.wrapper.addEventListener('click', (e) => {
+            const badge = (e.target as HTMLElement).closest('.coll-badge.clickable') as HTMLElement | null;
+            if (!badge) return;
+            const kind = badge.dataset.kind as 'skill' | 'effect' | 'trait';
+            const id = badge.dataset.id;
+            if (kind && id) this.showInfoModal(kind, id);
+        });
 
         document.getElementById('btn-save-settings')!.onclick = () => {
             const rName = (document.getElementById('lobby-edit-name') as HTMLInputElement).value.trim();
