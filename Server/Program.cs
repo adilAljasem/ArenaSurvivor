@@ -1,5 +1,7 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -123,6 +125,46 @@ if (serverRole == "Master" || serverRole == "Dev")
     builder.Services.AddControllers();
 }
 
+// ─── RATE LIMITING ─────────────────────────────────────────────────────────────
+// This is one layer of defense-in-depth alongside Traefik's edge rate limit (docker-compose)
+// and the in-hub chat/command throttle (MatchHub) — each catches a different kind of abuse.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    // Strict policy for auth endpoints — the highest-value target for automated abuse
+    // (credential stuffing on /login, fake account spam on /register). Applied via
+    // [EnableRateLimiting("auth")] on the relevant AuthController actions.
+    options.AddPolicy("auth", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+
+    // General-purpose limiter for every other HTTP request, keyed by IP. SignalR hub paths are
+    // deliberately exempted here: a hub connection is one long-lived request, not many separate
+    // ones, so per-HTTP-request limiting can't see (or usefully stop) a flood of hub METHOD
+    // calls like chat spam — that's handled separately, in-hub, per method instead.
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+    {
+        var path = httpContext.Request.Path;
+        if (path.StartsWithSegments("/lobbyHub") || path.StartsWithSegments("/matchHub"))
+            return RateLimitPartition.GetNoLimiter("signalr");
+
+        string key = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 100,
+            Window = TimeSpan.FromSeconds(10),
+            QueueLimit = 0
+        });
+    });
+});
+
 // ─── BUILD ────────────────────────────────────────────────────────────────────
 var app = builder.Build();
 
@@ -134,6 +176,7 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.UseCors();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 

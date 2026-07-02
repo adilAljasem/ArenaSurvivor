@@ -31,3 +31,20 @@ export default defineConfig({
     emptyOutDir: true,
   }
 });
+
+// import { defineConfig } from 'vite';
+
+// export default defineConfig({
+//   base: './', // <-- CRITICAL: Tells Vite to use relative assets paths for Electron
+//   server: {
+//     proxy: {
+//       '/api': { target: 'http://localhost:5000', changeOrigin: true },
+//       '/lobbyHub': { target: 'http://localhost:5000', ws: true },
+//       '/matchHub': { target: 'http://localhost:5000', ws: true }
+//     }
+//   },
+//   build: {
+//     outDir: 'dist', // <-- Change this to 'dist' so Electron can bundle it locally
+//     emptyOutDir: true,
+//   }
+// });

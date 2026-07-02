@@ -7,6 +7,11 @@ networks:
 volumes:
   # Persistent volume for safe PostgreSQL data storage
   postgres_data:
+  # Persistent volume for the Let's Encrypt certificate (must survive redeploys, or you'll
+  # hit Let's Encrypt's rate limit re-issuing a fresh cert every time). Safe as a local Docker
+  # volume here because Traefik is pinned to a single manager-node replica below — if you ever
+  # scale Traefik to multiple replicas, this needs to move to shared storage instead.
+  traefik_certs:
 
 services:
   # ==========================================
@@ -21,11 +26,24 @@ services:
     - "--providers.swarm.exposedByDefault=false"
     - "--providers.swarm.network=arena_network"
     - "--entrypoints.web.address=:80"
+    - "--entrypoints.websecure.address=:443"
+    # Every plain-HTTP request gets redirected to HTTPS before it ever reaches a router —
+    # nothing in the app itself needs to know or care about this.
+    - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+    - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+    # Let's Encrypt via HTTP-01 challenge — reuses the "web" entrypoint (port 80) purely for
+    # the challenge handshake, then issues/renews the cert automatically. No manual renewal ever.
+    - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+    - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+    - "--certificatesresolvers.letsencrypt.acme.email=adilaldmlhe@gmail.com"
+    - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
    ports:
     - "80:80"
+    - "443:443"
     - "8080:8080"
    volumes:
     - /var/run/docker.sock:/var/run/docker.sock:ro
+    - traefik_certs:/letsencrypt
    networks:
     - arena_network
    deploy:
@@ -77,8 +95,8 @@ services:
       # Database string pointing to our internal container name "postgres"
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=arena_survivor;Username=postgres;Password=aa123456
       # Set up public access rules matching production
-      - ServerConfig__FrontendUrl=http://adel.giize.com
-      - ServerConfig__AllowedCorsOrigins__0=http://adel.giize.com
+      - ServerConfig__FrontendUrl=https://adel.giize.com
+      - ServerConfig__AllowedCorsOrigins__0=https://adel.giize.com
     networks:
       - arena_network
     depends_on:
@@ -92,8 +110,19 @@ services:
       labels:
         - "traefik.enable=true"
         - "traefik.http.routers.master.rule=Host(`adel.giize.com`)" 
-        - "traefik.http.routers.master.entrypoints=web"
+        - "traefik.http.routers.master.entrypoints=websecure"
+        - "traefik.http.routers.master.tls.certresolver=letsencrypt"
         - "traefik.http.services.master.loadbalancer.server.port=8080"
+        # Edge rate limit — the first, cheapest line of defense against raw request flooding,
+        # before it even reaches the .NET app. 50 req/s average per client IP, allowing short
+        # bursts up to 100 before throttling kicks in. Defined once here; referenced by all
+        # three routers below (Traefik's Docker/Swarm provider aggregates labels from every
+        # service into one shared dynamic config, so a middleware declared on one service is
+        # usable by any router in the stack).
+        - "traefik.http.middlewares.rl-default.ratelimit.average=50"
+        - "traefik.http.middlewares.rl-default.ratelimit.burst=100"
+        - "traefik.http.middlewares.rl-default.ratelimit.period=1s"
+        - "traefik.http.routers.master.middlewares=rl-default"
 
   # ==========================================
   # 5A. WORKER NODE 1 (/w1)
@@ -105,9 +134,9 @@ services:
       - RedisConfig__ConnectionString=redis:6379,abortConnect=false
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=arena_survivor;Username=postgres;Password=aa123456
       # Redis registers THIS specific path for Worker 1
-      - ServerConfig__PublicUrl=http://adel.giize.com/w1/matchHub
-      - ServerConfig__FrontendUrl=http://adel.giize.com
-      - ServerConfig__AllowedCorsOrigins__0=http://adel.giize.com
+      - ServerConfig__PublicUrl=https://adel.giize.com/w1/matchHub
+      - ServerConfig__FrontendUrl=https://adel.giize.com
+      - ServerConfig__AllowedCorsOrigins__0=https://adel.giize.com
     networks:
       - arena_network
     depends_on:
@@ -121,10 +150,11 @@ services:
       labels:
         - "traefik.enable=true"
         - "traefik.http.routers.w1.rule=Host(`adel.giize.com`) && PathPrefix(`/w1`)"
-        - "traefik.http.routers.w1.entrypoints=web"
+        - "traefik.http.routers.w1.entrypoints=websecure"
+        - "traefik.http.routers.w1.tls.certresolver=letsencrypt"
         # Middleware to strip the "/w1" before sending to your C# app
         - "traefik.http.middlewares.w1-strip.stripprefix.prefixes=/w1"
-        - "traefik.http.routers.w1.middlewares=w1-strip"
+        - "traefik.http.routers.w1.middlewares=w1-strip,rl-default"
         - "traefik.http.services.w1.loadbalancer.server.port=8080"
 
   # ==========================================
@@ -137,9 +167,9 @@ services:
       - RedisConfig__ConnectionString=redis:6379,abortConnect=false
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=arena_survivor;Username=postgres;Password=aa123456
       # Redis registers THIS specific path for Worker 2
-      - ServerConfig__PublicUrl=http://adel.giize.com/w2/matchHub
-      - ServerConfig__FrontendUrl=http://adel.giize.com
-      - ServerConfig__AllowedCorsOrigins__0=http://adel.giize.com
+      - ServerConfig__PublicUrl=https://adel.giize.com/w2/matchHub
+      - ServerConfig__FrontendUrl=https://adel.giize.com
+      - ServerConfig__AllowedCorsOrigins__0=https://adel.giize.com
     networks:
       - arena_network
     depends_on:
@@ -153,8 +183,9 @@ services:
       labels:
         - "traefik.enable=true"
         - "traefik.http.routers.w2.rule=Host(`adel.giize.com`) && PathPrefix(`/w2`)"
-        - "traefik.http.routers.w2.entrypoints=web"
+        - "traefik.http.routers.w2.entrypoints=websecure"
+        - "traefik.http.routers.w2.tls.certresolver=letsencrypt"
         # Middleware to strip the "/w2" before sending to your C# app
         - "traefik.http.middlewares.w2-strip.stripprefix.prefixes=/w2"
-        - "traefik.http.routers.w2.middlewares=w2-strip"
+        - "traefik.http.routers.w2.middlewares=w2-strip,rl-default"
         - "traefik.http.services.w2.loadbalancer.server.port=8080"

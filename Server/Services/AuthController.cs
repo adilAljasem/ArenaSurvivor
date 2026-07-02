@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -40,6 +41,7 @@ public class AuthController : ControllerBase
     }
 
     // ─── REGISTER ────────────────────────────────────────────────────────────
+    [EnableRateLimiting("auth")]
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest req)
     {
@@ -130,6 +132,7 @@ public class AuthController : ControllerBase
     }
 
     // ─── LOGIN ────────────────────────────────────────────────────────────────
+    [EnableRateLimiting("auth")]
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest req)
     {
@@ -197,6 +200,7 @@ public class AuthController : ControllerBase
     }
 
     // ─── FORGOT PASSWORD ─────────────────────────────────────────────────────
+    [EnableRateLimiting("auth")]
     [HttpPost("forgot-password")]
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest req)
     {
@@ -232,6 +236,7 @@ public class AuthController : ControllerBase
     }
 
     // ─── RESET PASSWORD ──────────────────────────────────────────────────────
+    [EnableRateLimiting("auth")]
     [HttpPost("reset-password")]
     public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest req)
     {
@@ -263,6 +268,7 @@ public class AuthController : ControllerBase
     }
 
     // ─── RESEND VERIFICATION ─────────────────────────────────────────────────────
+    [EnableRateLimiting("auth")]
     [HttpPost("resend-verification")]
     public async Task<IActionResult> ResendVerification([FromBody] ResendVerificationRequest req)
     {

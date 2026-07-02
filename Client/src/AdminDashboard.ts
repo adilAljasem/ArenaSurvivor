@@ -105,18 +105,21 @@ interface PlayerDetailResponse {
     achievements: AchievementSummary[];
 }
 
+// Matches the PascalCase produced by WorkerHeartbeatService's raw JsonSerializer.Serialize
+// call (no naming policy applied there) — this is passed through Redis -> AdminController
+// untouched, unlike the rest of the API which goes through ASP.NET's camelCase formatter.
 interface LiveGame {
-    roomId: string;
-    roomName: string;
-    difficulty: string;
-    wave: number;
-    phase: string;
-    mapId: string;
-    playerCount: number;
-    playerNames: string[];
-    workerId: string;
-    workerUrl: string;
-    lastUpdated: string;
+    RoomId: string;
+    RoomName: string;
+    Difficulty: string;
+    Wave: number;
+    Phase: string;
+    MapId: string;
+    PlayerCount: number;
+    PlayerNames: string[];
+    WorkerId: string;
+    WorkerUrl: string;
+    LastUpdated: string;
 }
 
 type PageId = 'dashboard' | 'redis' | 'players' | 'live-games' | 'matches';
@@ -771,14 +774,14 @@ export class AdminDashboard {
         grid.innerHTML = data.games.map(g => `
             <div class="admin-server-card">
                 <div class="admin-server-card-top">
-                    <span class="admin-server-id">${this.escapeHtml(g.roomName)}</span>
-                    <span class="admin-badge admin-badge-blue">${this.escapeHtml(g.phase)}</span>
+                    <span class="admin-server-id">${this.escapeHtml(g.RoomName)}</span>
+                    <span class="admin-badge admin-badge-blue">${this.escapeHtml(g.Phase)}</span>
                 </div>
-                <div class="admin-server-metric-row"><span>Difficulty</span><b>${this.escapeHtml(g.difficulty)}</b></div>
-                <div class="admin-server-metric-row"><span>Wave</span><b>${g.wave}</b></div>
-                <div class="admin-server-metric-row"><span>Map</span><b>${this.escapeHtml((g.mapId || '').replace('map_', ''))}</b></div>
-                <div class="admin-server-metric-row"><span>Players</span><b>${g.playerCount}</b></div>
-                <div style="margin-top:8px; font-size:12px; color:var(--muted);">${(g.playerNames || []).map(n => this.escapeHtml(n)).join(', ') || '—'}</div>
+                <div class="admin-server-metric-row"><span>Difficulty</span><b>${this.escapeHtml(g.Difficulty)}</b></div>
+                <div class="admin-server-metric-row"><span>Wave</span><b>${g.Wave}</b></div>
+                <div class="admin-server-metric-row"><span>Map</span><b>${this.escapeHtml((g.MapId || '').replace('map_', ''))}</b></div>
+                <div class="admin-server-metric-row"><span>Players</span><b>${g.PlayerCount}</b></div>
+                <div style="margin-top:8px; font-size:12px; color:var(--muted);">${(g.PlayerNames || []).map(n => this.escapeHtml(n)).join(', ') || '—'}</div>
             </div>
         `).join('');
     }

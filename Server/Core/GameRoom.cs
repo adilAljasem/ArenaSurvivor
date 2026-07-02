@@ -152,8 +152,23 @@ public class GameRoom
 
             if (State.Phase == GamePhase.WaveActive)
             {
-                if (State.PhaseTimer <= 0) await HandleWaveEndTransition();
-                else HandleEnemySpawning(currentTickTime);
+                // Check if there is any boss currently alive in the room
+                bool isBossAlive = State.Enemies.Values.Any(e => _configManager.Enemies[e.ConfigId].IsBoss);
+
+                // Only end the wave if the timer is up AND the boss is dead
+                if (State.PhaseTimer <= 0 && !isBossAlive)
+                {
+                    await HandleWaveEndTransition();
+                }
+                else
+                {
+                    // Keep spawning normal enemies if time remains. 
+                    // Optional: stop spawning trash enemies if PhaseTimer <= 0 but boss is alive.
+                    if (State.PhaseTimer > 0)
+                    {
+                        HandleEnemySpawning(currentTickTime);
+                    }
+                }
             }
             else if (State.Phase == GamePhase.ShopPhase && State.PhaseTimer <= 0)
             {

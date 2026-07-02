@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Server.Configs;
 using Server.Core;
@@ -76,6 +77,50 @@ public class LobbyHub : Hub
     {
         Guid userId = Guid.Parse(GetPlayerId());
         return await _achievementService.GetCatalogWithProgressAsync(_db, userId);
+    }
+
+    // Top players across five categories over the last 7 days, for the main-menu "Scoreboard"
+    // button. HighestWave is a per-player MAX (can't sum waves); everything else is a per-player
+    // SUM across their matches in the window. Returns 50 per category (not just 10) so the
+    // client can scroll past the top 10 rather than the leaderboard dead-ending there.
+    public async Task<object> GetScoreboard()
+    {
+        var since = DateTime.UtcNow.AddDays(-7);
+        var recentMatches = await _db.MatchRecords
+            .Where(m => m.MatchDate >= since)
+            .ToListAsync();
+
+        var byPlayer = recentMatches.GroupBy(m => m.PlayerId).ToList();
+
+        List<object> BuildBoard(Func<IGrouping<Guid, MatchRecord>, float> valueSelector)
+        {
+            return byPlayer
+                .Select(g => new
+                {
+                    playerId = g.Key,
+                    // Username is a per-match snapshot, not a live FK — use the most recent one
+                    // in case the player renamed mid-window.
+                    username = g.OrderByDescending(m => m.MatchDate).First().Username,
+                    value = valueSelector(g)
+                })
+                .Where(x => x.value > 0)
+                .OrderByDescending(x => x.value)
+                .Take(50)
+                .Cast<object>()
+                .ToList();
+        }
+
+        var myPlayerId = Guid.Parse(GetPlayerId());
+
+        return new
+        {
+            myPlayerId,
+            highestWave = BuildBoard(g => g.Max(m => m.HighestWave)),
+            healingDone = BuildBoard(g => g.Sum(m => m.TotalHealingDone)),
+            damageDone = BuildBoard(g => g.Sum(m => m.TotalDamageDealt)),
+            damageTaken = BuildBoard(g => g.Sum(m => m.TotalDamageTaken)),
+            shieldDone = BuildBoard(g => g.Sum(m => m.TotalShieldingDone))
+        };
     }
 
     public override async Task OnConnectedAsync()
@@ -385,23 +430,35 @@ public class LobbyHub : Hub
         {
             if (worker.Value.IsNullOrEmpty) continue;
 
-            var doc = System.Text.Json.JsonDocument.Parse(worker.Value.ToString());
-            var root = doc.RootElement;
-
-            if ((DateTime.UtcNow - root.GetProperty("LastUpdated").GetDateTime()).TotalSeconds > 15)
+            try
             {
-                await db.HashDeleteAsync("active_workers", worker.Name);
-                continue;
+                var doc = System.Text.Json.JsonDocument.Parse(worker.Value.ToString());
+                var root = doc.RootElement;
+
+                if ((DateTime.UtcNow - root.GetProperty("LastUpdated").GetDateTime()).TotalSeconds > 15)
+                {
+                    await db.HashDeleteAsync("active_workers", worker.Name);
+                    continue;
+                }
+
+                double cpu = root.GetProperty("CpuUsage").GetDouble();
+                if (cpu > 90.0 && activeWorkers.Length > 1) continue;
+
+                double score = (cpu * 10) + (root.GetProperty("RamUsageMB").GetInt64() * 0.1) + (root.GetProperty("ActiveRooms").GetInt32() * 5);
+                if (score < lowestScore)
+                {
+                    lowestScore = score;
+                    bestWorkerUrl = root.GetProperty("Url").GetString()!;
+                }
             }
-
-            double cpu = root.GetProperty("CpuUsage").GetDouble();
-            if (cpu > 90.0 && activeWorkers.Length > 1) continue;
-
-            double score = (cpu * 10) + (root.GetProperty("RamUsageMB").GetInt64() * 0.1) + (root.GetProperty("ActiveRooms").GetInt32() * 5);
-            if (score < lowestScore)
+            catch (Exception ex)
             {
-                lowestScore = score;
-                bestWorkerUrl = root.GetProperty("Url").GetString()!;
+                // Malformed, partial, or stale-shape heartbeat entry (e.g. left over from an
+                // older server build, or a worker that died mid-write) — one bad entry must
+                // never crash match-starting for everyone. Skip it and self-heal by removing
+                // it from Redis so it doesn't keep failing on every future StartMatch call.
+                Console.WriteLine($"[LOBBY] Skipping malformed worker heartbeat '{worker.Name}': {ex.Message}");
+                await db.HashDeleteAsync("active_workers", worker.Name);
             }
         }
 

@@ -720,9 +720,11 @@ export class LobbyUI {
         const characters = this.masterConfigs.characters;
         const entries = Object.values(characters) as any[];
 
-        if (!this.selectedDetailCharacterId || !characters[this.selectedDetailCharacterId]) {
-            const firstUnlocked = entries.find(c => !this.isCharacterLocked(c).locked);
-            this.selectedDetailCharacterId = (firstUnlocked ? this.pick(firstUnlocked, 'id') : this.pick(entries[0], 'id')) || '';
+        // No auto-default to "first unlocked" — leads with the picker list alone until the
+        // player actually picks something (or the server tells us they already have, on
+        // rejoin). A stale selection pointing at a character that no longer exists just clears.
+        if (this.selectedDetailCharacterId && !characters[this.selectedDetailCharacterId]) {
+            this.selectedDetailCharacterId = '';
         }
 
         entries.forEach(char => {
@@ -753,6 +755,17 @@ export class LobbyUI {
     private renderCharacterDetail() {
         const panel = document.getElementById('character-detail-panel')!;
         panel.innerHTML = '';
+
+        if (!this.selectedDetailCharacterId) {
+            panel.innerHTML = `
+                <div class="char-detail-placeholder">
+                    <div class="char-detail-placeholder-icon">☺</div>
+                    <div>Pick a character to see their stats, traits, and skills.</div>
+                </div>
+            `;
+            return;
+        }
+
         const char = this.masterConfigs?.characters?.[this.selectedDetailCharacterId];
         if (!char) return;
         panel.appendChild(this.buildCharacterCollectionCard(char));
@@ -761,6 +774,65 @@ export class LobbyUI {
     private cachedAchievements: any[] = [];
     private activeAchFilter: string = 'all';
     private activeCollectionTab: string = 'enemies';
+
+    private loadScoreboard() {
+        const grid = document.getElementById('scoreboard-grid')!;
+        grid.innerHTML = `<div style="padding: 20px; color: ${LOBBY_ASSETS.colorMuted};">Loading...</div>`;
+
+        this.connection.invoke("GetScoreboard").then((data: any) => {
+            grid.innerHTML = '';
+            const myId = data.myPlayerId;
+
+            const boards: { key: string, title: string, icon: string, format: (v: number) => string }[] = [
+                { key: 'highestWave', title: 'Highest Wave Reached', icon: '🌊', format: v => Math.floor(v).toString() },
+                { key: 'damageDone', title: 'Damage Done', icon: '⚔️', format: v => Math.round(v).toLocaleString() },
+                { key: 'healingDone', title: 'Healing Done', icon: '💚', format: v => Math.round(v).toLocaleString() },
+                { key: 'shieldDone', title: 'Shielding Done', icon: '🛡️', format: v => Math.round(v).toLocaleString() },
+                { key: 'damageTaken', title: 'Damage Taken', icon: '🩸', format: v => Math.round(v).toLocaleString() },
+            ];
+
+            boards.forEach(board => {
+                const entries: { playerId: string, username: string, value: number }[] = data[board.key] || [];
+                const panel = document.createElement('div');
+                panel.className = 'score-panel';
+
+                const rows = entries.length === 0
+                    ? `<div style="padding: 20px; color: ${LOBBY_ASSETS.colorMuted}; text-align:center; font-size:13px;">No data yet this week.</div>`
+                    : entries.map((e, i) => {
+                        const rank = i + 1;
+                        const isMe = e.playerId === myId;
+                        const rankClass = rank <= 3 ? `rank-${rank}` : '';
+                        const rankDisplay = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank.toString();
+                        return `
+                            <div class="score-row ${rankClass} ${isMe ? 'is-me' : ''}">
+                                <div class="score-rank ${rankClass}">${rankDisplay}</div>
+                                <div class="score-name">${this.escapeIfExists(e.username)}</div>
+                                <div class="score-value">${board.format(e.value)}</div>
+                            </div>
+                        `;
+                    }).join('');
+
+                panel.innerHTML = `
+                    <div class="score-panel-header">
+                        <div class="score-panel-title">${board.icon} ${board.title}</div>
+                        <div class="score-panel-subtitle">Top ${entries.length} · Last 7 Days</div>
+                    </div>
+                    <div class="score-list">${rows}</div>
+                `;
+                grid.appendChild(panel);
+            });
+        }).catch(err => {
+            console.error("Failed to load scoreboard:", err);
+            grid.innerHTML = `<div style="padding: 20px; color: #ff6666;">Failed to load scoreboard.</div>`;
+        });
+    }
+
+    // Small helper — scoreboard usernames come straight from MatchRecord snapshots (trusted
+    // server data), but escape anyway since it's still user-chosen text rendered as HTML.
+    private escapeIfExists(str: string): string {
+        if (!str) return '';
+        return str.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+    }
 
     private loadAchievements() {
         const grid = document.getElementById('achievements-grid')!;
@@ -1429,19 +1501,19 @@ export class LobbyUI {
         .picker-card-name { font-weight: bold; font-size: 14px; color: #fff; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
         .picker-card-sub { font-size: 11px; color: ${LOBBY_ASSETS.colorMuted}; }
         .picker-card.selected .picker-card-name { color: var(--pc-color); }
-        .waiting-layout { display: grid; grid-template-columns: 280px 1fr 260px; grid-template-rows: 1fr 400px; gap: 20px; height: calc(100% - 70px); overflow: hidden; width: 100%; }
+        .waiting-layout { display: grid; grid-template-columns: 280px 1fr 300px; grid-template-rows: 1fr 400px; gap: 20px; height: calc(100% - 70px); overflow: hidden; width: 100%; }
         .waiting-col { background: rgba(0,0,0,0.6); border: 2px solid #333; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; overflow: hidden; }
         .col-settings { grid-column: 1; grid-row: 1; }
         .col-chat { grid-column: 2; grid-row: 1; }
-        .col-roster { grid-column: 3; grid-row: 1; }
-        .col-chars { grid-column: 1 / span 3; grid-row: 2; }
+        .col-roster { grid-column: 3; grid-row: 1 / span 2; }
+        .col-chars { grid-column: 1 / span 2; grid-row: 2; }
         .roster-scroll { flex: 1; overflow-y: auto; padding-right: 6px; }
         @media (max-width: 1100px) {
-            .waiting-layout { grid-template-columns: 240px 1fr 220px; }
+            .waiting-layout { grid-template-columns: 240px 1fr 260px; }
         }
         .char-grid { display: flex; flex-direction: row; overflow-x: auto; gap: 15px; padding-bottom: 10px; width: 100%; align-items: center; }
         .char-select-layout { display: flex; gap: 16px; flex: 1; overflow: hidden; }
-        .char-picker-list { width: 180px; min-width: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 6px; }
+        .char-picker-list { width: 240px; min-width: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 6px; }
         .char-picker-item { position: relative; display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.5); border: 2px solid #333; border-radius: 8px; padding: 8px 10px; cursor: pointer; transition: 0.2s; }
         .char-picker-item:hover { border-color: #555; background: rgba(0,0,0,0.7); }
         .char-picker-item.selected { border-color: ${LOBBY_ASSETS.colorPrimary}; background: rgba(229, 179, 92, 0.1); box-shadow: inset 0 0 12px rgba(229, 179, 92, 0.15); }
@@ -1452,6 +1524,8 @@ export class LobbyUI {
         .char-picker-lock { font-size: 13px; }
         .char-detail-panel { flex: 1; overflow-y: auto; padding-right: 6px; }
         .char-detail-panel .coll-card { min-height: 0; height: auto; }
+        .char-detail-placeholder { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: ${LOBBY_ASSETS.colorMuted}; font-size: 14px; text-align: center; padding: 20px; }
+        .char-detail-placeholder-icon { font-size: 40px; opacity: 0.4; }
         .char-card { min-width: 140px; flex-shrink: 0; background: rgba(0,0,0,0.5); border: 2px solid transparent; border-radius: 8px; padding: 15px; text-align: center; cursor: pointer; transition: 0.2s; display: flex; flex-direction: column; align-items: center; }
         .char-card:hover { background: rgba(0,0,0,0.8); border-color: #555; }
         .char-card.selected { border-color: ${LOBBY_ASSETS.colorPrimary}; background: rgba(229, 179, 92, 0.1); box-shadow: inset 0 0 15px rgba(229, 179, 92, 0.2); }
@@ -1538,6 +1612,26 @@ export class LobbyUI {
         .coll-badge { font-size: 11px; padding: 4px 9px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid #333; color: #ddd; }
         .coll-empty { padding: 20px; color: ${LOBBY_ASSETS.colorMuted}; grid-column: 1 / -1; text-align: center; }
         .coll-card.locked { opacity: 0.55; filter: grayscale(0.6); }
+
+        /* --- Scoreboard --- */
+        .score-grid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; padding-bottom: 20px; align-content: start; }
+        .score-panel { background: rgba(0,0,0,0.5); border: 2px solid #333; border-radius: 10px; display: flex; flex-direction: column; max-height: 480px; overflow: hidden; }
+        .score-panel-header { padding: 16px 18px 12px; border-bottom: 1px solid #333; flex-shrink: 0; }
+        .score-panel-title { font-size: 15px; font-weight: bold; color: #fff; display: flex; align-items: center; gap: 8px; }
+        .score-panel-subtitle { font-size: 11px; color: ${LOBBY_ASSETS.colorMuted}; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .score-list { flex: 1; overflow-y: auto; padding: 6px 10px; }
+        .score-row { display: flex; align-items: center; gap: 12px; padding: 9px 8px; border-radius: 6px; }
+        .score-row.is-me { background: rgba(229,179,92,0.12); border: 1px solid ${LOBBY_ASSETS.colorPrimary}; }
+        .score-rank { width: 28px; min-width: 28px; text-align: center; font-weight: bold; font-size: 14px; color: ${LOBBY_ASSETS.colorMuted}; }
+        .score-rank.rank-1 { color: #ffd700; font-size: 17px; }
+        .score-rank.rank-2 { color: #c8c8d0; font-size: 16px; }
+        .score-rank.rank-3 { color: #cd7f32; font-size: 15px; }
+        .score-name { flex: 1; min-width: 0; font-size: 13px; font-weight: bold; color: #eee; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .score-row.is-me .score-name { color: ${LOBBY_ASSETS.colorPrimary}; }
+        .score-value { font-size: 13px; font-weight: bold; color: ${LOBBY_ASSETS.colorPrimary}; white-space: nowrap; }
+        .score-row.rank-1 .score-value { color: #ffd700; }
+        .score-row.rank-2 .score-value { color: #c8c8d0; }
+        .score-row.rank-3 .score-value { color: #cd7f32; }
         `;
         document.head.appendChild(style);
     }
@@ -1577,10 +1671,20 @@ export class LobbyUI {
                 <button id="btn-play" class="lobby-btn">NEW GAME</button>
                 <button id="btn-achievements" class="lobby-btn">ACHIEVEMENTS</button>
                 <button id="btn-collection" class="lobby-btn">COLLECTION</button>
+                <button id="btn-scoreboard" class="lobby-btn">SCOREBOARD</button>
                 <button id="btn-settings" class="lobby-btn">OPTIONS</button>
                 <button id="btn-fullscreen" class="lobby-btn">TOGGLE FULLSCREEN</button>
                 <button id="btn-admin-panel" class="lobby-btn hidden" style="background: linear-gradient(180deg, #3a2a4a 0%, #241730 100%); border-color: #9b6dff;">🛡 ADMIN PANEL</button>
                 <button id="btn-tos" class="lobby-btn danger">LOGOUT</button>
+            </div>
+
+            <div id="screen-scoreboard" class="full-screen-panel hidden">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <h2 style="margin:0; border:none; padding:0;">Scoreboard</h2>
+                    <button id="btn-back-from-scoreboard" class="lobby-btn danger" style="width: auto; padding: 10px 30px; margin:0;">Back</button>
+                </div>
+                <p style="color: ${LOBBY_ASSETS.colorMuted}; margin: 0 0 20px 0; font-size: 13px;">Top performers over the last 7 days.</p>
+                <div id="scoreboard-grid" class="score-grid"></div>
             </div>
 
             <div id="screen-admin-panel" class="full-screen-panel hidden" style="padding: 0; position: relative;">
@@ -1787,6 +1891,12 @@ export class LobbyUI {
             this.loadAchievements();
         };
         document.getElementById('btn-back-from-achievements')!.onclick = () => switchScreen('screen-achievements', 'screen-menu');
+
+        document.getElementById('btn-scoreboard')!.onclick = () => {
+            switchScreen('screen-menu', 'screen-scoreboard');
+            this.loadScoreboard();
+        };
+        document.getElementById('btn-back-from-scoreboard')!.onclick = () => switchScreen('screen-scoreboard', 'screen-menu');
 
         document.getElementById('btn-admin-panel')!.onclick = () => {
             switchScreen('screen-menu', 'screen-admin-panel');
@@ -2089,6 +2199,11 @@ export class LobbyUI {
                         readyBtn.classList.remove('danger');
                     }
 
+                    // Server truth for "what I've actually got selected" — empty on a fresh
+                    // join (nothing picked yet), or my confirmed pick on rejoin. Character
+                    // clicks set this locally too for instant feedback; this just keeps it
+                    // in sync with what the server actually has on record.
+                    this.selectedDetailCharacterId = p.characterId || '';
                     this.renderCharacterGrid();
                 }
             });

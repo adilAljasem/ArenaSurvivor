@@ -333,8 +333,7 @@ public class AdminController : ControllerBase
 }
 
 public record BanRequest(string? Reason);
-public record ServerStatusDto(string WorkerId, string Url, int ActiveRooms, double CpuUsage, long RamUsageMB, DateTime LastUpdated, bool IsStale);
-/// <summary>
+public record ServerStatusDto(string WorkerId, string Url, int ActiveRooms, double CpuUsage, long RamUsageMB, DateTime LastUpdated, bool IsStale);/// <summary>
 /// Requires the authenticated caller to be an admin. Checks the DB live on every request
 /// rather than trusting the JWT's "IsAdmin" claim alone — that claim is baked in at login
 /// for convenience, but this is the actual gate, so revoking admin access takes effect

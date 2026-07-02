@@ -23,13 +23,13 @@
     ],
     "animDeathFrameRate": 12,
     "baseStats": {
-      "maxHp": 30000,
-      "movementSpeed": 200,
+      "maxHp": 100,
+      "movementSpeed": 150,
       "meleeDamage": 50,
       "rangedDamage": 50,
-      "harvesting": 5,
+      "harvesting": 1,
       "luck": 5,
-      "armor": 100,
+      "armor": 10,
       "magicDefense": 5
     },
     "startingWeapons": [],

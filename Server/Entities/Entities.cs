@@ -299,6 +299,11 @@ public class PlayerEntity : BaseActorEntity
     [JsonIgnore]
     public int PeakWeaponsEquipped { get; set; } = 0;
 
+    // Flood guard for SendChatMessage (covers both regular chat and "/" cheat commands) — see
+    // MatchHub.SendChatMessage. Not networked, purely server-side bookkeeping.
+    [JsonIgnore]
+    public DateTime LastChatMessageAt { get; set; } = DateTime.MinValue;
+
     // Highest value ever reached this match for EVERY stat (keyed by the same stat names as
     // CachedStats/ConfigManager.AllStats — "maxHp", "critChance", "luck", whatever exists).
     // Powers generic "reach X of stat Y before wave Z" achievements without hardcoding a

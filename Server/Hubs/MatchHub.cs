@@ -335,6 +335,16 @@ public class MatchHub : Hub
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
         if (room == null) return;
 
+        // Flood guard: covers both regular chat spam and rapid-fire "/" command abuse. HTTP-
+        // level rate limiting can't see this — a SignalR hub connection is one long-lived
+        // request, not many separate ones — so this has to live in the hub method itself.
+        if (room.State.Players.TryGetValue(Context.ConnectionId, out var throttledPlayer))
+        {
+            if ((DateTime.UtcNow - throttledPlayer.LastChatMessageAt).TotalMilliseconds < 400)
+                return; // silently drop — no need to tell a flooder they got rate limited
+            throttledPlayer.LastChatMessageAt = DateTime.UtcNow;
+        }
+
         if (message.StartsWith("/"))
         {
             // Cheat commands (setwave, givegold, killall, spawnenemy, etc.) are dangerous in a
