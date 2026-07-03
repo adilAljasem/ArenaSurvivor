@@ -8,11 +8,17 @@ namespace Server.Core.Services;
 
 /// <summary>
 /// Stateless service (safe as a Singleton — takes ApplicationDbContext per-call rather than
-/// holding one). Evaluates AchievementConfig conditions against a player's MatchRecord history
-/// and unlocks new UserAchievement rows.
+/// holding one). Evaluates AchievementConfig conditions and unlocks new UserAchievement rows.
+///
+/// IMPORTANT: "Lifetime" scope conditions read from UserLifetimeStats — a permanent per-player
+/// aggregate row maintained incrementally by UpdateLifetimeStatsAsync — NOT from scanning the
+/// full MatchRecord table. This is what makes it safe to prune/archive old MatchRecord rows on
+/// any retention schedule without silently undoing players' earned lifetime progress, and keeps
+/// lifetime checks O(1) instead of O(match count) as history grows. "SingleMatch" scope still
+/// reads the just-saved MatchRecord directly, since that's inherently about one specific match.
 ///
 /// ConditionType reference:
-///   "LifetimeStat"       (Lifetime)   — sum of StatName across ALL matches. StatName is one of:
+///   "LifetimeStat"       (Lifetime)   — running total of StatName. StatName is one of:
 ///                                       "kills","deaths","damageDealt","damageTaken","healingDone","shieldingDone".
 ///   "SingleMatchStat"    (SingleMatch)— same StatName options, checked against one match's row.
 ///   "HighestWaveReached" (either)     — best wave reached (single match, or best-ever if Lifetime).
@@ -52,15 +58,95 @@ public class AchievementService
         _ => 0f
     };
 
-    private static Dictionary<string, float> ParsePeakStats(MatchRecord m)
+    private static float GetLifetimeStatValue(UserLifetimeStats s, string statName) => statName switch
     {
-        if (string.IsNullOrEmpty(m.PeakStatsJson)) return new();
-        try { return JsonSerializer.Deserialize<Dictionary<string, float>>(m.PeakStatsJson) ?? new(); }
+        "kills" => s.TotalKills,
+        "deaths" => s.TotalDeaths,
+        "damageDealt" => (float)s.TotalDamageDealt,
+        "damageTaken" => (float)s.TotalDamageTaken,
+        "healingDone" => (float)s.TotalHealingDone,
+        "shieldingDone" => (float)s.TotalShieldingDone,
+        _ => 0f
+    };
+
+    private static Dictionary<string, float> ParsePeakStats(MatchRecord m) => ParseFloatMap(m.PeakStatsJson);
+
+    private static Dictionary<string, float> ParseFloatMap(string json)
+    {
+        if (string.IsNullOrEmpty(json)) return new();
+        try { return JsonSerializer.Deserialize<Dictionary<string, float>>(json) ?? new(); }
+        catch { return new(); }
+    }
+
+    private static Dictionary<string, int> ParseIntMap(string json)
+    {
+        if (string.IsNullOrEmpty(json)) return new();
+        try { return JsonSerializer.Deserialize<Dictionary<string, int>>(json) ?? new(); }
         catch { return new(); }
     }
 
     /// <summary>
-    /// Call right after a MatchRecord has been saved (GameRoom.SaveMatchResultsToDatabaseAsync).
+    /// Maintains the permanent per-player aggregate — call once per player, per
+    /// SaveMatchResultsToDatabaseAsync save, right alongside (not instead of) writing the
+    /// MatchRecord row. Additive stats are passed as DELTAS (the change since this same
+    /// match's last save) so repeated wave-end saves of one growing match don't double-count;
+    /// max-tracked fields are passed as the match's current absolute values, since compare-
+    /// and-set is naturally idempotent and needs no delta math.
+    /// </summary>
+    public async Task UpdateLifetimeStatsAsync(
+        ApplicationDbContext db, Guid playerId,
+        int killsDelta, int deathsDelta, float dmgDealtDelta, float dmgTakenDelta, float healDelta, float shieldDelta,
+        bool isNewMatch,
+        int currentHighestWave, string configId, string difficulty,
+        int currentMatchKills, float currentMatchDmgDealt, float currentMatchDmgTaken, float currentMatchHealing, float currentMatchShielding,
+        Dictionary<string, float> currentPeakStats)
+    {
+        var stats = await db.UserLifetimeStats.FirstOrDefaultAsync(s => s.PlayerId == playerId);
+        if (stats == null)
+        {
+            stats = new UserLifetimeStats { PlayerId = playerId };
+            db.UserLifetimeStats.Add(stats);
+        }
+
+        stats.TotalKills += killsDelta;
+        stats.TotalDeaths += deathsDelta;
+        stats.TotalDamageDealt += dmgDealtDelta;
+        stats.TotalDamageTaken += dmgTakenDelta;
+        stats.TotalHealingDone += healDelta;
+        stats.TotalShieldingDone += shieldDelta;
+
+        if (isNewMatch) stats.MatchesPlayed++;
+
+        stats.BestWaveEver = Math.Max(stats.BestWaveEver, currentHighestWave);
+
+        var perCharacter = ParseIntMap(stats.BestWavePerCharacterJson);
+        perCharacter[configId] = Math.Max(perCharacter.GetValueOrDefault(configId, 0), currentHighestWave);
+        stats.BestWavePerCharacterJson = JsonSerializer.Serialize(perCharacter);
+
+        var perDifficulty = ParseIntMap(stats.BestWavePerDifficultyJson);
+        perDifficulty[difficulty] = Math.Max(perDifficulty.GetValueOrDefault(difficulty, 0), currentHighestWave);
+        stats.BestWavePerDifficultyJson = JsonSerializer.Serialize(perDifficulty);
+
+        var bestPeaks = ParseFloatMap(stats.BestPeakStatsJson);
+        foreach (var kv in currentPeakStats)
+            bestPeaks[kv.Key] = Math.Max(bestPeaks.GetValueOrDefault(kv.Key, 0f), kv.Value);
+        stats.BestPeakStatsJson = JsonSerializer.Serialize(bestPeaks);
+
+        var bestSingleMatch = ParseFloatMap(stats.BestSingleMatchStatsJson);
+        bestSingleMatch["kills"] = Math.Max(bestSingleMatch.GetValueOrDefault("kills", 0f), currentMatchKills);
+        bestSingleMatch["damageDealt"] = Math.Max(bestSingleMatch.GetValueOrDefault("damageDealt", 0f), currentMatchDmgDealt);
+        bestSingleMatch["damageTaken"] = Math.Max(bestSingleMatch.GetValueOrDefault("damageTaken", 0f), currentMatchDmgTaken);
+        bestSingleMatch["healingDone"] = Math.Max(bestSingleMatch.GetValueOrDefault("healingDone", 0f), currentMatchHealing);
+        bestSingleMatch["shieldingDone"] = Math.Max(bestSingleMatch.GetValueOrDefault("shieldingDone", 0f), currentMatchShielding);
+        stats.BestSingleMatchStatsJson = JsonSerializer.Serialize(bestSingleMatch);
+
+        stats.LastUpdated = DateTime.UtcNow;
+        // Deliberately no SaveChangesAsync here — the caller (GameRoom) saves this in the same
+        // batch as the MatchRecord write, so both land in one transaction.
+    }
+
+    /// <summary>
+    /// Call right after a MatchRecord (and its UserLifetimeStats delta) has been saved.
     /// Returns the list of newly-unlocked achievement ids (empty if none).
     /// </summary>
     public async Task<List<string>> EvaluateAndUnlockAsync(ApplicationDbContext db, Guid userId, MatchRecord currentMatch)
@@ -70,9 +156,8 @@ public class AchievementService
             .Select(u => u.AchievementId)
             .ToHashSetAsync();
 
-        // Conditions with Lifetime scope need the player's full match history — fetch once
-        // and reuse across all achievements rather than re-querying per achievement.
-        List<MatchRecord>? allMyRecords = null;
+        UserLifetimeStats? lifetimeStats = null;
+        bool lifetimeStatsFetched = false;
 
         var newlyUnlocked = new List<string>();
 
@@ -87,8 +172,12 @@ public class AchievementService
             }
             else
             {
-                allMyRecords ??= await db.MatchRecords.Where(m => m.PlayerId == userId).ToListAsync();
-                met = EvaluateLifetime(achievement, allMyRecords);
+                if (!lifetimeStatsFetched)
+                {
+                    lifetimeStats = await db.UserLifetimeStats.FirstOrDefaultAsync(s => s.PlayerId == userId);
+                    lifetimeStatsFetched = true;
+                }
+                met = lifetimeStats != null && EvaluateLifetime(achievement, lifetimeStats);
             }
 
             if (met)
@@ -117,7 +206,6 @@ public class AchievementService
         return a.ConditionType switch
         {
             "SingleMatchStat" => GetMatchStatValue(m, a.StatName) >= a.Threshold,
-
             "HighestWaveReached" or "CharacterWaveCleared" or "DifficultyWaveCleared" => m.HighestWave >= a.Threshold,
 
             // Reach wave <Threshold> without ever taking damage. Approximate but effective:
@@ -141,26 +229,22 @@ public class AchievementService
         };
     }
 
-    private bool EvaluateLifetime(AchievementConfig a, List<MatchRecord> records)
+    private bool EvaluateLifetime(AchievementConfig a, UserLifetimeStats s)
     {
-        var filtered = records.AsEnumerable();
-        if (a.ConditionType == "CharacterWaveCleared" && !string.IsNullOrEmpty(a.ConditionStat))
-            filtered = filtered.Where(m => m.ConfigId == a.ConditionStat);
-        if (a.ConditionType == "DifficultyWaveCleared" && !string.IsNullOrEmpty(a.ConditionStat))
-            filtered = filtered.Where(m => m.Difficulty == a.ConditionStat);
-
-        var list = filtered.ToList();
+        if (a.ConditionType == "CharacterWaveCleared")
+            return ParseIntMap(s.BestWavePerCharacterJson).GetValueOrDefault(a.ConditionStat, 0) >= a.Threshold;
+        if (a.ConditionType == "DifficultyWaveCleared")
+            return ParseIntMap(s.BestWavePerDifficultyJson).GetValueOrDefault(a.ConditionStat, 0) >= a.Threshold;
 
         return a.ConditionType switch
         {
-            "LifetimeStat" => list.Sum(m => GetMatchStatValue(m, a.StatName)) >= a.Threshold,
-            "MatchesPlayed" => list.Count >= a.Threshold,
-            "HighestWaveReached" or "CharacterWaveCleared" or "DifficultyWaveCleared"
-                => (list.Count > 0 ? list.Max(m => m.HighestWave) : 0) >= a.Threshold,
+            "LifetimeStat" => GetLifetimeStatValue(s, a.StatName) >= a.Threshold,
+            "MatchesPlayed" => s.MatchesPlayed >= a.Threshold,
+            "HighestWaveReached" => s.BestWaveEver >= a.Threshold,
 
             // Generic: any stat (StatName) ever peaked at/above Threshold in any single match,
             // with no wave-limit constraint (unlike MaxStatByWave).
-            "MaxStatReached" => list.Count > 0 && list.Max(m => ParsePeakStats(m).GetValueOrDefault(a.StatName, 0f)) >= a.Threshold,
+            "MaxStatReached" => ParseFloatMap(s.BestPeakStatsJson).GetValueOrDefault(a.StatName, 0f) >= a.Threshold,
 
             _ => false
         };
@@ -202,19 +286,19 @@ public class AchievementService
             .ToHashSetAsync();
     }
 
-    /// <summary>Full catalog + unlock state + progress, for the lobby Achievements panel.</summary>
+    /// <summary>Full catalog + unlock state + progress, for the lobby Achievements panel. O(1)
+    /// against player history size — reads the aggregate row, never scans MatchRecords.</summary>
     public async Task<List<AchievementProgressDto>> GetCatalogWithProgressAsync(ApplicationDbContext db, Guid userId)
     {
         var unlocked = await db.UserAchievements
             .Where(u => u.UserId == userId)
             .ToDictionaryAsync(u => u.AchievementId, u => u.UnlockedAt);
 
-        var myRecords = await db.MatchRecords.Where(m => m.PlayerId == userId).ToListAsync();
-
-        var bestWavePerCharacter = myRecords.GroupBy(m => m.ConfigId).ToDictionary(g => g.Key, g => g.Max(m => m.HighestWave));
-        var bestWavePerDifficulty = myRecords.GroupBy(m => m.Difficulty).ToDictionary(g => g.Key, g => g.Max(m => m.HighestWave));
-        int bestWaveOverall = myRecords.Count > 0 ? myRecords.Max(m => m.HighestWave) : 0;
-        int matchesPlayed = myRecords.Count;
+        var stats = await db.UserLifetimeStats.FirstOrDefaultAsync(s => s.PlayerId == userId);
+        var bestWavePerCharacter = stats != null ? ParseIntMap(stats.BestWavePerCharacterJson) : new();
+        var bestWavePerDifficulty = stats != null ? ParseIntMap(stats.BestWavePerDifficultyJson) : new();
+        var bestPeakStats = stats != null ? ParseFloatMap(stats.BestPeakStatsJson) : new();
+        var bestSingleMatchStats = stats != null ? ParseFloatMap(stats.BestSingleMatchStatsJson) : new();
 
         var results = new List<AchievementProgressDto>();
 
@@ -237,15 +321,15 @@ public class AchievementService
 
             float progress = a.ConditionType switch
             {
-                "LifetimeStat" => myRecords.Sum(m => GetMatchStatValue(m, a.StatName)),
-                "SingleMatchStat" => myRecords.Count > 0 ? myRecords.Max(m => GetMatchStatValue(m, a.StatName)) : 0,
-                "MatchesPlayed" => matchesPlayed,
-                "HighestWaveReached" => bestWaveOverall,
+                "LifetimeStat" => stats != null ? GetLifetimeStatValue(stats, a.StatName) : 0,
+                "SingleMatchStat" => bestSingleMatchStats.GetValueOrDefault(a.StatName, 0f),
+                "MatchesPlayed" => stats?.MatchesPlayed ?? 0,
+                "HighestWaveReached" => stats?.BestWaveEver ?? 0,
                 // Approximate: shows progress toward the wave target; the no-hit / weapon-limit
                 // constraint itself is all-or-nothing and only visible via the unlock itself.
-                "NoHitWaveClear" => bestWaveOverall,
-                "LimitedWeaponsWaveCleared" => bestWaveOverall,
-                "MaxStatByWave" or "MaxStatReached" => myRecords.Count > 0 ? myRecords.Max(m => ParsePeakStats(m).GetValueOrDefault(a.StatName, 0f)) : 0,
+                "NoHitWaveClear" => stats?.BestWaveEver ?? 0,
+                "LimitedWeaponsWaveCleared" => stats?.BestWaveEver ?? 0,
+                "MaxStatByWave" or "MaxStatReached" => bestPeakStats.GetValueOrDefault(a.StatName, 0f),
                 "CharacterWaveCleared" => bestWavePerCharacter.GetValueOrDefault(a.ConditionStat, 0),
                 "DifficultyWaveCleared" => bestWavePerDifficulty.GetValueOrDefault(a.ConditionStat, 0),
                 _ => 0

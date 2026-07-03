@@ -19,6 +19,7 @@ interface DashboardData {
     totalRegisteredUsers: number;
     totalBannedUsers: number;
     totalMatchesPlayed: number;
+    totalMatchRecordRows: number;
     totalLifetimeKills: number;
 }
 
@@ -485,6 +486,20 @@ export class AdminDashboard {
                     </div>
                 </div>
                 <div class="admin-panel">
+                    <div class="admin-panel-title">Cleanup</div>
+                    <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">
+                        Safe to delete — lifetime achievement progress is stored separately and is never affected by this.
+                        Only removes rows from this history view.
+                    </div>
+                    <div class="admin-filter-row" style="align-items:center;">
+                        <span style="color:var(--muted); font-size:13px; white-space:nowrap;">Delete matches older than</span>
+                        <input type="text" id="cleanup-days" value="90" style="width:70px; flex:none; text-align:center;" />
+                        <span style="color:var(--muted); font-size:13px; white-space:nowrap;">days</span>
+                        <button class="admin-btn" id="btn-cleanup-preview">Preview</button>
+                    </div>
+                    <div id="cleanup-result" style="margin-top:12px; display:none;"></div>
+                </div>
+                <div class="admin-panel">
                     <div class="admin-filter-row">
                         <input type="search" id="matches-search" placeholder="Search by username, character, or room ID..." />
                         <select id="matches-difficulty-filter">
@@ -554,6 +569,8 @@ export class AdminDashboard {
             this.matchesPage = 1;
             this.loadMatches();
         });
+
+        this.$('#btn-cleanup-preview')!.addEventListener('click', () => this.previewCleanup());
     }
 
     private switchPage(pageId: PageId) {
@@ -588,6 +605,7 @@ export class AdminDashboard {
             <div class="admin-stat-card"><div class="admin-stat-value">${data.servers.length}</div><div class="admin-stat-label">Servers Online</div></div>
             <div class="admin-stat-card"><div class="admin-stat-value">${data.totalRegisteredUsers}</div><div class="admin-stat-label">Registered Users</div></div>
             <div class="admin-stat-card"><div class="admin-stat-value">${data.totalMatchesPlayed}</div><div class="admin-stat-label">Matches Played (all-time)</div></div>
+            <div class="admin-stat-card"><div class="admin-stat-value">${data.totalMatchRecordRows.toLocaleString()}</div><div class="admin-stat-label">Match Record Rows in DB</div></div>
             <div class="admin-stat-card"><div class="admin-stat-value">${data.totalLifetimeKills.toLocaleString()}</div><div class="admin-stat-label">Total Kills (all-time)</div></div>
             <div class="admin-stat-card"><div class="admin-stat-value">${data.totalBannedUsers}</div><div class="admin-stat-label">Banned Users</div></div>
         `;
@@ -787,6 +805,55 @@ export class AdminDashboard {
     }
 
     // ─── All Matches ────────────────────────────────────────────────────────
+    private async previewCleanup() {
+        const days = parseInt((this.$('#cleanup-days') as HTMLInputElement).value, 10) || 90;
+        const resultBox = this.$('#cleanup-result')!;
+        resultBox.style.display = 'block';
+        resultBox.innerHTML = `<span style="color:var(--muted); font-size:13px;">Checking...</span>`;
+
+        let data: { cutoffDate: string, matchesToDelete: number, totalMatches: number, matchesRemaining: number };
+        try {
+            data = await this.api(`/matches/cleanup-preview?olderThanDays=${days}`);
+        } catch {
+            resultBox.innerHTML = `<span style="color:var(--danger); font-size:13px;">Failed to check.</span>`;
+            return;
+        }
+
+        if (data.matchesToDelete === 0) {
+            resultBox.innerHTML = `<span style="color:var(--muted); font-size:13px;">No matches older than ${days} days — nothing to clean up.</span>`;
+            return;
+        }
+
+        resultBox.innerHTML = `
+            <div style="font-size:13px; margin-bottom:10px;">
+                This will delete <b style="color:var(--danger);">${data.matchesToDelete.toLocaleString()}</b> match record(s)
+                older than ${new Date(data.cutoffDate).toLocaleDateString()},
+                leaving <b>${data.matchesRemaining.toLocaleString()}</b> of ${data.totalMatches.toLocaleString()} total.
+            </div>
+            <button class="admin-btn admin-btn-danger" id="btn-cleanup-confirm">Delete ${data.matchesToDelete.toLocaleString()} Records</button>
+        `;
+        this.$('#btn-cleanup-confirm')!.addEventListener('click', () => this.executeCleanup(days, data.matchesToDelete));
+    }
+
+    private async executeCleanup(days: number, expectedCount: number) {
+        if (!confirm(`Permanently delete ${expectedCount.toLocaleString()} match record(s) older than ${days} days? This cannot be undone (though it does NOT affect anyone's achievements or lifetime stats).`)) {
+            return;
+        }
+
+        const resultBox = this.$('#cleanup-result')!;
+        resultBox.innerHTML = `<span style="color:var(--muted); font-size:13px;">Deleting...</span>`;
+
+        try {
+            const data = await this.api<{ message: string, deleted: number }>(`/matches/cleanup?olderThanDays=${days}`, { method: 'DELETE' });
+            resultBox.innerHTML = `<span style="color:var(--success); font-size:13px;">${this.escapeHtml(data.message)}</span>`;
+            this.showToast(`Deleted ${data.deleted.toLocaleString()} match records.`);
+            this.matchesPage = 1;
+            this.loadMatches();
+        } catch (e) {
+            resultBox.innerHTML = `<span style="color:var(--danger); font-size:13px;">${this.escapeHtml((e as Error).message)}</span>`;
+        }
+    }
+
     private async loadMatches() {
         const query = (this.$('#matches-search') as HTMLInputElement).value.trim();
         const difficulty = (this.$('#matches-difficulty-filter') as HTMLSelectElement).value;

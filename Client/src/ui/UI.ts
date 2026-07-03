@@ -1688,7 +1688,13 @@ export class SkillActionBar extends Phaser.GameObjects.Container {
 
 export class LootNotifier {
     private scene: Phaser.Scene;
-    private activeToasts: Phaser.GameObjects.Container[] = [];
+
+    // --- Loot pickups: right-middle, multiple can be visible and stacked at once ---
+    private activeLootToasts: Phaser.GameObjects.Container[] = [];
+
+    // --- Achievements: bottom-right, strictly ONE visible at a time, fully sequential ---
+    private achievementQueue: Array<() => void> = [];
+    private isShowingAchievement: boolean = false;
 
     constructor(scene: Phaser.Scene) {
         this.scene = scene;
@@ -1704,26 +1710,22 @@ export class LootNotifier {
         }
     }
 
-    public show(playerName: string, itemName: string, tier: number, textureKey: string, iconFrame: number) {
-        // --- MOBILE SCALING ---
-        // If the screen is small (like a phone), shrink the notification by 15%
+    // Builds the visual container (text, icon, background) sized to its content.
+    // Positioning/animation is handled separately by each caller below, since loot
+    // and achievement toasts move completely differently.
+    private buildToast(playerName: string, itemName: string, tier: number, textureKey: string, iconFrame: number, verb: string) {
         const isMobile = this.scene.scale.width < 800;
         const uiScale = isMobile ? 0.85 : 1.0;
-
         const height = 45;
         const padding = 15;
 
-        const targetX = this.scene.scale.width - (20 * uiScale);
-        const baseY = this.scene.scale.height / 2;
-
-        const container = this.scene.add.container(0, baseY).setDepth(10000).setScrollFactor(0);
+        const container = this.scene.add.container(0, 0).setDepth(10000).setScrollFactor(0);
         container.setScale(uiScale);
 
         const tierColor = this.getTierColor(tier);
         const hexColorString = '#' + tierColor.toString(16).padStart(6, '0');
 
-        // 1. Render the text first so we can measure exactly how wide it is
-        const prefixText = this.scene.add.text(0, 0, `${playerName} picked up `, {
+        const prefixText = this.scene.add.text(0, 0, `${playerName} ${verb} `, {
             fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
             fontSize: '16px',
             color: '#ffffff',
@@ -1743,10 +1745,9 @@ export class LootNotifier {
         }).setOrigin(0, 0.5);
         container.add(itemText);
 
-        // 2. Render the icon and measure its space
         let iconWidthSpace = 0;
         if (textureKey && this.scene.textures.exists(textureKey)) {
-            const targetIconSize = 36; // Slightly reduced to look more compact
+            const targetIconSize = 36;
             const icon = this.scene.add.sprite(0, 0, textureKey);
 
             if (iconFrame !== undefined && iconFrame !== null) {
@@ -1762,46 +1763,47 @@ export class LootNotifier {
             iconWidthSpace = targetIconSize;
         }
 
-        // --- DYNAMIC WIDTH CALCULATION ---
-        // Exact width needed = padding + text1 + text2 + gap(10) + icon + padding
         const textGap = 10;
         const totalWidth = padding + prefixText.width + itemText.width + (iconWidthSpace > 0 ? textGap + iconWidthSpace : 0) + padding;
 
-        // Now that we know the total width, shift everything to the left so it anchors nicely to the right edge
         prefixText.setX(-totalWidth + padding);
         itemText.setX(-totalWidth + padding + prefixText.width);
 
-        // If the icon exists, it's the 3rd element added to the container
         if (container.list.length > 2) {
             const iconObj = container.list[2] as Phaser.GameObjects.Sprite;
-            // Place it nicely on the right, accounting for padding and its center origin
             iconObj.setX(-padding - (iconWidthSpace / 2));
         }
 
-        // 3. Draw the Background using the exact dynamic width
         const bg = this.scene.add.graphics();
         bg.fillStyle(0x000000, 0.15);
         bg.fillRoundedRect(-totalWidth, -height / 2, totalWidth, height, 8);
         bg.lineStyle(2, tierColor, 0.8);
         bg.strokeRoundedRect(-totalWidth, -height / 2, totalWidth, height, 8);
-
-        // Put the background at index 0 so it stays behind the text and icon
         container.addAt(bg, 0);
 
-        // 4. Push all existing notifications DOWN (factoring in the mobile scale!)
-        this.activeToasts.forEach((toast) => {
-            this.scene.tweens.add({
-                targets: toast,
-                y: toast.y + ((height + 10) * uiScale),
-                duration: 250,
-                ease: 'Power2'
-            });
+        return { container, totalWidth, height, uiScale };
+    }
+
+    // ============================================================
+    // LOOT PICKUPS — right-middle, multiple can stack simultaneously
+    // ============================================================
+    public show(playerName: string, itemName: string, tier: number, textureKey: string, iconFrame: number) {
+        const { container, totalWidth, height, uiScale } =
+            this.buildToast(playerName, itemName, tier, textureKey, iconFrame, "picked up");
+
+        const targetX = this.scene.scale.width - (20 * uiScale);
+        const baseY = this.scene.scale.height / 2;
+
+        this.activeLootToasts.unshift(container);
+        this.activeLootToasts.forEach((toast, index) => {
+            const slotY = baseY + (index * (height + 10) * uiScale);
+            if (toast === container) {
+                toast.y = slotY;
+            } else {
+                this.scene.tweens.add({ targets: toast, y: slotY, duration: 250, ease: 'Power2' });
+            }
         });
 
-        this.activeToasts.unshift(container);
-
-        // 5. Slide in Animation
-        // Start completely off-screen to the right
         const startX = this.scene.scale.width + (totalWidth * uiScale);
         container.setX(startX);
 
@@ -1819,7 +1821,57 @@ export class LootNotifier {
                         duration: 300,
                         onComplete: () => {
                             container.destroy();
-                            this.activeToasts = this.activeToasts.filter(t => t !== container);
+                            this.activeLootToasts = this.activeLootToasts.filter(t => t !== container);
+                        }
+                    });
+                });
+            }
+        });
+    }
+
+    // ============================================================
+    // ACHIEVEMENTS — bottom-right, strictly one at a time: rise up,
+    // hold 4s, sink back down, THEN the next queued one rises.
+    // ============================================================
+    public showAchievement(playerName: string, itemName: string, tier: number, textureKey: string, iconFrame: number) {
+        this.achievementQueue.push(() => this.spawnAchievementToast(playerName, itemName, tier, textureKey, iconFrame));
+        this.processAchievementQueue();
+    }
+
+    private processAchievementQueue() {
+        if (this.isShowingAchievement || this.achievementQueue.length === 0) return;
+        this.isShowingAchievement = true;
+        const next = this.achievementQueue.shift()!;
+        next();
+    }
+
+    private spawnAchievementToast(playerName: string, itemName: string, tier: number, textureKey: string, iconFrame: number) {
+        const { container, uiScale } =
+            this.buildToast(playerName, itemName, tier, textureKey, iconFrame, "unlocked");
+
+        const targetX = this.scene.scale.width - (20 * uiScale);
+        const restY = this.scene.scale.height - (90 * uiScale);   // resting spot near bottom-right
+        const hiddenY = this.scene.scale.height + 80;              // fully off-screen below
+
+        container.setX(targetX);
+        container.setY(hiddenY);
+
+        this.scene.tweens.add({
+            targets: container,
+            y: restY,
+            duration: 400,
+            ease: 'Back.easeOut',
+            onComplete: () => {
+                this.scene.time.delayedCall(4000, () => {
+                    this.scene.tweens.add({
+                        targets: container,
+                        y: hiddenY,
+                        duration: 350,
+                        ease: 'Power2',
+                        onComplete: () => {
+                            container.destroy();
+                            this.isShowingAchievement = false;
+                            this.processAchievementQueue();
                         }
                     });
                 });

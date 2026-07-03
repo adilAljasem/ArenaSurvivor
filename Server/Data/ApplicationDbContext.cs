@@ -10,6 +10,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<User> Users => Set<User>();
     public DbSet<MatchRecord> MatchRecords => Set<MatchRecord>();
     public DbSet<UserAchievement> UserAchievements => Set<UserAchievement>();
+    public DbSet<UserLifetimeStats> UserLifetimeStats => Set<UserLifetimeStats>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

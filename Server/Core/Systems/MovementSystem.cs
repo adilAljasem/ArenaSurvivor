@@ -164,14 +164,24 @@ public class MovementSystem : IGameSystem
 
                 if (closestDistSq <= attackRadiusSq)
                 {
-                    if (enemy.AttackCooldown <= 0) { enemy.ActionState = "Attacking"; enemy.AttackCooldown = config.AttackDuration; }
+                    if (enemy.IsIncapacitated(_configs))
+                    {
+                        enemy.ActionState = "Idle";
+                    }
+                    else if (enemy.AttackCooldown <= 0)
+                    {
+                        enemy.ActionState = "Attacking";
+                        float atkSpd = enemy.GetTotalStat("attackSpeedPercent", _configs);
+                        enemy.AttackCooldown = config.AttackDuration / Math.Max(0.1f, (1f + atkSpd));
+                    }
                     else if (enemy.ActionState != "Attacking" && enemy.ActionState != "Casting") enemy.ActionState = "Idle";
                 }
+
                 else
                 {
-                    if (enemy.AttackCooldown <= 0)
+                    if (enemy.AttackCooldown <= 0 && !enemy.IsIncapacitated(_configs))
                     {
-                        if (enemy.ActionState != "Casting" && enemy.ActionState != "Attacking") enemy.ActionState = "Moving";
+                        if (enemy.ActionState != "Casting") enemy.ActionState = "Moving";
                         float dx = targetX - enemy.X, dy = targetY - enemy.Y;
                         float length = (float)Math.Sqrt((dx * dx) + (dy * dy));
                         if (length > 0)

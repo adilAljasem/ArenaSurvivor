@@ -35,14 +35,12 @@
     "attackDuration": 0.5,
     "baseStats": {
       "maxHp": 3000,
-      "movementSpeed": 90,
+      "movementSpeed": 130,
       "meleeDamage": 5,
       "magicDefense": 5,
       "armor": 2
     },
-    "startingWeapons": [
-      "smg"
-    ],
+    "startingWeapons": ["pistol"],
     "startingItems": [
       "ugly_tooth"
     ],

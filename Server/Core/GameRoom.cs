@@ -152,23 +152,8 @@ public class GameRoom
 
             if (State.Phase == GamePhase.WaveActive)
             {
-                // Check if there is any boss currently alive in the room
-                bool isBossAlive = State.Enemies.Values.Any(e => _configManager.Enemies[e.ConfigId].IsBoss);
-
-                // Only end the wave if the timer is up AND the boss is dead
-                if (State.PhaseTimer <= 0 && !isBossAlive)
-                {
-                    await HandleWaveEndTransition();
-                }
-                else
-                {
-                    // Keep spawning normal enemies if time remains. 
-                    // Optional: stop spawning trash enemies if PhaseTimer <= 0 but boss is alive.
-                    if (State.PhaseTimer > 0)
-                    {
-                        HandleEnemySpawning(currentTickTime);
-                    }
-                }
+                if (State.PhaseTimer <= 0) await HandleWaveEndTransition();
+                else HandleEnemySpawning(currentTickTime);
             }
             else if (State.Phase == GamePhase.ShopPhase && State.PhaseTimer <= 0)
             {
@@ -229,6 +214,17 @@ public class GameRoom
                 var existingRecord = await db.MatchRecords
                     .FirstOrDefaultAsync(m => m.RoomId == RoomId && m.PlayerId == parsedPlayerId);
 
+                // Snapshot "before" values for delta computation — needed to update the
+                // permanent lifetime aggregate without double-counting on repeated wave-end
+                // saves of this same growing match. 0 for a brand-new match (nothing before it).
+                bool isNewMatch = existingRecord == null;
+                int killsBefore = existingRecord?.Kills ?? 0;
+                int deathsBefore = existingRecord?.Deaths ?? 0;
+                float dmgDealtBefore = existingRecord?.TotalDamageDealt ?? 0f;
+                float dmgTakenBefore = existingRecord?.TotalDamageTaken ?? 0f;
+                float healBefore = existingRecord?.TotalHealingDone ?? 0f;
+                float shieldBefore = existingRecord?.TotalShieldingDone ?? 0f;
+
                 if (existingRecord != null)
                 {
                     // 2. UPDATE existing record
@@ -268,6 +264,30 @@ public class GameRoom
                     db.MatchRecords.Add(newRecord);
                     savedRecordsByPlayerId[parsedPlayerId] = newRecord;
                 }
+
+                // 4. Maintain the permanent lifetime aggregate (UserLifetimeStats) via delta,
+                //    in the SAME transaction as the MatchRecord write. This is what makes it
+                //    safe to prune old MatchRecord rows later without undoing achievement
+                //    progress — see AchievementService's class-level doc comment.
+                await achievementService.UpdateLifetimeStatsAsync(
+                    db, parsedPlayerId,
+                    killsDelta: player.Kills - killsBefore,
+                    deathsDelta: player.Deaths - deathsBefore,
+                    dmgDealtDelta: player.TotalDamageDealt - dmgDealtBefore,
+                    dmgTakenDelta: player.TotalDamageTaken - dmgTakenBefore,
+                    healDelta: player.TotalHealingDone - healBefore,
+                    shieldDelta: player.TotalShieldingDone - shieldBefore,
+                    isNewMatch: isNewMatch,
+                    currentHighestWave: State.CurrentWave,
+                    configId: player.ConfigId,
+                    difficulty: State.CurrentDifficulty,
+                    currentMatchKills: player.Kills,
+                    currentMatchDmgDealt: player.TotalDamageDealt,
+                    currentMatchDmgTaken: player.TotalDamageTaken,
+                    currentMatchHealing: player.TotalHealingDone,
+                    currentMatchShielding: player.TotalShieldingDone,
+                    currentPeakStats: player.PeakStats
+                );
             }
 
             // 4. Save all changes (both updates and inserts) at once

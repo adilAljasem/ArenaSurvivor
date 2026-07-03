@@ -505,7 +505,7 @@ public class SkillSystem : IGameSystem
             if (isCasting) enemy.ActionState = "Casting";
             else if (busySkill == null) { if (enemy.ActionState == "Casting") enemy.ActionState = "Idle"; enemy.CurrentCastingSkillId = string.Empty; enemy.CurrentCastTimer = 0f; enemy.MaxCastTimer = 0f; }
 
-            if (busySkill == null && enemy.Skills.Count > 0)
+            if (busySkill == null && enemy.Skills.Count > 0 && !enemy.IsIncapacitated(_configs))
             {
                 for (int i = 0; i < enemy.Skills.Count; i++)
                 {
@@ -528,7 +528,7 @@ public class SkillSystem : IGameSystem
                 }
             }
 
-            if (_configs.Enemies.TryGetValue(enemy.ConfigId, out var eConfig) && eConfig.DynamicSkills != null)
+            if (_configs.Enemies.TryGetValue(enemy.ConfigId, out var eConfig) && eConfig.DynamicSkills != null && !enemy.IsIncapacitated(_configs))
             {
                 foreach (var trigger in eConfig.DynamicSkills)
                 {
@@ -648,7 +648,7 @@ public class SkillSystem : IGameSystem
                 player.MaxCastTimer = 0f;
             }
 
-            if (busySkill == null && state.Phase == GamePhase.WaveActive && player.SynergizedSkills.Count > 0)
+            if (busySkill == null && state.Phase == GamePhase.WaveActive && player.SynergizedSkills.Count > 0 && !player.IsIncapacitated(_configs))
             {
                 for (int i = 0; i < player.SynergizedSkills.Count; i++)
                 {
@@ -671,7 +671,7 @@ public class SkillSystem : IGameSystem
                 }
             }
 
-            if (_configs.Characters.TryGetValue(player.ConfigId, out var pConfig) && pConfig.DynamicSkills != null)
+            if (_configs.Characters.TryGetValue(player.ConfigId, out var pConfig) && pConfig.DynamicSkills != null && !player.IsIncapacitated(_configs))
             {
                 foreach (var trigger in pConfig.DynamicSkills)
                 {

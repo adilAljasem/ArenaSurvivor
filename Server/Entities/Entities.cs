@@ -74,6 +74,17 @@ public abstract class BaseActorEntity
     {
         return CachedStats.GetValueOrDefault(statName, 0f);
     }
+
+    public bool IsIncapacitated(Configs.ConfigManager configs)
+    {
+        foreach (var effect in ActiveEffects)
+        {
+            if (configs.Effects.TryGetValue(effect.ConfigId, out var cfg) && cfg.PreventsActions)
+                return true;
+        }
+        return false;
+    }
+
 }
 
 /// <summary>

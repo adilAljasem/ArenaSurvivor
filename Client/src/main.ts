@@ -1127,7 +1127,7 @@ class GameScene extends Phaser.Scene {
 
                 // Reuses the existing loot popup so achievement toasts automatically match
                 // your item/weapon tier coloring without a separate UI component.
-                this.lootNotifier.show(localName, `🏆 ${name}`, tier, textureKey, iconFrame);
+                this.lootNotifier.showAchievement(localName, `🏆 ${name}`, tier, textureKey, iconFrame);
             });
         });
 

@@ -45,7 +45,8 @@
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
       "adrenaline_surge"
-    ]
+    ],
+    "grantedSkills": ["adrenaline_surge"]
   },
   "dragon_fang": {
     "id": "dragon_fang",

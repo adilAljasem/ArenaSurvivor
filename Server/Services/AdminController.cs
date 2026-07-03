@@ -86,6 +86,7 @@ public class AdminController : ControllerBase
         int totalBanned = await _db.Users.CountAsync(u => u.IsBanned);
         int totalMatches = await _db.MatchRecords.Select(m => m.RoomId).Distinct().CountAsync();
         long totalLifetimeKills = await _db.MatchRecords.SumAsync(m => (long?)m.Kills) ?? 0;
+        int totalMatchRecordRows = await _db.MatchRecords.CountAsync();
 
         return Ok(new
         {
@@ -95,6 +96,7 @@ public class AdminController : ControllerBase
             totalRegisteredUsers = totalUsers,
             totalBannedUsers = totalBanned,
             totalMatchesPlayed = totalMatches,
+            totalMatchRecordRows,
             totalLifetimeKills
         });
     }
@@ -330,11 +332,56 @@ public class AdminController : ControllerBase
 
         return Ok(new { total, page, pageSize, matches });
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // 6. MATCH HISTORY CLEANUP
+    // ═══════════════════════════════════════════════════════════════════════
+    // Safe to prune now — Lifetime achievement progress lives permanently in
+    // UserLifetimeStats (see AchievementService), not in these rows. Deleting old
+    // MatchRecords only removes raw history from the "All Matches" admin view; it can
+    // never undo anything a player has actually earned.
+    //
+    // Deliberately admin-triggered (a button click, not a silent background job) so you see
+    // exactly what's about to happen before it happens — preview first, then confirm.
+
+    [HttpGet("matches/cleanup-preview")]
+    public async Task<IActionResult> PreviewCleanup([FromQuery] int olderThanDays = 90)
+    {
+        if (olderThanDays < 1) return BadRequest(new { error = "olderThanDays must be at least 1." });
+
+        var cutoff = DateTime.UtcNow.AddDays(-olderThanDays);
+        int matchingCount = await _db.MatchRecords.CountAsync(m => m.MatchDate < cutoff);
+        int totalCount = await _db.MatchRecords.CountAsync();
+
+        return Ok(new
+        {
+            cutoffDate = cutoff,
+            matchesToDelete = matchingCount,
+            totalMatches = totalCount,
+            matchesRemaining = totalCount - matchingCount
+        });
+    }
+
+    [HttpDelete("matches/cleanup")]
+    public async Task<IActionResult> ExecuteCleanup([FromQuery] int olderThanDays = 90)
+    {
+        if (olderThanDays < 1) return BadRequest(new { error = "olderThanDays must be at least 1." });
+
+        var cutoff = DateTime.UtcNow.AddDays(-olderThanDays);
+
+        // Bulk delete rather than loading rows into memory first — this table is exactly the
+        // one that can get large, so avoid materializing potentially hundreds of thousands of
+        // entities just to remove them.
+        int deleted = await _db.MatchRecords
+            .Where(m => m.MatchDate < cutoff)
+            .ExecuteDeleteAsync();
+
+        return Ok(new { message = $"Deleted {deleted} match record(s) older than {olderThanDays} days.", deleted });
+    }
 }
 
 public record BanRequest(string? Reason);
-public record ServerStatusDto(string WorkerId, string Url, int ActiveRooms, double CpuUsage, long RamUsageMB, DateTime LastUpdated, bool IsStale);/// <summary>
-/// Requires the authenticated caller to be an admin. Checks the DB live on every request
+public record ServerStatusDto(string WorkerId, string Url, int ActiveRooms, double CpuUsage, long RamUsageMB, DateTime LastUpdated, bool IsStale);/// Requires the authenticated caller to be an admin. Checks the DB live on every request
 /// rather than trusting the JWT's "IsAdmin" claim alone — that claim is baked in at login
 /// for convenience, but this is the actual gate, so revoking admin access takes effect
 /// immediately instead of waiting for the token to expire.

@@ -48,6 +48,62 @@ export function getDifficultyColor(id: string): string {
 // ==========================================
 // 1. AUTHENTICATION UI
 // ==========================================
+// ═══════════════════════════════════════════════════════════════════════════
+// TERMS OF SERVICE
+// Starting-point legal template — NOT reviewed by a lawyer. Fill in the [PLACEHOLDER]
+// fields (contact email, jurisdiction) before relying on this, and get it reviewed by an
+// actual attorney before you're depending on it in a real dispute, especially if you ever
+// add real-money purchases or operate in a jurisdiction with strong consumer-protection law
+// (EU/UK especially — "all sales final" is NOT always enforceable there for digital goods).
+// ═══════════════════════════════════════════════════════════════════════════
+const TERMS_OF_SERVICE_HTML = `
+<h3>1. Acceptance of Terms</h3>
+<p>By creating an account or otherwise accessing or playing Arena Survivor (the "Game"), you agree to be bound by these Terms of Service ("Terms"). If you do not agree to these Terms, do not create an account or use the Game.</p>
+
+<h3>2. Eligibility</h3>
+<p>You must be at least 13 years old to create an account. If you are under the age of majority in your jurisdiction, you confirm that a parent or legal guardian has reviewed and agreed to these Terms on your behalf.</p>
+
+<h3>3. Independent, Small-Scale Project</h3>
+<p>Arena Survivor is developed and operated by an independent developer, not a company with guaranteed resources or dedicated support staff. The Game is provided on a best-effort basis. There is no guarantee of any minimum uptime, continued availability, or ongoing development. The Game may be modified, suspended, or permanently discontinued at any time, with or without notice, for any reason, including but not limited to lack of funding, time, or interest. If the Game is discontinued, no compensation, refund, or replacement will be provided for any lost access, virtual currency, virtual items, or progress.</p>
+
+<h3>4. Accounts</h3>
+<p>You are responsible for maintaining the confidentiality of your account credentials and for all activity that occurs under your account. You agree to provide accurate registration information. One account per person; accounts may not be sold, transferred, or shared.</p>
+
+<h3>5. Acceptable Use</h3>
+<p>You agree not to: cheat, exploit bugs, use unauthorized third-party software, or attempt to gain an unfair advantage; harass, threaten, or abuse other players; attempt to disrupt, overload, or gain unauthorized access to the Game's servers or infrastructure; or use the Game for any unlawful purpose.</p>
+<p>Violation of this section may result in a warning, temporary suspension, or permanent termination of your account at the sole discretion of the developer, without refund of any kind.</p>
+
+<h3>6. Virtual Currency and Virtual Items</h3>
+<p>The Game may include virtual currency, virtual items, achievements, or other in-game content ("Virtual Items"). Virtual Items have no real-world monetary value, are not redeemable for real currency, and are not transferable outside the Game. You do not own Virtual Items; you receive a limited, revocable, non-transferable license to use them within the Game for as long as the Game remains operational and your account remains in good standing.</p>
+<p><strong>All purchases or acquisitions of Virtual Items, where applicable, are final. No refunds, exchanges, or returns will be provided for any purchase</strong>, except where required by applicable law. Virtual Items may be modified, rebalanced, removed, or wiped as part of normal game updates, and no compensation is owed for such changes. If your account is suspended or terminated for violating these Terms, you forfeit all Virtual Items and progress associated with that account without compensation.</p>
+
+<h3>7. Service Provided "As Is"</h3>
+<p>The Game is provided "as is" and "as available," without warranties of any kind, whether express or implied, including but not limited to warranties of merchantability, fitness for a particular purpose, or non-infringement. The developer does not warrant that the Game will be uninterrupted, secure, error-free, or free of loss of data.</p>
+
+<h3>8. Limitation of Liability</h3>
+<p>To the maximum extent permitted by applicable law, the developer shall not be liable for any indirect, incidental, special, consequential, or punitive damages, or any loss of data, progress, or virtual items, arising out of or related to your use of, or inability to use, the Game — even if advised of the possibility of such damages. Where liability cannot be fully excluded under applicable law, the developer's total liability to you for any claim arising from these Terms or the Game is limited to the total amount, if any, you paid to the developer in the twelve (12) months preceding the claim.</p>
+
+<h3>9. Termination</h3>
+<p>The developer may suspend or terminate your account at any time, for any reason or no reason, including for suspected violation of these Terms, with or without notice. You may stop using the Game at any time.</p>
+
+<h3>10. Intellectual Property</h3>
+<p>All game content, including but not limited to code, art, audio, characters, and design, is the property of the developer or its licensors and is protected by applicable intellectual property laws. Nothing in these Terms grants you any ownership rights in the Game.</p>
+
+<h3>11. Data</h3>
+<p>Account creation requires an email address, username, and password. Gameplay data (match history, achievements, statistics) is stored to support core features such as achievements and leaderboards. Do not share sensitive personal information in chat or usernames, as this data is visible to other players and, where relevant, to server administrators.</p>
+
+<h3>12. Changes to These Terms</h3>
+<p>These Terms may be updated from time to time. Continued use of the Game after changes are posted constitutes acceptance of the revised Terms. Material changes will be reflected by an updated "last modified" reference where practical.</p>
+
+<h3>13. Governing Law</h3>
+<p>These Terms are governed by the laws of [PLACEHOLDER: your country/state], without regard to conflict-of-law principles. Any disputes shall be resolved in the courts of [PLACEHOLDER: your jurisdiction].</p>
+
+<h3>14. Contact</h3>
+<p>Questions about these Terms can be sent to [PLACEHOLDER: contact email].</p>
+
+<p style="color:#888; font-size:11px; margin-top:20px; border-top:1px solid #333; padding-top:12px;">Last updated: 2026-7-02</p>
+`;
+
 export class AuthUI {
     private wrapper: HTMLDivElement;
     private onSuccess: () => void;
@@ -167,6 +223,20 @@ export class AuthUI {
 .resend-btn:hover:not(:disabled) { background:rgba(229,179,92,0.12); }
 .resend-btn:disabled { opacity:0.45; cursor:not-allowed; }
 
+                #tos-modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:1000001; align-items:center; justify-content:center; }
+                #tos-modal-overlay.active { display:flex; }
+                #tos-modal-box { background:#161616; border:2px solid ${LOBBY_ASSETS.colorPrimary}; border-radius:8px; width:560px; max-width:90vw; max-height:80vh; display:flex; flex-direction:column; box-shadow:0 10px 40px rgba(0,0,0,0.8); }
+                #tos-modal-header { padding:20px 24px; border-bottom:1px solid #333; display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
+                #tos-modal-header h2 { margin:0; font-size:18px; color:${LOBBY_ASSETS.colorPrimary}; }
+                #btn-close-tos { background:none; border:none; color:${LOBBY_ASSETS.colorMuted}; font-size:20px; cursor:pointer; line-height:1; padding:4px; }
+                #btn-close-tos:hover { color:#fff; }
+                #tos-modal-body { padding:20px 24px; overflow-y:auto; font-size:13px; line-height:1.6; color:#ddd; }
+                #tos-modal-body h3 { color:${LOBBY_ASSETS.colorPrimary}; font-size:14px; margin:18px 0 8px; }
+                #tos-modal-body h3:first-child { margin-top:0; }
+                #tos-modal-body p { margin:0 0 10px; }
+                #tos-modal-footer { padding:16px 24px; border-top:1px solid #333; flex-shrink:0; }
+                #tos-modal-footer button { width:100%; margin:0; }
+
             </style>
 
             <video autoplay muted loop playsinline id="bg-video">
@@ -222,6 +292,12 @@ export class AuthUI {
                             <span class="input-label">Password (min 8 chars)</span>
                             <input id="reg-password" type="password" class="lobby-input" autocomplete="new-password" />
                         </div>
+                        <label style="display:flex; align-items:flex-start; gap:8px; margin-bottom:15px; cursor:pointer; user-select:none;">
+                            <input type="checkbox" id="reg-accept-terms" style="margin-top:3px; width:16px; height:16px; flex-shrink:0; accent-color:${LOBBY_ASSETS.colorPrimary}; cursor:pointer;" />
+                            <span style="font-size:12px; color:${LOBBY_ASSETS.colorMuted}; line-height:1.4;">
+                                I have read and agree to the <a href="#" id="link-view-terms" style="color:${LOBBY_ASSETS.colorPrimary}; text-decoration:underline;">Terms of Service</a>.
+                            </span>
+                        </label>
                         <button class="lobby-btn" id="btn-register">CREATE ACCOUNT</button>
                     </div>
 
@@ -247,6 +323,19 @@ export class AuthUI {
                     </div>
                 </div>
             </div>
+
+            <div id="tos-modal-overlay">
+                <div id="tos-modal-box">
+                    <div id="tos-modal-header">
+                        <h2>Terms of Service</h2>
+                        <button id="btn-close-tos">✕</button>
+                    </div>
+                    <div id="tos-modal-body">${TERMS_OF_SERVICE_HTML}</div>
+                    <div id="tos-modal-footer">
+                        <button class="lobby-btn" id="btn-accept-tos-from-modal">I Agree</button>
+                    </div>
+                </div>
+            </div>
         `;
 
         (window as any).authShowTab = (tab: string) => this.showTab(tab as any);
@@ -261,6 +350,25 @@ export class AuthUI {
         document.getElementById('btn-forgot')!.addEventListener('click', () => this.handleForgotPassword());
         document.getElementById('btn-reset')!.addEventListener('click', () => this.handleResetPassword());
         document.getElementById('btn-resend')!.addEventListener('click', () => this.handleResendVerification());
+
+        document.getElementById('link-view-terms')!.addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('tos-modal-overlay')!.classList.add('active');
+        });
+        document.getElementById('btn-close-tos')!.addEventListener('click', () => {
+            document.getElementById('tos-modal-overlay')!.classList.remove('active');
+        });
+        document.getElementById('tos-modal-overlay')!.addEventListener('click', (e) => {
+            if ((e.target as HTMLElement).id === 'tos-modal-overlay') {
+                document.getElementById('tos-modal-overlay')!.classList.remove('active');
+            }
+        });
+        // Reading it via the modal and clicking "I Agree" also checks the box for you —
+        // still fully editable/uncheckable afterward, this is just a convenience.
+        document.getElementById('btn-accept-tos-from-modal')!.addEventListener('click', () => {
+            (document.getElementById('reg-accept-terms') as HTMLInputElement).checked = true;
+            document.getElementById('tos-modal-overlay')!.classList.remove('active');
+        });
 
 
         ['login-email', 'login-password'].forEach(id => document.getElementById(id)!.addEventListener('keydown', e => { if (e.key === 'Enter') this.handleLogin(); }));
@@ -364,14 +472,16 @@ export class AuthUI {
         const email = (document.getElementById('reg-email') as HTMLInputElement).value.trim();
         const username = (document.getElementById('reg-username') as HTMLInputElement).value.trim();
         const password = (document.getElementById('reg-password') as HTMLInputElement).value;
+        const acceptedTerms = (document.getElementById('reg-accept-terms') as HTMLInputElement).checked;
         if (!email || !username || !password) { this.showNotice('Please fill in all fields.', 'error'); return; }
+        if (!acceptedTerms) { this.showNotice('You must agree to the Terms of Service to create an account.', 'error'); return; }
 
         this.setLoading('btn-register', true);
         try {
             const res = await fetch('/api/auth/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, username, password })
+                body: JSON.stringify({ email, username, password, acceptedTerms })
             });
             const data = await res.json();
             if (res.ok) {
@@ -1492,8 +1602,8 @@ export class LobbyUI {
         .player-pip.filled { background: ${LOBBY_ASSETS.colorPrimary}; border-color: ${LOBBY_ASSETS.colorPrimary}; box-shadow: 0 0 6px rgba(229, 179, 92, 0.6); }
 
         /* --- Create Room picker cards --- */
-        .picker-card-row { display: flex; gap: 14px; flex-wrap: wrap; }
-        .picker-card { --pc-color: ${LOBBY_ASSETS.colorPrimary}; position: relative; width: 160px; background: rgba(0,0,0,0.5); border: 2px solid #333; border-radius: 10px; padding: 16px; cursor: pointer; transition: 0.2s; text-align: center; }
+        .picker-card-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
+        .picker-card { --pc-color: ${LOBBY_ASSETS.colorPrimary}; position: relative; background: rgba(0,0,0,0.5); border: 2px solid #333; border-radius: 10px; padding: 16px; cursor: pointer; transition: 0.2s; text-align: center; }
         .picker-card:hover { border-color: var(--pc-color); transform: translateY(-2px); }
         .picker-card.selected { border-color: var(--pc-color); background: rgba(0,0,0,0.7); box-shadow: 0 0 16px var(--pc-color); }
         .picker-card-icon { width: 100%; height: 60px; display: flex; align-items: center; justify-content: center; font-size: 28px; margin-bottom: 10px; border-radius: 6px; background: rgba(255,255,255,0.04); overflow: hidden; }
@@ -1501,15 +1611,19 @@ export class LobbyUI {
         .picker-card-name { font-weight: bold; font-size: 14px; color: #fff; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
         .picker-card-sub { font-size: 11px; color: ${LOBBY_ASSETS.colorMuted}; }
         .picker-card.selected .picker-card-name { color: var(--pc-color); }
-        .waiting-layout { display: grid; grid-template-columns: 280px 1fr 300px; grid-template-rows: 1fr 400px; gap: 20px; height: calc(100% - 70px); overflow: hidden; width: 100%; }
+        .match-settings-bar { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; background: rgba(0,0,0,0.6); border: 2px solid #333; border-radius: 8px; padding: 12px 18px; margin-bottom: 16px; }
+        .settings-bar-field { flex: 1; min-width: 130px; margin-bottom: 0; }
+        .settings-bar-field .input-label { font-size: 11px; margin-bottom: 4px; }
+        .settings-bar-field .lobby-input { padding: 8px 12px; font-size: 13px; }
+        .waiting-layout { display: grid; grid-template-columns: 340px 1fr; grid-template-rows: 1fr; gap: 20px; height: calc(100% - 160px); overflow: hidden; width: 100%; }
         .waiting-col { background: rgba(0,0,0,0.6); border: 2px solid #333; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; overflow: hidden; }
-        .col-settings { grid-column: 1; grid-row: 1; }
-        .col-chat { grid-column: 2; grid-row: 1; }
-        .col-roster { grid-column: 3; grid-row: 1 / span 2; }
-        .col-chars { grid-column: 1 / span 2; grid-row: 2; }
+        .col-roster { grid-column: 1; grid-row: 1; }
+        .col-right-stack { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; gap: 20px; overflow: hidden; min-height: 0; }
+        .col-chat { flex: 3 1 0; min-height: 0; }
+        .col-chars { flex: 2 1 0; min-height: 0; }
         .roster-scroll { flex: 1; overflow-y: auto; padding-right: 6px; }
         @media (max-width: 1100px) {
-            .waiting-layout { grid-template-columns: 240px 1fr 260px; }
+            .waiting-layout { grid-template-columns: 280px 1fr; }
         }
         .char-grid { display: flex; flex-direction: row; overflow-x: auto; gap: 15px; padding-bottom: 10px; width: 100%; align-items: center; }
         .char-select-layout { display: flex; gap: 16px; flex: 1; overflow: hidden; }
@@ -1536,6 +1650,9 @@ export class LobbyUI {
         .ready-false { background: rgba(244, 67, 54, 0.8); color: #fff; }
         .lobby-chat-box { flex: 1; overflow-y: auto; font-size: 15px; margin-bottom: 10px; display: flex; flex-direction: column; justify-content: flex-end; }
         .lobby-chat-msg { padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .lobby-chat-input-row { position: relative; display: flex; align-items: center; }
+        .lobby-chat-input-row .lobby-chat-input { margin: 0; flex: 1; padding-left: 42px; }
+        .lobby-btn.lobby-chat-send-btn { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; padding: 0; margin: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; border-radius: 50%; z-index: 2; }
         #toast-container { position: fixed; top: 20px; right: 20px; z-index: 999999; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
         .toast { background: ${LOBBY_ASSETS.colorBtnBgTop}; border-left: 4px solid ${LOBBY_ASSETS.colorPrimary}; padding: 15px 20px; border-radius: 4px; color: white; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.8); animation: slideIn 0.3s ease-out forwards; min-width: 250px; }
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
@@ -1777,7 +1894,7 @@ export class LobbyUI {
             </div>
 
             <div id="screen-waiting" class="full-screen-panel hidden">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
                     <h2 style="margin:0; border:none; padding:0;">Lobby <span id="waiting-room-code" style="color: ${LOBBY_ASSETS.colorPrimary};"></span></h2>
                     
                     <div style="display: flex; gap: 15px;">
@@ -1787,56 +1904,54 @@ export class LobbyUI {
                     </div>
                 </div>
 
+                <div id="host-controls" class="match-settings-bar">
+                    <div class="input-group settings-bar-field"><span class="input-label">Room Name</span><input type="text" id="lobby-edit-name" class="lobby-input" /></div>
+                    <div class="input-group settings-bar-field"><span class="input-label">Password</span><input type="password" id="lobby-edit-pass" class="lobby-input" placeholder="Leave blank for open room" /></div>
+                    <div class="input-group settings-bar-field">
+                        <span class="input-label">Difficulty</span>
+                        <select id="lobby-edit-diff" class="lobby-input">
+                            <option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option>
+                        </select>
+                    </div>
+                    <div class="input-group settings-bar-field">
+                        <span class="input-label">Map</span>
+                        <select id="lobby-edit-map" class="lobby-input">
+                            <option value="map_forest">Forest</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="client-view" class="match-settings-bar hidden">
+                    <div class="input-group settings-bar-field"><span class="input-label">Room Name</span><div id="client-view-name" style="font-weight:bold; font-size:16px;"></div></div>
+                    <div class="input-group settings-bar-field"><span class="input-label">Difficulty</span><div id="client-view-diff" style="font-weight:bold; font-size:16px;"></div></div>
+                    <div class="input-group settings-bar-field"><span class="input-label">Map</span><div id="client-view-map" style="font-weight:bold; font-size:16px;"></div></div>
+                    <p style="color: ${LOBBY_ASSETS.colorMuted}; font-style: italic; margin: 0; align-self: center;">Only Host can edit settings.</p>
+                </div>
+
                 <div class="waiting-layout">
-                    <div class="waiting-col col-settings">
-                        <h3>Match Settings</h3>
-                        <div id="host-controls">
-                            <div class="input-group"><span class="input-label">Room Name</span><input type="text" id="lobby-edit-name" class="lobby-input" /></div>
-                            <div class="input-group"><span class="input-label">Password</span><input type="password" id="lobby-edit-pass" class="lobby-input" placeholder="Leave blank for open room" /></div>
-                            <div class="input-group">
-                                <span class="input-label">Difficulty</span>
-                                <select id="lobby-edit-diff" class="lobby-input">
-                                    <option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option>
-                                </select>
-                            </div>
-                            <div class="input-group">
-                                <span class="input-label">Map</span>
-                                <select id="lobby-edit-map" class="lobby-input">
-                                    <option value="map_forest">Forest</option>
-                                </select>
-                            </div>
-                            <button id="btn-save-settings" class="lobby-btn" style="margin-top: auto;">Apply Settings</button>
-                        </div>
-                        <div id="client-view" class="hidden">
-                            <div class="input-group"><span class="input-label">Room Name</span><div id="client-view-name" style="font-weight:bold; font-size:18px;"></div></div>
-                            <div class="input-group"><span class="input-label">Difficulty</span><div id="client-view-diff" style="font-weight:bold; font-size:18px;"></div></div>
-                            <div class="input-group"><span class="input-label">Map</span><div id="client-view-map" style="font-weight:bold; font-size:18px;"></div></div>
-                            <p style="color: ${LOBBY_ASSETS.colorMuted}; font-style: italic; margin-top: auto;">Only Host can edit settings.</p>
-                        </div>
-                    </div>
-
-                    <div class="waiting-col col-chat">
-                        <h3>💬 Chat</h3>
-                        <div style="flex: 1; background: rgba(0,0,0,0.4); border-radius: 8px; padding: 15px; display: flex; flex-direction: column; overflow: hidden; border: 2px solid #333;">
-                            <div id="lobby-chat-history" class="lobby-chat-box"></div>
-                            <div style="display: flex; gap: 10px; align-items: center;">
-                                <input type="text" id="lobby-chat-input" class="lobby-input" placeholder="Send a message..." style="margin: 0; flex: 1;" />
-                                <button id="btn-send-chat" class="lobby-btn" style="padding: 14px 20px; margin: 0; width: auto;">➤</button>
-                            </div>
-                        </div>
-                    </div>
-
                     <div class="waiting-col col-roster">
                         <h3>🛡 Players</h3>
                         <div id="waiting-roster" class="roster-scroll"></div>
                         <p id="waiting-host-msg" style="color: ${LOBBY_ASSETS.colorMuted}; text-align: center; font-size: 13px; margin-top: auto; padding-top: 12px;">Waiting for host...</p>
                     </div>
 
-                    <div class="waiting-col col-chars">
-                        <h3 style="flex-shrink: 0;">Select Character</h3>
-                        <div class="char-select-layout">
-                            <div id="character-picker-list" class="char-picker-list"></div>
-                            <div id="character-detail-panel" class="char-detail-panel"></div>
+                    <div class="col-right-stack">
+                        <div class="waiting-col col-chat">
+                            <h3>💬 Chat</h3>
+                            <div style="flex: 1; background: rgba(0,0,0,0.4); border-radius: 8px; padding: 15px; display: flex; flex-direction: column; overflow: hidden; border: 2px solid #333;">
+                                <div id="lobby-chat-history" class="lobby-chat-box"></div>
+                                <div class="lobby-chat-input-row">
+                                    <button id="btn-send-chat" class="lobby-btn lobby-chat-send-btn">➤</button>
+                                    <input type="text" id="lobby-chat-input" class="lobby-input lobby-chat-input" placeholder="Send a message..." />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="waiting-col col-chars">
+                            <h3 style="flex-shrink: 0;">Select Character</h3>
+                            <div class="char-select-layout">
+                                <div id="character-picker-list" class="char-picker-list"></div>
+                                <div id="character-detail-panel" class="char-detail-panel"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2023,13 +2138,23 @@ export class LobbyUI {
             if (kind && id) this.showInfoModal(kind, id);
         });
 
-        document.getElementById('btn-save-settings')!.onclick = () => {
+        const applySettings = () => {
             const rName = (document.getElementById('lobby-edit-name') as HTMLInputElement).value.trim();
             const rPass = (document.getElementById('lobby-edit-pass') as HTMLInputElement).value.trim();
             const rDiff = (document.getElementById('lobby-edit-diff') as HTMLSelectElement).value;
             const rMap = (document.getElementById('lobby-edit-map') as HTMLSelectElement).value;
             this.connection.invoke("UpdateRoomSettings", rName, rPass, rDiff, rMap);
         };
+
+        // Dropdowns apply the instant a new option is picked. Text fields apply on blur (and on
+        // Enter, which just blurs) rather than on every keystroke, so we're not spamming
+        // UpdateRoomSettings while the host is still mid-type.
+        document.getElementById('lobby-edit-diff')!.addEventListener('change', applySettings);
+        document.getElementById('lobby-edit-map')!.addEventListener('change', applySettings);
+        document.getElementById('lobby-edit-name')!.addEventListener('blur', applySettings);
+        document.getElementById('lobby-edit-pass')!.addEventListener('blur', applySettings);
+        document.getElementById('lobby-edit-name')!.addEventListener('keydown', (e: any) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); });
+        document.getElementById('lobby-edit-pass')!.addEventListener('keydown', (e: any) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); });
 
         document.getElementById('btn-toggle-ready')!.onclick = () => this.connection.invoke("ToggleReady");
         document.getElementById('btn-start-match')!.onclick = () => this.connection.invoke("StartMatch");

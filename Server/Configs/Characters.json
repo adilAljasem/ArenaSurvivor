@@ -23,7 +23,7 @@
     ],
     "animDeathFrameRate": 12,
     "baseStats": {
-      "maxHp": 100,
+      "maxHp": 10000,
       "movementSpeed": 150,
       "meleeDamage": 50,
       "rangedDamage": 50,
@@ -37,6 +37,7 @@
       "ugly_tooth"
     ],
     "startingSkills": [
+      "frost_nova"
     ],
     "dynamicModifiers": [],
     "traits": [

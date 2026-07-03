@@ -182,11 +182,13 @@ public class CombatSystem : IGameSystem
             }
 
             if (bestDistSq > attackRadius * attackRadius) return;
+            if (enemy.IsIncapacitated(_configs)) return;
 
             foreach (var weapon in enemy.Weapons)
             {
                 weapon.CurrentCooldown -= dt;
                 if (weapon.CurrentCooldown > 0) continue;
+
                 if (!_configs.Weapons.TryGetValue(weapon.ConfigId, out var wCfgS)) continue;
 
                 weapon.CurrentCooldown = wCfgS.CooldownSeconds / Math.Max(0.1f, (1f + enemy.GetTotalStat("attackSpeedPercent", _configs)));
@@ -397,11 +399,12 @@ public class CombatSystem : IGameSystem
         }
 
         var meleeEnemies = state.Enemies.Values.Where(e => e.ActionState != "Dead" && e.Weapons.Count == 0).ToList();
-        System.Threading.Tasks.Parallel.ForEach(meleeEnemies, parallelOptions, enemy =>
+        Parallel.ForEach(meleeEnemies, parallelOptions, enemy =>
         {
             if (!_configs.Enemies.TryGetValue(enemy.ConfigId, out var enemyCfg)) return;
-            float attackSpeedPct = Math.Max(0f, enemy.GetTotalStat("attackSpeedPercent", _configs));
-            float scaledDuration = enemyCfg.AttackDuration / (1f + attackSpeedPct);
+            if (enemy.IsIncapacitated(_configs)) return;
+            float attackSpeedPct = enemy.GetTotalStat("attackSpeedPercent", _configs);
+            float scaledDuration = enemyCfg.AttackDuration / Math.Max(0.1f, (1f + attackSpeedPct));
             bool isRooted = enemy.ActionState == "Casting" && !string.IsNullOrEmpty(enemy.CurrentCastingSkillId) && _configs.Skills.TryGetValue(enemy.CurrentCastingSkillId, out var eCastCfg) && eCastCfg.StopMoving;
 
             if (!isRooted && (enemy.ActionState == "Attacking" || enemy.ActionState == "Casting") && Math.Abs(enemy.AttackCooldown - scaledDuration) < (dt * 2))

@@ -55,6 +55,8 @@ public class AuthController : ControllerBase
                 return BadRequest(new { error = "Username must be 3–20 characters: letters, digits, underscores." });
             if (req.Password.Length < 8)
                 return BadRequest(new { error = "Password must be at least 8 characters." });
+            if (!req.AcceptedTerms)
+                return BadRequest(new { error = "You must accept the Terms of Service to create an account." });
 
             // Safe Database Checks[cite: 11]
             if (await _db.Users.AnyAsync(u => u.Email == req.Email.ToLower()))
@@ -71,7 +73,8 @@ public class AuthController : ControllerBase
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
                 VerificationToken = verificationToken,
                 VerificationTokenExpiresAt = DateTime.UtcNow.AddHours(24),
-                PlayerId = Guid.NewGuid()
+                PlayerId = Guid.NewGuid(),
+                TermsAcceptedAt = DateTime.UtcNow
             };
 
             _db.Users.Add(user);
@@ -309,7 +312,7 @@ public class AuthController : ControllerBase
 
 }
 
-public record RegisterRequest(string Email, string Username, string Password);
+public record RegisterRequest(string Email, string Username, string Password, bool AcceptedTerms = false);
 public record LoginRequest(string Email, string Password);
 public record ForgotPasswordRequest(string Email);
 public record ResetPasswordRequest(string Token, string NewPassword);

@@ -306,6 +306,8 @@ public class EffectConfig
     // --- Stat Changes ---
     public Dictionary<string, float> StatModifiers { get; set; } = new();
     public Dictionary<string, float> StatMultipliers { get; set; } = new();
+    public bool PreventsActions { get; set; } = false;
+
 }
 
 

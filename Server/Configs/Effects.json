@@ -21,8 +21,8 @@
     "tickRate": 0.0,
     "tickDamage": 0.0,
     "statModifiers": {
-      "attackSpeedPercent": 1.5,
-      "speed": 500
+      "attackSpeedPercent": 0.5,
+      "movementSpeed": 500
     },
     "colorTint": "0xffd700"
   },
@@ -35,10 +35,8 @@
     "duration": 6.0,
     "tickRate": 0.0,
     "tickDamage": 0.0,
-    "statModifiers": {
-      "movementSpeed": -9999,
-      "attackSpeedPercent": -0.99
-    },
+    "PreventsActions": true,
+    "StatMultipliers": {},
     "colorTint": "0x888888"
   },
   "burning": {
@@ -51,7 +49,7 @@
     "tickRate": 0.5,
     "tickDamage": 15.0,
     "statModifiers": {
-      "speed": 50
+      "movementSpeed": 50
     },
     "colorTint": "0xff4400"
   },

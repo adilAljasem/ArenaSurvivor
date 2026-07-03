@@ -129,6 +129,9 @@ namespace Server.Migrations
                     b.Property<DateTime?>("ResetTokenExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("TermsAcceptedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Username")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -178,6 +181,60 @@ namespace Server.Migrations
                         .IsUnique();
 
                     b.ToTable("UserAchievements");
+                });
+
+            modelBuilder.Entity("Server.Configs.UserLifetimeStats", b =>
+                {
+                    b.Property<Guid>("PlayerId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BestPeakStatsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("BestSingleMatchStatsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("BestWaveEver")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("BestWavePerCharacterJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("BestWavePerDifficultyJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("LastUpdated")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("MatchesPlayed")
+                        .HasColumnType("integer");
+
+                    b.Property<double>("TotalDamageDealt")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("TotalDamageTaken")
+                        .HasColumnType("double precision");
+
+                    b.Property<long>("TotalDeaths")
+                        .HasColumnType("bigint");
+
+                    b.Property<double>("TotalHealingDone")
+                        .HasColumnType("double precision");
+
+                    b.Property<long>("TotalKills")
+                        .HasColumnType("bigint");
+
+                    b.Property<double>("TotalShieldingDone")
+                        .HasColumnType("double precision");
+
+                    b.HasKey("PlayerId");
+
+                    b.ToTable("UserLifetimeStats");
                 });
 #pragma warning restore 612, 618
         }
