@@ -35,11 +35,11 @@
     "fireball": {
         "id": "fireball",
         "name": "Fireball",
-        "textureKey": "ammo_sheet",
+        "textureKey": "effects5",
         "scale": 1.5,
         "animFly": [
-            8,
-            11
+            0,
+            7
         ],
         "animFlyFrameRate": 20,
         "baseSpeed": 450,

@@ -41,7 +41,7 @@ export const envName = isDev ? "Development (Vite)" : "Production (Traefik)";
 export const masterUrl = isDev ? "http://localhost:5000/lobbyHub" : "/lobbyHub";
 export let activeWorkerUrl = "Waiting for match...";
 
-const SKIP_LOBBY_IN_DEV = isDev && true;
+const SKIP_LOBBY_IN_DEV = isDev && true; // <-- Set to true to skip the lobby and go straight into a match for faster dev iteration
 
 // Mobile detection: touch device without a fine (mouse) pointer.
 // This correctly distinguishes phones/tablets from touch-screen laptops (Surface, etc.).
@@ -206,12 +206,15 @@ class GameScene extends Phaser.Scene {
         this.load.spritesheet('explosion2', '/assets/Effects/explosion2.png', { frameWidth: 128, frameHeight: 96 });
         this.load.spritesheet('skill_icons', '/assets/Skills/skillsicon.png', { frameWidth: 78, frameHeight: 76 });
         this.load.spritesheet('Enemies1_sheet', '/assets/Enemies/mosquito-fly devil - fly fortest.png', { frameWidth: 64, frameHeight: 64 });
-        this.load.spritesheet('effects3', '/assets/Effects/Bullet 24x24 Part 7B Free.png', { frameWidth: 24, frameHeight: 24 });
+        this.load.spritesheet('effects3', '/assets/Effects/Bullet 24x24 Free Part 3A.png', { frameWidth: 24, frameHeight: 24 });
+        this.load.spritesheet('effects4', '/assets/Effects/Bullet 24x24 Part 7B Free.png', { frameWidth: 24, frameHeight: 24 });
+        this.load.spritesheet('effects5', '/assets/Effects/Bullet 24x24 Free Part 4A.png', { frameWidth: 24, frameHeight: 24 });
+
 
         this.load.spritesheet('ui_achievements', '/assets/menu/ui_achievements.png', { frameWidth: 234, frameHeight: 219 });
 
 
-        
+
 
         this.load.image('tex_grass', '/assets/obstacles/grass map.jpg');
         this.load.image('tex_sand', '/assets/obstacles/map1.jpg');
@@ -577,7 +580,10 @@ class GameScene extends Phaser.Scene {
                         console.log("[DEV QUICKSTART] Bypassing Lobby UI...");
 
                         // 1. Instantly create a room
-                        lobbyConnection.invoke("CreateRoom", "DevPlayer", "Dev Auto Room", "", "easy");
+                        // CreateRoom's server signature is (playerName, roomName, password, difficulty, mapId) —
+                        // 5 params. The mapId here was missing, which is exactly why SignalR failed to bind/
+                        // invoke it server-side ("Failed to invoke 'CreateRoom' due to an error on the server").
+                        lobbyConnection.invoke("CreateRoom", "DevPlayer", "Dev Auto Room", "", "easy", "map_forest");
                         // 2. Automate the character selection and readying up
                         let hasSelectedChar = false;
 

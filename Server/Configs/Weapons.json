@@ -37,7 +37,11 @@
       "skill_heal_shot_2",
       "tank"
     ],
-    "RequiredAchievements":["ach_getting_started","ach_wave_5","ach_heal_150000"],
+    "RequiredAchievements": [
+      "ach_getting_started",
+      "ach_wave_5",
+      "ach_heal_150000"
+    ],
     "statRollChance": 0.50,
     "maxRandomStats": 2,
     "allowedRandomStats": {
@@ -139,6 +143,9 @@
     ],
     "grantedSkills": [
       "laser_closest"
+    ],
+    "allowedCharacters": [
+      "char_chunky"
     ],
     "statRollChance": 0.50,
     "maxRandomStats": 2,

@@ -485,7 +485,16 @@ public class GameRoom
         enemy.Initialize(config, x, y, _configManager);
 
         if (!_configManager.Difficulties.TryGetValue(State.CurrentDifficulty, out var diff)) diff = new DifficultyConfig();
-        float mult = ((State.CurrentWave - 1) * diff.EnemyBaseScaling)
+
+        // Compounding wave growth: EnemyBaseScaling is now read as a per-wave growth RATE (e.g.
+        // 0.05 = 5% tougher than the PREVIOUS wave, not +5% flat every wave). Early waves stay
+        // close to the old linear feel; late waves snowball, since each wave's bonus builds on
+        // top of the last one instead of just adding a fixed step. Still fully controlled from
+        // Configs/Difficulties.json — same field, same per-difficulty tuning, just a different
+        // curve shape. Tune EnemyBaseScaling per difficulty to control how steep the late-game
+        // spike is (e.g. easy=0.02, normal=0.05, hard=0.08).
+        float waveMult = (float)(Math.Pow(1.0 + diff.EnemyBaseScaling, State.CurrentWave - 1) - 1.0);
+        float mult = waveMult
                    + ((config.Tier - 1) * 0.5f)
                    + ((Math.Max(1, State.Players.Count) - 1) * (diff.EnemyScalingPerPlayer - 1f));
 

@@ -423,10 +423,12 @@
         "id": "fier_foom",
         "name": "Fire Boom",
         "actionType": "Projectile",
-        "cooldownSeconds": 8.0,
-        "castTimeSeconds": 2.0,
-        "projectileCount": 12,
+        "targetType": "Self",
+        "cooldownSeconds": 1.0,
+        "castTimeSeconds": 1.0,
+        "projectileCount": 120,
         "spreadAngle": 360.0,
+        "baseDamage": 20,
         "projectileId": "fireball"
     },
     "barrier": {

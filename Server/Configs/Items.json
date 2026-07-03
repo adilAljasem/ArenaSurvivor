@@ -44,9 +44,9 @@
     "skillRollChance": 0.10,
     "maxRandomSkills": 1,
     "allowedRandomSkills": [
-      "adrenaline_surge"
+      
     ],
-    "grantedSkills": ["adrenaline_surge"]
+    "grantedSkills": []
   },
   "dragon_fang": {
     "id": "dragon_fang",

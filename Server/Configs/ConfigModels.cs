@@ -73,6 +73,14 @@ public abstract class BaseGearConfig
     /// MatchHub.GenerateShopForPlayer, so locked gear simply never rolls in the shop.
     /// </summary>
     public List<string> RequiredAchievements { get; set; } = new();
+
+    /// <summary>
+    /// Character config ids allowed to see/purchase this gear (e.g. ["char_wizard", "char_shaman"]
+    /// for a wand only they can use). Empty (default) = every character can see it. Same
+    /// enforcement point as RequiredAchievements — MatchHub.GenerateShopForPlayer — so restricted
+    /// gear simply never rolls for a character that isn't on the list.
+    /// </summary>
+    public List<string> AllowedCharacters { get; set; } = new();
 }
 
 // =================================================================================
@@ -306,8 +314,12 @@ public class EffectConfig
     // --- Stat Changes ---
     public Dictionary<string, float> StatModifiers { get; set; } = new();
     public Dictionary<string, float> StatMultipliers { get; set; } = new();
-    public bool PreventsActions { get; set; } = false;
 
+    // --- Behavioral Lock ---
+    // Hard gate for attack/cast triggers (see BaseActorEntity.IsIncapacitated in Entities.cs).
+    // Unlike StatMultipliers, which can only scale a distance+cooldown-driven trigger down to a
+    // floor, never fully block it, this directly prevents the entity from acting while active.
+    public bool PreventsActions { get; set; } = false;
 }
 
 

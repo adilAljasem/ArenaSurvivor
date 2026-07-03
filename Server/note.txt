@@ -95,3 +95,47 @@ What this looks like in gameplay:
      Put "magicDamage": 5 inside "statBonuses".
    • Wipe out a character's Magic Damage completely (-100%):
      Put "magicDamage": -1.0 inside "statMultipliers".
+
+
+=========================================================
+💰 GOLD & HARVESTING CHEAT SHEET 💰
+=========================================================
+
+1. GOLD PER KILL (LootSystem.cs -> OnEntityDeath)
+   • Every kill drops a MINIMUM of 1 gold. Always. No exceptions.
+   • "harvesting" adds BONUS gold on top of that base 1, using a "100 = 1 unit" rule:
+        bonusGold = floor(harvesting / 100)
+   • The leftover remainder (below 100) is NOT wasted — it becomes a PROBABILITY
+     for one extra bonus gold on that specific kill:
+        chance = (harvesting % 100) / 100
+   • Example: harvesting = 250 -> guaranteed +2 bonus gold, PLUS a 50% chance of +1
+     more (so most kills drop 3 gold, about half the time drop 4).
+   • Only the KILLER's harvesting matters for this bonus (ev.KillerId). Other nearby
+     players can still walk over and pick up the gold pickup itself — they just don't
+     get their own harvesting bonus applied to someone else's kill.
+
+2. WEAPON/ITEM DROP CHANCE BOOST (LootSystem.cs -> SpawnGearDrops)
+   • "harvesting" ALSO boosts the odds of a dead enemy's weapon/item actually dropping —
+     but only if that gear already has SOME base chance to drop. A 0% chance NEVER
+     becomes droppable no matter how high harvesting goes.
+   • *CRITICAL*: This is MULTIPLICATIVE, not additive. The bonus scales the base
+     chance up proportionally — it does not add a flat number of percentage points.
+        dropChanceMultiplier = 1 + (harvesting / 100) × HarvestingDropBonusFactor
+        finalChance          = clamp(baseChance × dropChanceMultiplier, 0, 1)
+   • HarvestingDropBonusFactor is a single constant at the top of LootSystem.cs
+     (currently 0.5). This is the ONE knob to raise/lower if harvesting feels too
+     weak or too strong — nothing else in the formula needs to change.
+        *NOTE*: unlike difficulty scaling, this factor lives in C# (LootSystem.cs),
+        NOT in a JSON config. It's a core stat mechanic, not a per-difficulty knob.
+   • Example @ HarvestingDropBonusFactor = 0.5:
+        harvesting = 500 -> multiplier = 1 + (5 × 0.5) = 3.5x
+        itemDropChance 0.10 (10%) -> finalChance = 0.10 × 3.5 = 0.35 (35%)
+   • Raising the factor:
+        0.5  -> 3.5x @ 500 harvesting (the current default)
+        1.0  -> 6.0x @ 500 harvesting
+        2.0  -> 11.0x @ 500 harvesting (clamps to 100% for anything with a
+                base chance above ~9%)
+   • *Rule of Thumb*: because the ceiling is a hard clamp at 100%, high-base-chance
+     items saturate to guaranteed drops at LOWER harvesting than rare, low-base-chance
+     items. Harvesting effectively "solves" common drops first and keeps mattering
+     longest for your rarest gear — this is expected, not a bug.

@@ -464,6 +464,14 @@ public class MatchHub : Hub
         return requiredAchievements.All(id => player.UnlockedAchievementIds.Contains(id));
     }
 
+    // Gear with an empty AllowedCharacters list is available to every character. Otherwise the
+    // player's current character (player.ConfigId, e.g. "char_wizard") must be on the list.
+    private static bool IsAllowedForCharacter(List<string> allowedCharacters, PlayerEntity player)
+    {
+        if (allowedCharacters == null || allowedCharacters.Count == 0) return true;
+        return allowedCharacters.Contains(player.ConfigId);
+    }
+
     public static void GenerateShopForPlayer(PlayerEntity player, ConfigManager configManager, int currentWave)
     {
         float luck = player.GetTotalStat("luck", configManager);
@@ -473,10 +481,10 @@ public class MatchHub : Hub
         for (int i = 0; i < slots; i++)
         {
             int tier = RollRarityTier(luck, 4);
-            var weapons = configManager.Weapons.Values.Where(w => w.Tier == tier && w.AvailableInShop && IsUnlockedFor(w.RequiredAchievements, player)).ToList();
-            var items = configManager.Items.Values.Where(it => it.Tier == tier && it.AvailableInShop && IsUnlockedFor(it.RequiredAchievements, player)).ToList();
-            if (!weapons.Any()) weapons = configManager.Weapons.Values.Where(w => w.Tier <= tier && w.AvailableInShop && IsUnlockedFor(w.RequiredAchievements, player)).ToList();
-            if (!items.Any()) items = configManager.Items.Values.Where(it => it.Tier <= tier && it.AvailableInShop && IsUnlockedFor(it.RequiredAchievements, player)).ToList();
+            var weapons = configManager.Weapons.Values.Where(w => w.Tier == tier && w.AvailableInShop && IsUnlockedFor(w.RequiredAchievements, player) && IsAllowedForCharacter(w.AllowedCharacters, player)).ToList();
+            var items = configManager.Items.Values.Where(it => it.Tier == tier && it.AvailableInShop && IsUnlockedFor(it.RequiredAchievements, player) && IsAllowedForCharacter(it.AllowedCharacters, player)).ToList();
+            if (!weapons.Any()) weapons = configManager.Weapons.Values.Where(w => w.Tier <= tier && w.AvailableInShop && IsUnlockedFor(w.RequiredAchievements, player) && IsAllowedForCharacter(w.AllowedCharacters, player)).ToList();
+            if (!items.Any()) items = configManager.Items.Values.Where(it => it.Tier <= tier && it.AvailableInShop && IsUnlockedFor(it.RequiredAchievements, player) && IsAllowedForCharacter(it.AllowedCharacters, player)).ToList();
 
             bool spawnWeapon = Random.Shared.Next(2) == 0 || !items.Any();
             if (spawnWeapon && weapons.Any())
@@ -677,8 +685,15 @@ public class MatchHub : Hub
             if (isWeapon && pickup.DroppedWeapon != null)
             {
                 var cfg = _configManager.Weapons.GetValueOrDefault(pickup.DroppedWeapon.ConfigId);
+
+                // Restricted gear (e.g. a wand only wizard/shaman can use) still drops normally —
+                // it's just not pickable by the wrong character. Checked first so nothing below
+                // (duplicate checks, merging) runs for a character that was never allowed to have it.
+                if (cfg != null && !IsAllowedForCharacter(cfg.AllowedCharacters, player))
+                    errorMessage = "Your character cannot use this item!";
+
                 // ... (Keep your existing duplicate checks here) ...
-                if (cfg != null && !cfg.AllowDuplicates)
+                if (errorMessage == null && cfg != null && !cfg.AllowDuplicates)
                 {
                     if (player.Weapons.Any(w => w.ConfigId != pickup.DroppedWeapon.ConfigId && _configManager.Weapons.TryGetValue(w.ConfigId, out var eqCfg) && eqCfg.WeaponFamily == cfg.WeaponFamily))
                         errorMessage = "Cannot equip duplicates of this type!";
@@ -705,8 +720,12 @@ public class MatchHub : Hub
             else if (isItem && pickup.DroppedItem != null)
             {
                 var cfg = _configManager.Items.GetValueOrDefault(pickup.DroppedItem.ConfigId);
+
+                if (cfg != null && !IsAllowedForCharacter(cfg.AllowedCharacters, player))
+                    errorMessage = "Your character cannot use this item!";
+
                 // ... (Keep your existing duplicate & inventory checks here) ...
-                if (cfg != null && !cfg.AllowDuplicates)
+                if (errorMessage == null && cfg != null && !cfg.AllowDuplicates)
                 {
                     if (player.OwnedItems.Any(i => i.ConfigId != pickup.DroppedItem.ConfigId && _configManager.Items.TryGetValue(i.ConfigId, out var eqCfg) && eqCfg.ItemFamily == cfg.ItemFamily))
                         errorMessage = "Cannot equip duplicates of this type!";
