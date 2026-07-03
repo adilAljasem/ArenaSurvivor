@@ -7,7 +7,7 @@
     "isBuff": false,
     "duration": 5.0,
     "tickRate": 1.0,
-    "tickDamage": 5.0,
+    "tickDamage": 1.0,
     "statModifiers": {},
     "colorTint": "0x00ff00"
   },
@@ -21,8 +21,8 @@
     "tickRate": 0.0,
     "tickDamage": 0.0,
     "statModifiers": {
-      "attackSpeedPercent": 0.5,
-      "movementSpeed": 500
+      "attackSpeedPercent": 0.05,
+      "movementSpeed": 10
     },
     "colorTint": "0xffd700"
   },
@@ -32,7 +32,7 @@
     "textureKey": "icons1",
     "iconFrame": 3,
     "isBuff": false,
-    "duration": 6.0,
+    "duration": 2.0,
     "tickRate": 0.0,
     "tickDamage": 0.0,
     "PreventsActions": true,
@@ -47,9 +47,9 @@
     "isBuff": false,
     "duration": 4.0,
     "tickRate": 0.5,
-    "tickDamage": 15.0,
+    "tickDamage": 1.0,
     "statModifiers": {
-      "movementSpeed": 50
+      "movementSpeed": -2
     },
     "colorTint": "0xff4400"
   },
@@ -59,12 +59,12 @@
     "textureKey": "icons1",
     "iconFrame": 4,
     "isBuff": true,
-    "duration": 8.0,
+    "duration": 3.0,
     "tickRate": 0.0,
     "tickDamage": 0.0,
     "statModifiers": {
-      "lifeSteal": 0.25,
-      "damagePercent": 0.15
+      "lifeSteal": 0.05,
+      "damagePercent": 0.02
     },
     "colorTint": "0xff0000"
   },
@@ -76,7 +76,7 @@
     "isBuff": true,
     "duration": 5.0,
     "tickRate": 1.0,
-    "tickDamage": -10.0,
+    "tickDamage": -3.0,
     "colorTint": "#cefad0"
   },
   "test_fire_aura_buff": {

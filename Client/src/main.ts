@@ -41,7 +41,7 @@ export const envName = isDev ? "Development (Vite)" : "Production (Traefik)";
 export const masterUrl = isDev ? "http://localhost:5000/lobbyHub" : "/lobbyHub";
 export let activeWorkerUrl = "Waiting for match...";
 
-const SKIP_LOBBY_IN_DEV = isDev && false;
+const SKIP_LOBBY_IN_DEV = isDev && true;
 
 // Mobile detection: touch device without a fine (mouse) pointer.
 // This correctly distinguishes phones/tablets from touch-screen laptops (Surface, etc.).

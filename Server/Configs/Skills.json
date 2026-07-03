@@ -313,13 +313,6 @@
             "test_fire_aura_buff"
         ]
     },
-    "test_fire_aura_explosion": {
-        "id": "test_fire_aura_explosion",
-        "actionType": "AoE",
-        "radius": 200,
-        "baseDamage": 15,
-        "colorTint": "0xff8800"
-    },
     "laser_closest": {
         "id": "laser_closest",
         "nextLevelId": "laser_closest_2",
