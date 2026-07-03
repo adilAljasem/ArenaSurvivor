@@ -10,6 +10,7 @@ using Server.DTOs;
 using Server.Entities;
 using Server.Services;
 using Microsoft.EntityFrameworkCore;
+using System.Linq;
 using System.Security.Claims;
 
 namespace Server.Hubs;
@@ -293,6 +294,13 @@ public class MatchHub : Hub
         });
 
         await SendPlayerUI(stitchedPlayer!, room.State);
+
+        // One immediate roster snapshot so nameplates/levels show up right away instead of
+        // waiting for the next periodic broadcast from GameLoop (up to ~1s later).
+        var initialRoster = room.State.Players.Values
+            .Select(p => new { id = p.ConnectionId, name = p.Name, level = p.Level })
+            .ToList();
+        await Clients.Caller.SendAsync("ReceiveRoster", initialRoster);
 
         if (room.State.Phase == GamePhase.WaitingForPlayers)
         {

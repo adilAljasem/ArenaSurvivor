@@ -2,7 +2,7 @@ import * as Phaser from 'phaser';
 import { HubConnectionBuilder, HubConnectionState } from '@microsoft/signalr';
 import { ShopUI, SkillActionBar, Tooltip, LootNotifier } from './ui/UI';
 import { EscMenu } from './ui/EscMenu';
-import { ActorRenderer, VfxRenderer, WorldRenderer } from './RenderSystems';
+import { ActorRenderer, VfxRenderer, WorldRenderer, playerRosterInfo } from './RenderSystems';
 import { AudioManager } from './AudioManager';
 import { LobbyUI, AuthUI } from './LobbyUI';
 import { world } from './ECS';
@@ -1104,6 +1104,13 @@ class GameScene extends Phaser.Scene {
             }
         });
 
+        matchConnection.off("ReceiveRoster");
+        matchConnection.on("ReceiveRoster", (roster: Array<{ id: string; name: string; level: number }>) => {
+            // Cheap: at most once a second, and just a Map write per player — the renderer
+            // reads from this map and only touches Phaser text objects when a value changes.
+            roster.forEach(r => playerRosterInfo.set(r.id, { name: r.name, level: r.level }));
+        });
+
         matchConnection.off("LootNotification");
         // >>> ADD textureKey and iconFrame TO THE LISTENER <<<
         matchConnection.on("LootNotification", (playerName: string, itemName: string, tier: number, textureKey: string, iconFrame: number) => {
@@ -1125,8 +1132,8 @@ class GameScene extends Phaser.Scene {
                 const textureKey = a.textureKey || a.TextureKey || '';
                 const iconFrame = a.iconFrame ?? a.IconFrame ?? 0;
 
-                // Reuses the existing loot popup so achievement toasts automatically match
-                // your item/weapon tier coloring without a separate UI component.
+                // Dedicated bottom-right, one-at-a-time achievement popup — separate from the
+                // right-middle loot popup above (LootNotifier.showAchievement vs .show).
                 this.lootNotifier.showAchievement(localName, `🏆 ${name}`, tier, textureKey, iconFrame);
             });
         });

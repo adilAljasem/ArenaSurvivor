@@ -19,6 +19,11 @@ function parseColor(colorStr: any, fallback: number): number {
 
 export let globalUiGraphics: Phaser.GameObjects.Graphics | null = null;
 
+// Name/Level for nameplates. Populated externally (main.ts, from the low-frequency
+// "ReceiveRoster" broadcast) rather than the 20Hz per-tick actor payload — these barely ever
+// change, so there's no reason to pay a per-tick cost reading/updating them.
+export const playerRosterInfo: Map<string, { name: string; level: number }> = new Map();
+
 // Phaser's container.getData()/setData() lazily allocates a DataManager (its own
 // event-emitter + Map) the first time it's touched, and every get/set after that goes
 // through that indirection. At 500+ actors doing ~10 getData calls each per frame, that's
@@ -35,6 +40,14 @@ interface ActorRefs {
   weaponSprites: Map<number, Phaser.GameObjects.Sprite>;
   castCircle: Phaser.GameObjects.Ellipse;
   wasDead: boolean;
+
+  // Nameplate (players only — null for enemies, so enemies pay zero extra cost).
+  nameText: Phaser.GameObjects.BitmapText | null;
+  levelText: Phaser.GameObjects.BitmapText | null;
+  nameShadow: Phaser.GameObjects.BitmapText | null;
+  levelShadow: Phaser.GameObjects.BitmapText | null;
+  lastRosterName: string;
+  lastRosterLevel: number;
 
   // VFX State Trackers
   prevActionState: string | undefined;
@@ -179,14 +192,37 @@ export class ActorRenderer {
           .setVisible(false)
           .setDepth(55); // Depth 55 ensures text is ALWAYS on top
 
+        // Nameplate — players only. Enemies never get these extra GameObjects, so this adds
+        // zero cost to the (much larger) enemy population. Each has a black shadow duplicate
+        // added to the container BEFORE it (so it draws behind, via list order) — a cheap
+        // "poor man's outline" that makes the text readable against any background. The shadow
+        // only costs anything when the real text changes (same setText cadence), never per-frame.
+        const nameShadow = isPlayer
+          ? scene.add.bitmapText(0, 0, 'damageFont', '', 10).setOrigin(0.5, 0.5).setTint(0x000000).setAlpha(0.9).setDepth(56)
+          : null;
+        const nameText = isPlayer
+          ? scene.add.bitmapText(0, 0, 'damageFont', '', 10).setOrigin(0.5, 0.5).setTint(0xffffff).setDepth(57)
+          : null;
+        const levelShadow = isPlayer
+          ? scene.add.bitmapText(0, 0, 'damageFont', '', 10).setOrigin(1, 0.5).setTint(0x000000).setAlpha(0.9).setDepth(56)
+          : null;
+        const levelText = isPlayer
+          ? scene.add.bitmapText(0, 0, 'damageFont', '', 10).setOrigin(1, 0.5).setTint(0xffd700).setDepth(57)
+          : null;
 
         const weaponsContainer = scene.add.container(0, 0);
 
-        container.add([castCircle, bodySprite, hpText, weaponsContainer]);
+        const containerChildren: Phaser.GameObjects.GameObject[] = [castCircle, bodySprite, hpText, weaponsContainer];
+        if (nameShadow) containerChildren.push(nameShadow);
+        if (nameText) containerChildren.push(nameText);
+        if (levelShadow) containerChildren.push(levelShadow);
+        if (levelText) containerChildren.push(levelText);
+        container.add(containerChildren);
 
         const refs: ActorRefs = {
           bodySprite, hpText, baseWidth: uiWidth, weaponsContainer,
           weaponSprites: new Map(), castCircle, wasDead: false,
+          nameText, levelText, nameShadow, levelShadow, lastRosterName: '', lastRosterLevel: -1,
           prevActionState: undefined, prevCastSkillId: undefined, prevHp: undefined,
           flashTimer: 0, lastFxActionState: '', lastFxCastSkillId: '', lastFxEffectsKey: '', wasFlashing: false,
 
@@ -237,6 +273,58 @@ export class ActorRenderer {
 
       let topY = -(realHeight / 2) - 6;
       let bottomY = (realHeight / 2);
+
+      // 0. UPDATE NAMEPLATE (players only). Position is cheap (plain number assignment) so it
+      // tracks the bar every network tick. Text content comes from playerRosterInfo — populated
+      // separately, at most once a second — and setText() only fires when that cached value
+      // actually differs from what's currently drawn, since BitmapText re-layout isn't free at
+      // 20 calls/sec × N players. In practice this means setText() runs once per player (on
+      // join) and then again only on the rare level-up. Shadows always mirror the real text's
+      // content on the same guard, so they never fall out of sync.
+      if (isPlayer && refs.nameText && refs.levelText) {
+        const isDead = actionState === "Dead";
+        if (!isDead) {
+          const roster = playerRosterInfo.get(safeId);
+          const rosterName = roster?.name ?? '';
+          const rosterLevel = roster?.level ?? 1;
+
+          if (rosterName !== refs.lastRosterName) {
+            refs.nameText.setText(rosterName);
+            refs.nameShadow?.setText(rosterName);
+            refs.lastRosterName = rosterName;
+          }
+          if (rosterLevel !== refs.lastRosterLevel) {
+            const levelStr = `Lv.${rosterLevel}`;
+            refs.levelText.setText(levelStr);
+            refs.levelShadow?.setText(levelStr);
+            refs.lastRosterLevel = rosterLevel;
+          }
+
+          // Name sits centered, tight above the bar. Level sits BELOW the name and to the
+          // LEFT — its own row, between the name and the bar top, not sharing the name's row.
+          const nameRowY = topY - 16;
+          const levelRowY = topY - 6;
+          const levelX = -(uiWidth / 2) - 4;
+
+          refs.nameText.x = 0;
+          refs.nameText.y = nameRowY;
+          refs.levelText.x = levelX;
+          refs.levelText.y = levelRowY;
+
+          if (refs.nameShadow) { refs.nameShadow.x = 1; refs.nameShadow.y = nameRowY + 1; }
+          if (refs.levelShadow) { refs.levelShadow.x = levelX + 1; refs.levelShadow.y = levelRowY + 1; }
+
+          if (!refs.nameText.visible) refs.nameText.setVisible(true);
+          if (!refs.levelText.visible) refs.levelText.setVisible(true);
+          if (refs.nameShadow && !refs.nameShadow.visible) refs.nameShadow.setVisible(true);
+          if (refs.levelShadow && !refs.levelShadow.visible) refs.levelShadow.setVisible(true);
+        } else {
+          if (refs.nameText.visible) refs.nameText.setVisible(false);
+          if (refs.levelText.visible) refs.levelText.setVisible(false);
+          if (refs.nameShadow?.visible) refs.nameShadow.setVisible(false);
+          if (refs.levelShadow?.visible) refs.levelShadow.setVisible(false);
+        }
+      }
 
       // 1. UPDATE HEALTH TEXT (Toggled by 'u')
       const hpText = refs.hpText;
@@ -1104,8 +1192,17 @@ export function applyVisualFX(
   else mainSprite.clearTint();
 
   // =========================================================
-  // 1. OVERHEAD: SKILL CHARGING ANIMATIONS
+  // 1. UNDERFOOT: SKILL CHARGING ANIMATIONS
   // =========================================================
+  // Previously anchored off topY (above the sprite), which put it right in the middle of the
+  // name/level/health-bar cluster — that's the overlap you saw. Anchored off bottomY instead,
+  // which (like topY) is derived straight from realHeight = VisualHeight * scale, so:
+  //   - Distance from the sprite/health-bar scales automatically with VisualHeight, and is
+  //     directly tunable by editing VisualHeight in the character/enemy config — no separate
+  //     offset field needed.
+  //   - The added margin (40 * finalVfxScale) also grows with finalVfxScale, which itself
+  //     grows (moderately — see dampedScale below) with VisualHeight, so a taller VisualHeight
+  //     both pushes the animation further down AND scales it up a little, as intended.
 
   // >>> THE FIX: Base this strictly on the Cast ID and Timer, NOT ActionState <
   if (castSkillId && refs.currentCastTimer > 0 && !isDead) {
@@ -1116,14 +1213,18 @@ export function applyVisualFX(
       const frameRate = skillConfig.chargeVfxFrameRate || skillConfig.ChargeVfxFrameRate || skillConfig.animFrameRate || skillConfig.AnimFrameRate || 15;
       const isRepeated = skillConfig.isRepeated ?? skillConfig.IsRepeated ?? true;
 
+      // Standard baseline is plain sprite size (VisualHeight defaults to 32 — see topY/bottomY
+      // above), then VisualHeight in the config scales both position and size from there.
       const visualProportion = realHeight / 32.0;
       const dampedScale = Math.min(2.5, Math.max(0.5, 1.0 + (visualProportion - 1.0) * 0.4));
       const baseVfxScale = skillConfig.chargeVfxScale || skillConfig.ChargeVfxScale || 1.0;
       const finalVfxScale = baseVfxScale * dampedScale;
 
       if (animArray && animArray.length === 2 && tex) {
-        const floatHeight = topY - (40 * finalVfxScale);
+        const floatHeight = bottomY + (18 * finalVfxScale);
         const fxSprite = scene.add.sprite(0, floatHeight, tex).setName('overhead_fx');
+        fxSprite.setOrigin(0.5, 0.5);
+        fxSprite.setX(0);
         fxSprite.setScale(finalVfxScale);
         container.add(fxSprite);
 
@@ -1151,9 +1252,10 @@ export function applyVisualFX(
     const totalWidth = (entity.activeEffects.length * iconSize) + ((entity.activeEffects.length - 1) * spacing);
     let currentX = -(totalWidth / 2) + (iconSize / 2);
 
-    // Because topY is now pushed -32 pixels up, topY + 16 places the icons 
-    // exactly underneath the health bar, totally clear of the sprite's head!
-    const effectY = topY - 14; // Negative pushes it up, sitting neatly on top of the health bar
+    // Players have a nameplate row at topY-16 (see nameplate update block above), so their
+    // status icons sit above that. Enemies have no nameplate, so they keep the original
+    // tighter offset right above the health bar.
+    const effectY = (refs.isPlayer && refs.nameText) ? (topY - 32) : (topY - 14);
     entity.activeEffects.forEach((effectId: string) => {
       const effectConfig = (masterConfigs.effects || masterConfigs.Effects)?.[effectId] ?? null;
       if (!effectConfig) return;
