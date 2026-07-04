@@ -5,13 +5,13 @@
     "EnemyBaseScaling": 0.01,
     "EnemyScalingPerPlayer": 1.5,
     
-    "InitialSpawnDelay": 0.1,
+    "InitialSpawnDelay": 1.5,
     "DelayDecreasePerWave": 0.1,
     "MinimumSpawnDelay": 0.5,
     "MaxActiveEnemies": 100,
 
     "GoldMultiplier": 1.2,
-    "XpMultiplier": 0.5,
+    "XpMultiplier": 1.5,
 
     "BaseRerollCost": 2,
     "RerollCostIncreasePerWave": 1.0,

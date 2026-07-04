@@ -41,7 +41,7 @@ export const envName = isDev ? "Development (Vite)" : "Production (Traefik)";
 export const masterUrl = isDev ? "http://localhost:5000/lobbyHub" : "/lobbyHub";
 export let activeWorkerUrl = "Waiting for match...";
 
-const SKIP_LOBBY_IN_DEV = isDev && true; // <-- Set to true to skip the lobby and go straight into a match for faster dev iteration
+const SKIP_LOBBY_IN_DEV = isDev && false; // <-- Set to true to skip the lobby and go straight into a match for faster dev iteration
 
 // Mobile detection: touch device without a fine (mouse) pointer.
 // This correctly distinguishes phones/tablets from touch-screen laptops (Surface, etc.).
@@ -128,6 +128,7 @@ class GameScene extends Phaser.Scene {
     private projectileSprites: Map<string, Phaser.GameObjects.Rectangle | Phaser.GameObjects.Sprite> = new Map();
     private pickupSprites: Map<string, Phaser.GameObjects.Sprite | Phaser.GameObjects.Rectangle> = new Map();
     private activeBeams: Map<string, any> = new Map();
+    private activeAoeLoops: Map<string, any> = new Map();
     private targetPositions: Map<string, { x: number, y: number }> = new Map();
     private skillActionBar!: SkillActionBar;
     private enemyCache: Map<string, ServerEnemy> = new Map();
@@ -657,7 +658,11 @@ class GameScene extends Phaser.Scene {
                 entry.core.destroy();
             });
             this.activeBeams.clear();
+
+            this.activeAoeLoops.forEach(entry => entry.sprite.destroy());
+            this.activeAoeLoops.clear();
         });
+
     }
 
     private applyHandshakePayload(payload: any): void {
@@ -896,7 +901,7 @@ class GameScene extends Phaser.Scene {
                     x: d[0], y: d[1], amount: d[2],
                     isCritical: d[3] === 1, isDodge: d[4] === 1, isBlock: d[5] === 1
                 })) || [],
-                aoeEvents: rawState.aoe?.map((a: any[]) => ({ x: a[0], y: a[1], radius: a[2], isFriendly: a[3], configId: a[4] })) || [],
+                aoeEvents: rawState.aoe?.map((a: any[]) => ({ x: a[0], y: a[1], radius: a[2], isFriendly: a[3], configId: a[4], casterId: a[5], skillId: a[6] })) || [],
                 beamEvents: rawState.bm?.map((b: any[]) => ({ startX: b[0], startY: b[1], targetX: b[2], targetY: b[3], width: b[4], colorTint: b[5], casterId: b[6], skillId: b[7] })) || [],
                 beamEndedEvents: rawState.be?.map((b: any[]) => ({ casterId: b[0], skillId: b[1] })) || []
             };
@@ -912,11 +917,13 @@ class GameScene extends Phaser.Scene {
             const beamEvents = state.beamEvents || [];
             const beamEndedEvents = state.beamEndedEvents || [];
 
-            VfxRenderer.renderAoeEvents(this, aoeEvents, masterConfigs);
+            VfxRenderer.renderAoeEvents(this, aoeEvents, masterConfigs, this.activeAoeLoops);
             VfxRenderer.renderBeamEvents(this, beamEvents, masterConfigs, this.activeBeams);
             beamEndedEvents.forEach((ev: { casterId: string, skillId: string }) => {
                 VfxRenderer.endBeam(ev.casterId, ev.skillId, this.activeBeams);
+                VfxRenderer.endAoeLoop(ev.casterId, ev.skillId, this.activeAoeLoops);
             });
+
 
             this.currentPhase = state.phase;
             const myPlayer = state.players.find(p => p.connectionId === matchConnection.connectionId);
@@ -1694,6 +1701,12 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
         { cmd: '/removetime', desc: '/removetime <seconds>' },
         { cmd: '/toggleshop', desc: '/toggleshop' },
         { cmd: '/givestat', desc: '/givestat <statName> <amount>' },
+        { cmd: '/timescale', desc: '/timescale <multiplier> (e.g. 2 = 2x speed)' },
+        { cmd: '/giveskill', desc: '/giveskill <skillId>' },
+        { cmd: '/setstat', desc: '/setstat <statName> <value> (supports negatives)' },
+        { cmd: '/titan', desc: '/titan (100000 armor/magicDefense/maxHp)' },
+        { cmd: '/clearskills', desc: '/clearskills' },
+
     ];
 
     const chatHTML = `

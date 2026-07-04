@@ -40,7 +40,7 @@ public class GameRoom
     private readonly IHubContext<MatchHub> _matchHubContext;
     private readonly RoomManager _roomManager;
 
-    private DateTime _lastSpawnTime = DateTime.UtcNow;
+    private float _spawnTimer = 0f;
     private Configs.MapConfig? _currentMap;
 
     public GameRoom(string roomId, ConfigManager configManager, RoomSettings roomSettings, IServiceProvider serviceProvider)
@@ -79,6 +79,8 @@ public class GameRoom
 
     public async Task TickAsync(float dt, CancellationToken stoppingToken)
     {
+        dt *= State.TimeScale; // cheat-adjustable match speed, defaults to 1x (no change)
+
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var currentTickTime = DateTime.UtcNow;
         var prevProjectiles = State.Projectiles.Keys.ToHashSet();
@@ -153,7 +155,7 @@ public class GameRoom
             if (State.Phase == GamePhase.WaveActive)
             {
                 if (State.PhaseTimer <= 0) await HandleWaveEndTransition();
-                else HandleEnemySpawning(currentTickTime);
+                else HandleEnemySpawning(dt);
             }
             else if (State.Phase == GamePhase.ShopPhase && State.PhaseTimer <= 0)
             {
@@ -367,18 +369,14 @@ public class GameRoom
         foreach (var id in State.Pickups.Values.Where(p => p.Type == PickupType.Gold).Select(p => p.Id).ToList())
             State.Pickups.TryRemove(id, out _);
 
-        if (totalGold > 0 && !State.Players.IsEmpty)
-        {
-            int perPlayer = (int)Math.Max(1, Math.Floor((double)totalGold / State.Players.Count));
-            foreach (var player in State.Players.Values)
-            {
-                player.Gold += perPlayer;
-                player.GainXp(perPlayer, _configManager);
-            }
-        }
-
         if (!_configManager.Difficulties.TryGetValue(State.CurrentDifficulty, out var currentDiff))
             currentDiff = new DifficultyConfig();
+
+        if (totalGold > 0 && !State.Players.IsEmpty)
+        {
+            DistributeWaveEndRewards(totalGold, currentDiff);
+        }
+
 
         int rerollCost = currentDiff.BaseRerollCost + (int)((State.CurrentWave - 1) * currentDiff.RerollCostIncreasePerWave);
 
@@ -422,7 +420,38 @@ public class GameRoom
         if (State.SkipShopPhase) StartNextWave();
     }
 
-    private void HandleEnemySpawning(DateTime currentTickTime)
+    private void DistributeWaveEndRewards(int totalGold, DifficultyConfig diff)
+    {
+        var players = State.Players.Values.ToList();
+        if (players.Count == 0) return;
+
+        var goldWeights = players.Select(p => 1f + p.CachedStats.GetValueOrDefault("harvesting", 0f) / 100f).ToList();
+        var xpWeights = players.Select(p => 1f + p.CachedStats.GetValueOrDefault("xpGainPercent", 0f) / 100f).ToList();
+
+        float totalGoldWeight = goldWeights.Sum();
+        float totalXpWeight = xpWeights.Sum();
+
+        int goldRemaining = totalGold;
+        int xpRemaining = totalGold;
+
+        for (int i = 0; i < players.Count; i++)
+        {
+            bool isLast = i == players.Count - 1;
+
+            int goldShare = isLast ? Math.Max(0, goldRemaining)
+                : (int)Math.Max(1, Math.Floor(totalGold * (goldWeights[i] / totalGoldWeight)));
+            goldRemaining -= goldShare;
+
+            int xpShare = isLast ? Math.Max(0, xpRemaining)
+                : (int)Math.Max(1, Math.Floor(totalGold * (xpWeights[i] / totalXpWeight)));
+            xpRemaining -= xpShare;
+
+            players[i].Gold += goldShare;
+            players[i].GainXp(xpShare, _configManager, diff);
+        }
+    }
+
+    private void HandleEnemySpawning(float dt)
     {
         if (!_configManager.Difficulties.TryGetValue(State.CurrentDifficulty, out var currentDiff))
             currentDiff = new DifficultyConfig();
@@ -433,11 +462,17 @@ public class GameRoom
         float denom = Math.Max(0.1f, (1f + spawnBonus) * Math.Max(1, State.Players.Count));
         float finalRate = Math.Max(0.05f, baseDelay / denom);
 
-        if ((currentTickTime - _lastSpawnTime).TotalSeconds <= finalRate || State.Players.IsEmpty) return;
+        // Accumulate the SAME scaled dt that drives PhaseTimer, instead of a real wall-clock
+        // delta - so spawn cadence speeds up/slows down with /timescale exactly like the wave
+        // timer does, rather than staying pinned to real-world seconds.
+        _spawnTimer += dt;
+
+        if (_spawnTimer < finalRate || State.Players.IsEmpty) return;
         if (State.Enemies.Count >= currentDiff.MaxActiveEnemies) return;
 
-        _lastSpawnTime = currentTickTime;
+        _spawnTimer = 0f;
         bool skipRegular = false;
+
 
         if (!State.Enemies.Values.Any(e => _configManager.Enemies[e.ConfigId].IsBoss) && State.PhaseTimer > 50f)
         {

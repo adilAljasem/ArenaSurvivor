@@ -69,10 +69,10 @@
         "ConditionStat": "",
         "Threshold": 50
     },
-    "ach_damage_10k": {
-        "Id": "ach_damage_10k",
+    "ach_damage_20k": {
+        "Id": "ach_damage_20k",
         "Name": "Heavy Hitter",
-        "Description": "Deal 10,000 total lifetime damage.",
+        "Description": "Deal 20,000 total lifetime damage.",
         "Tier": 1,
         "TextureKey": "ui_achievements",
         "IconFrame": 5,
@@ -81,7 +81,7 @@
         "ConditionType": "LifetimeStat",
         "StatName": "damageDealt",
         "ConditionStat": "",
-        "Threshold": 10000
+        "Threshold": 20000
     },
     "ach_first_heal": {
         "Id": "ach_first_heal",
@@ -380,7 +380,7 @@
     "ach_limited_weapons_10": {
         "Id": "ach_limited_weapons_10",
         "Name": "Minimalist",
-        "Description": "Reach wave 10 while using only 2 weapons.",
+        "Description": "Reach wave 10 while using only 1 weapons.",
         "Tier": 2,
         "TextureKey": "ui_achievements",
         "IconFrame": 27,
@@ -388,7 +388,7 @@
         "Scope": "SingleMatch",
         "ConditionType": "LimitedWeaponsWaveCleared",
         "StatName": "",
-        "ConditionStat": "2",
+        "ConditionStat": "1",
         "Threshold": 10
     },
     "ach_kills_5000": {
@@ -433,10 +433,10 @@
         "ConditionStat": "",
         "Threshold": 10000
     },
-    "ach_kills_single_500": {
-        "Id": "ach_kills_single_500",
+    "ach_kills_single_1000": {
+        "Id": "ach_kills_single_1000",
         "Name": "Bloodbath",
-        "Description": "Get 500 kills in a single run.",
+        "Description": "Get 1,000 kills in a single run.",
         "Tier": 3,
         "TextureKey": "ui_achievements",
         "IconFrame": 31,
@@ -445,12 +445,12 @@
         "ConditionType": "SingleMatchStat",
         "StatName": "kills",
         "ConditionStat": "",
-        "Threshold": 500
+        "Threshold": 1000
     },
-    "ach_wave_25": {
-        "Id": "ach_wave_25",
+    "ach_wave_35": {
+        "Id": "ach_wave_35",
         "Name": "Deep Run",
-        "Description": "Reach wave 25 in a single run.",
+        "Description": "Reach wave 35 in a single run.",
         "Tier": 3,
         "TextureKey": "ui_achievements",
         "IconFrame": 32,
@@ -459,7 +459,7 @@
         "ConditionType": "HighestWaveReached",
         "StatName": "",
         "ConditionStat": "",
-        "Threshold": 25
+        "Threshold": 35
     },
     "ach_hard_wave_20": {
         "Id": "ach_hard_wave_20",
@@ -489,10 +489,10 @@
         "ConditionStat": "",
         "Threshold": 1000000
     },
-    "ach_damage_single_20000": {
-        "Id": "ach_damage_single_20000",
+    "ach_damage_single_30000": {
+        "Id": "ach_damage_single_30000",
         "Name": "Overkill",
-        "Description": "Deal 20,000 damage in a single run.",
+        "Description": "Deal 30,000 damage in a single run.",
         "Tier": 3,
         "TextureKey": "ui_achievements",
         "IconFrame": 35,
@@ -501,12 +501,12 @@
         "ConditionType": "SingleMatchStat",
         "StatName": "damageDealt",
         "ConditionStat": "",
-        "Threshold": 20000
+        "Threshold": 30000
     },
-    "ach_shield_10000_life": {
-        "Id": "ach_shield_10000_life",
+    "ach_shield_30000_life": {
+        "Id": "ach_shield_30000_life",
         "Name": "Impenetrable",
-        "Description": "Generate 10,000 total shielding across all matches.",
+        "Description": "Generate 30,000 total shielding across all matches.",
         "Tier": 3,
         "TextureKey": "ui_achievements",
         "IconFrame": 36,
@@ -515,7 +515,7 @@
         "ConditionType": "LifetimeStat",
         "StatName": "shieldingDone",
         "ConditionStat": "",
-        "Threshold": 10000
+        "Threshold": 30000
     },
     "ach_no_hit_15": {
         "Id": "ach_no_hit_15",
@@ -534,7 +534,7 @@
     "ach_limited_weapons_20": {
         "Id": "ach_limited_weapons_20",
         "Name": "Two's Company",
-        "Description": "Reach wave 20 while using only 2 weapons.",
+        "Description": "Reach wave 10 while using only 1 weapons.",
         "Tier": 3,
         "TextureKey": "ui_achievements",
         "IconFrame": 38,
@@ -542,7 +542,7 @@
         "Scope": "SingleMatch",
         "ConditionType": "LimitedWeaponsWaveCleared",
         "StatName": "",
-        "ConditionStat": "2",
+        "ConditionStat": "1",
         "Threshold": 20
     },
     "ach_maxhp_10000": {
@@ -563,7 +563,7 @@
         "Id": "ach_matches_100",
         "Name": "No Life",
         "Description": "Play 100 matches.",
-        "Tier": 3,
+        "Tier": 2,
         "TextureKey": "ui_achievements",
         "IconFrame": 40,
         "Hidden": false,
@@ -577,7 +577,7 @@
         "Id": "ach_gear_max_level",
         "Name": "Fully Forged",
         "Description": "Level a weapon or item to its maximum level.",
-        "Tier": 3,
+        "Tier": 1,
         "TextureKey": "ui_achievements",
         "IconFrame": 41,
         "Hidden": false,
@@ -591,7 +591,7 @@
         "Id": "ach_mage_master",
         "Name": "Master of the Arcane",
         "Description": "Reach wave 15 playing the Mage.",
-        "Tier": 3,
+        "Tier": 1,
         "TextureKey": "ui_achievements",
         "IconFrame": 42,
         "Hidden": false,
@@ -605,7 +605,7 @@
         "Id": "ach_heal_50000",
         "Name": "Guardian Angel",
         "Description": "Heal 50,000 total HP across all matches.",
-        "Tier": 3,
+        "Tier": 2,
         "TextureKey": "ui_achievements",
         "IconFrame": 43,
         "Hidden": false,
@@ -619,7 +619,7 @@
         "Id": "ach_crit_master",
         "Name": "Precision Strikes",
         "Description": "Reach 75% crit chance in any match.",
-        "Tier": 3,
+        "Tier": 1,
         "TextureKey": "ui_achievements",
         "IconFrame": 56,
         "Hidden": false,
@@ -633,7 +633,7 @@
         "Id": "ach_kills_50000",
         "Name": "Harbinger",
         "Description": "Reach 50,000 lifetime kills.",
-        "Tier": 4,
+        "Tier": 3,
         "TextureKey": "ui_achievements",
         "IconFrame": 44,
         "Hidden": false,
@@ -643,11 +643,11 @@
         "ConditionStat": "",
         "Threshold": 50000
     },
-    "ach_kills_single_1000": {
-        "Id": "ach_kills_single_1000",
+    "ach_kills_single_2000": {
+        "Id": "ach_kills_single_2000",
         "Name": "One-Man Army",
-        "Description": "Get 1,000 kills in a single run.",
-        "Tier": 4,
+        "Description": "Get 2,000 kills in a single run.",
+        "Tier": 3,
         "TextureKey": "ui_achievements",
         "IconFrame": 45,
         "Hidden": false,
@@ -655,13 +655,13 @@
         "ConditionType": "SingleMatchStat",
         "StatName": "kills",
         "ConditionStat": "",
-        "Threshold": 1000
+        "Threshold": 2000
     },
     "ach_wave_40": {
         "Id": "ach_wave_40",
         "Name": "Endless",
         "Description": "Reach wave 40 in a single run.",
-        "Tier": 4,
+        "Tier": 3,
         "TextureKey": "ui_achievements",
         "IconFrame": 46,
         "Hidden": false,
@@ -675,7 +675,7 @@
         "Id": "ach_no_hit_20",
         "Name": "Untouchable Legend",
         "Description": "???",
-        "Tier": 4,
+        "Tier": 3,
         "TextureKey": "ui_achievements",
         "IconFrame": 47,
         "Hidden": true,
@@ -755,10 +755,10 @@
         "ConditionStat": "",
         "Threshold": 500
     },
-    "ach_shield_100000": {
-        "Id": "ach_shield_100000",
+    "ach_shield_500000": {
+        "Id": "ach_shield_500000",
         "Name": "Absolute Barrier",
-        "Description": "Generate 100,000 total shielding across all matches.",
+        "Description": "Generate 500,000 total shielding across all matches.",
         "Tier": 4,
         "TextureKey": "ui_achievements",
         "IconFrame": 53,
@@ -767,12 +767,12 @@
         "ConditionType": "LifetimeStat",
         "StatName": "shieldingDone",
         "ConditionStat": "",
-        "Threshold": 100000
+        "Threshold": 500000
     },
-    "ach_heal_150000": {
-        "Id": "ach_heal_150000",
+    "ach_heal_500000": {
+        "Id": "ach_heal_500000",
         "Name": "Miracle Worker",
-        "Description": "Heal 150,000 total HP across all matches.",
+        "Description": "Heal 500,000 total HP across all matches.",
         "Tier": 4,
         "TextureKey": "ui_achievements",
         "IconFrame": 54,
@@ -781,13 +781,13 @@
         "ConditionType": "LifetimeStat",
         "StatName": "healingDone",
         "ConditionStat": "",
-        "Threshold": 150000
+        "Threshold": 500000
     },
     "ach_easy_wave_30": {
         "Id": "ach_easy_wave_30",
         "Name": "Too Easy",
         "Description": "???",
-        "Tier": 4,
+        "Tier": 2,
         "TextureKey": "ui_achievements",
         "IconFrame": 55,
         "Hidden": true,
@@ -801,7 +801,7 @@
         "Id": "ach_luck_master",
         "Name": "Fortune Favors",
         "Description": "Reach 100 luck before wave 20 in a single run.",
-        "Tier": 4,
+        "Tier": 2,
         "TextureKey": "ui_achievements",
         "IconFrame": 57,
         "Hidden": false,

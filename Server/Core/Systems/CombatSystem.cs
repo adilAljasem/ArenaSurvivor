@@ -391,7 +391,7 @@ public class CombatSystem : IGameSystem
                     if (pickup.Type == PickupType.Gold && !pickupsToRemove.Contains(pickup.Id))
                     {
                         player.Gold += (int)Math.Max(1, pickup.Value * currentDiff.GoldMultiplier);
-                        player.GainXp((int)Math.Max(1, pickup.Value * currentDiff.XpMultiplier), _configs);
+                        player.GainXp(pickup.Value, _configs, currentDiff);
                         pickupsToRemove.Add(pickup.Id);
                     }
                 }

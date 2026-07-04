@@ -136,6 +136,8 @@ public class ActiveSkill
     public bool IsCasting { get; set; }
     public float CurrentCastTimer { get; set; }
     public float CurrentChannelTimer { get; set; }
+    public float TimeSinceLastTick { get; set; }
+
 }
 
 public class EquippedItem : BaseEquippedGear
@@ -323,8 +325,16 @@ public class PlayerEntity : BaseActorEntity
     public Dictionary<string, float> PeakStats { get; set; } = new();
 
 
-    // The formula for how much XP you need to reach the next level
-    public float GetXpRequirement() => 5 + (Level * 3);
+    // Compounding level-up curve, same pattern as the enemy wave-scaling curve in
+    // GameRoom.SpawnEnemy: each level requires XpGrowthRate more XP than the PREVIOUS level's
+    // requirement, not a flat +N step. Early levels feel close to the old linear curve; late
+    // levels snowball since the bonus compounds on top of itself instead of just adding.
+    private const float XpBaseRequirement = 8f;
+    private const float XpGrowthRate = 0.10f; // 12% more XP required per level than the last
+
+    public float GetXpRequirement() =>
+        XpBaseRequirement * (float)Math.Pow(1f + XpGrowthRate, Level - 1);
+
 
     // >>> THE FIX: Changing movement flags the entity as Dirty for "IsStandingStill" traits <<<
     private float _inputX;
@@ -533,18 +543,19 @@ public class PlayerEntity : BaseActorEntity
         return totalValue;
     }
 
-    public void GainXp(float amount, Configs.ConfigManager configManager)
+    public void GainXp(float amount, Configs.ConfigManager configManager, DifficultyConfig diff)
     {
         float xpBonus = GetTotalStat("xpGainPercent", configManager);
-        CurrentXp += amount * (1f + xpBonus);
+        CurrentXp += amount * diff.XpMultiplier * (1f + xpBonus);
 
         while (CurrentXp >= GetXpRequirement())
         {
             CurrentXp -= GetXpRequirement();
             Level++;
-            PendingLevelUps++; // Stores the level up for the shop phase!
+            PendingLevelUps++;
         }
     }
+
 
     public bool TryAddOrMergeWeapon(EquippedWeapon incomingWeapon, ConfigManager configs)
     {

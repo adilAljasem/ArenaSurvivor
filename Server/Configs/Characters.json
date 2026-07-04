@@ -36,9 +36,7 @@
     "startingItems": [
       "ugly_tooth"
     ],
-    "startingSkills": [
-      "fier_foom"
-    ],
+    "startingSkills": [],
     "dynamicModifiers": [],
     "traits": [
       "trait_packrat"

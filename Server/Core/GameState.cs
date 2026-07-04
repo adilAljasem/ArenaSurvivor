@@ -22,15 +22,17 @@ public class GameState
     public ConcurrentDictionary<string, SpectatorEntity> Spectators { get; } = new(); // NEW
 
     public GamePhase Phase { get; set; } = GamePhase.WaitingForPlayers;
-    
+
     // --- NEW ROOM LIFECYCLE PROPERTIES ---
     public RoomStatus Status { get; set; } = RoomStatus.Active;
     public float PauseTimer { get; set; } = 0f;
-    
+
 
     public int CurrentWave { get; set; } = 1;
     public float PhaseTimer { get; set; } = 0f;
     public string CurrentDifficulty { get; set; } = "easy";
     public bool SkipShopPhase { get; set; } = false;
     public bool AllowSpectators { get; set; } = true;
+    public float TimeScale { get; set; } = 1f;
+
 }

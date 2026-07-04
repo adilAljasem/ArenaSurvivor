@@ -296,7 +296,7 @@
     "id": "flying_forest",
     "name": "Flying Forest",
     "tier": 1,
-    "VisualHeight": 35.0,
+    "VisualHeight": 50.0,
     "isBoss": false,
     "minWave": 20,
     "maxWave": 200,

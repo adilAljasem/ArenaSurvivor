@@ -1288,85 +1288,125 @@ export function applyVisualFX(
 
 
 export class VfxRenderer {
-  static renderAoeEvents(scene: Phaser.Scene, aoeEvents: any[], configs: any) {
-    if (!aoeEvents || aoeEvents.length === 0) return;
+  static renderAoeEvents(scene: Phaser.Scene, aoeEvents: any[], configs: any, activeAoeLoops: Map<string, any>) {
+    activeAoeLoops.forEach(entry => { entry.updatedThisTick = false; });
 
-    const skillConfigs = configs.skills || configs.Skills;
-    if (!skillConfigs) return;
+    if (aoeEvents && aoeEvents.length > 0) {
+      const skillConfigs = configs.skills || configs.Skills;
 
-    aoeEvents.forEach(ev => {
-      const configId = ev.configId ?? ev.ConfigId;
-      const config = skillConfigs[configId];
-      if (!config) return;
+      if (skillConfigs) {
+        aoeEvents.forEach(ev => {
+          const configId = ev.configId ?? ev.ConfigId;
+          const config = skillConfigs[configId];
+          if (!config) return;
 
-      // >>> THE INVISIBILITY FIX: If there is no colorTint, abort drawing the AOE entirely! <
-      const colorStr = config.colorTint ?? config.ColorTint;
-      if (!colorStr || colorStr === "") {
-        return;
-      }
+          // >>> THE INVISIBILITY FIX: If there is no colorTint, abort drawing the AOE entirely! 
+          const colorStr = config.colorTint ?? config.ColorTint;
+          if (!colorStr || colorStr === "") {
+            return;
+          }
 
-      // If we made it here, the skill has a colorTint, so we proceed with drawing it.
-      const x = ev.x ?? ev.X;
-      const y = ev.y ?? ev.Y;
-      const radius = ev.radius ?? ev.Radius;
-      const isFriendly = ev.isFriendly ?? ev.IsFriendly ?? false;
+          // If we made it here, the skill has a colorTint, so we proceed with drawing it.
+          const x = ev.x ?? ev.X;
+          const y = ev.y ?? ev.Y;
+          const radius = ev.radius ?? ev.Radius;
+          const isFriendly = ev.isFriendly ?? ev.IsFriendly ?? false;
+          const casterId = ev.casterId ?? ev.CasterId;
+          const skillId = ev.skillId ?? ev.SkillId ?? configId;
 
-      const vfxTex = config.vfxTextureKey || config.VfxTextureKey;
-      const vfxFrames = config.vfxAnimFrames || config.VfxAnimFrames;
+          const vfxTex = config.vfxTextureKey || config.VfxTextureKey;
+          const vfxFrames = config.vfxAnimFrames || config.VfxAnimFrames;
+          const channelDuration = config.channelDurationSeconds ?? config.ChannelDurationSeconds ?? 0;
+          const isRepeated = (config.isRepeated ?? config.IsRepeated ?? false) && channelDuration > 0;
 
-      // --- OPTION A: PLAY SPRITE BURST ---
-      if (vfxTex && vfxFrames) {
-        const animKey = `${configId}_vfx`;
-        const sprite = scene.add.sprite(x, y, vfxTex).setDepth(300);
+          // --- OPTION A: PLAY SPRITE BURST/LOOP ---
+          if (vfxTex && vfxFrames) {
+            const animKey = `${configId}_vfx`;
+            const flatVfxScale = config.vfxScale || config.VfxScale || 1.0;
+            const baseRadius = config.vfxBaseRadius || config.VfxBaseRadius || 0;
+            const finalScale = baseRadius > 0 && radius > 0
+              ? (radius / baseRadius) * flatVfxScale
+              : flatVfxScale;
+            const frameRate = config.vfxFrameRate || config.VfxFrameRate || 15;
 
-        const flatVfxScale = config.vfxScale || config.VfxScale || 1.0;
-        const baseRadius = config.vfxBaseRadius || config.VfxBaseRadius || 0;
+            if (!scene.anims.exists(animKey)) {
+              scene.anims.create({
+                key: animKey,
+                frames: scene.anims.generateFrameNumbers(vfxTex, { start: vfxFrames[0], end: vfxFrames[1] }),
+                frameRate: frameRate,
+                repeat: isRepeated ? -1 : 0
+              });
+            }
 
-        // If the art's base radius is known, scale it to match the skill's actual radius
-        // (e.g. drawn for 100px, skill radius is 140px -> scale 1.4x), then apply the flat
-        // VfxScale on top as a manual fine-tune (art padding, stylistic oversize, etc.).
-        const finalScale = baseRadius > 0 && radius > 0
-          ? (radius / baseRadius) * flatVfxScale
-          : flatVfxScale;
+            if (isRepeated && casterId) {
+              // Persistent loop: one sprite per (caster, skill), repositioned every tick,
+              // destroyed precisely on the matching BeamEndedEvent via endAoeLoop below.
+              const key = `${casterId}:${skillId}`;
+              let entry = activeAoeLoops.get(key);
 
-        sprite.setScale(finalScale);
+              if (!entry) {
+                const sprite = scene.add.sprite(x, y, vfxTex).setDepth(300);
+                sprite.setScale(finalScale);
+                sprite.play(animKey);
+                entry = { sprite };
+                activeAoeLoops.set(key, entry);
+              } else {
+                entry.sprite.setPosition(x, y);
+                entry.sprite.setScale(finalScale);
+              }
+              entry.updatedThisTick = true;
+            } else {
+              // One-shot burst - exactly the old behavior.
+              const sprite = scene.add.sprite(x, y, vfxTex).setDepth(300);
+              sprite.setScale(finalScale);
+              sprite.play(animKey);
+              sprite.once('animationcomplete', () => sprite.destroy());
+            }
+          }
+          // --- OPTION B: SMOOTH NOVA SHOCKWAVE (Fallback) ---
+          else {
+            // We parse the exact color specified in the JSON
+            const colorHex = parseColor(colorStr, isFriendly ? 0x00ff00 : 0xff0000);
 
-        if (!scene.anims.exists(animKey)) {
-          const frameRate = config.vfxFrameRate || config.VfxFrameRate || 15;
-          scene.anims.create({
-            key: animKey,
-            frames: scene.anims.generateFrameNumbers(vfxTex, { start: vfxFrames[0], end: vfxFrames[1] }),
-            frameRate: frameRate,
-            repeat: 0
-          });
-        }
+            const visualRadius = radius > 0 ? radius : 60;
 
-        sprite.play(animKey);
-        sprite.once('animationcomplete', () => sprite.destroy());
-      }
-      // --- OPTION B: SMOOTH NOVA SHOCKWAVE (Fallback) ---
-      else {
-        // We parse the exact color specified in the JSON
-        const colorHex = parseColor(colorStr, isFriendly ? 0x00ff00 : 0xff0000);
+            const ring = scene.add.circle(x, y, visualRadius, colorHex, 0.3);
+            ring.setStrokeStyle(4, colorHex, 1);
+            ring.setDepth(299);
+            ring.setScale(0.1);
 
-        const visualRadius = radius > 0 ? radius : 60;
-
-        const ring = scene.add.circle(x, y, visualRadius, colorHex, 0.3);
-        ring.setStrokeStyle(4, colorHex, 1);
-        ring.setDepth(299);
-        ring.setScale(0.1);
-
-        scene.tweens.add({
-          targets: ring,
-          scale: 1.0,
-          alpha: 0,
-          duration: 800, // Slowed down for better visual flow
-          ease: 'Cubic.easeOut',
-          onComplete: () => ring.destroy()
+            scene.tweens.add({
+              targets: ring,
+              scale: 1.0,
+              alpha: 0,
+              duration: 800, // Slowed down for better visual flow
+              ease: 'Cubic.easeOut',
+              onComplete: () => ring.destroy()
+            });
+          }
         });
+      }
+    }
+
+    // Safety net: destroy any looping AoE the server stopped reporting this tick, in case
+    // endAoeLoop's BeamEndedEvent was ever missed (dropped packet, etc.) - same pattern as
+    // renderBeamEvents' stale-beam cleanup below.
+    activeAoeLoops.forEach((entry, key) => {
+      if (!entry.updatedThisTick) {
+        entry.sprite.destroy();
+        activeAoeLoops.delete(key);
       }
     });
   }
+
+  static endAoeLoop(casterId: string, skillId: string, activeAoeLoops: Map<string, any>) {
+    const key = `${casterId}:${skillId}`;
+    const entry = activeAoeLoops.get(key);
+    if (!entry) return;
+    entry.sprite.destroy();
+    activeAoeLoops.delete(key);
+  }
+
 
   // Beams are drawn procedurally, never as scaled sprite art, so the visual is always
   // pixel-exact to the hitbox the server used (StartX/StartY -> TargetX/TargetY, Width).

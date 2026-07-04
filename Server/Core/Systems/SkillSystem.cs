@@ -308,7 +308,12 @@ public class SkillSystem : IGameSystem
         {
             bool isHeal = config.BaseDamage < 0;
             float actualDamage = isHeal ? -Math.Abs(finalSpellDamage) : finalSpellDamage;
-            _eventBus.Publish(new AoeVisualEvent { Dto = new AoeEventDto { X = startX, Y = startY, Radius = config.Radius, IsFriendly = string.IsNullOrEmpty(team) || team == "Player", ConfigId = config.Id } });
+            _eventBus.Publish(new AoeVisualEvent
+            {
+                Dto = new AoeEventDto { X = startX, Y = startY, Radius = config.Radius, IsFriendly = string.IsNullOrEmpty(team) || team == "Player", ConfigId = config.Id },
+                CasterId = casterId,
+                SkillId = config.Id
+            });
             float radiusSq = config.Radius * config.Radius;
 
             void ApplyAoeEffects(BaseActorEntity target)
@@ -456,14 +461,32 @@ public class SkillSystem : IGameSystem
                 if (skill.CurrentChannelTimer > 0)
                 {
                     skill.CurrentChannelTimer -= dt;
-                    if (skillConfig.IsRepeated) ExecuteSkill(skillConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus);
+
+                    if (skillConfig.IsRepeated)
+                    {
+                        if (skillConfig.TickRate > 0)
+                        {
+                            skill.TimeSinceLastTick += dt;
+                            if (skill.TimeSinceLastTick >= skillConfig.TickRate)
+                            {
+                                skill.TimeSinceLastTick -= skillConfig.TickRate;
+                                ExecuteSkill(skillConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus);
+                            }
+                        }
+                        else
+                        {
+                            ExecuteSkill(skillConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team, state, _configs, _eventBus);
+                        }
+                    }
 
                     if (skill.CurrentChannelTimer <= 0)
                     {
                         skill.CurrentCooldown = skillConfig.CooldownSeconds / hasteMult;
+                        skill.TimeSinceLastTick = 0f;
                         _eventBus.Publish(new BeamEndedEvent { CasterId = enemy.Id, SkillId = skillConfig.Id });
                     }
                 }
+
 
                 if (skillConfig.IsIndependent && skill.CurrentCastTimer > 0)
                 {
@@ -574,13 +597,31 @@ public class SkillSystem : IGameSystem
                 if (skill.CurrentChannelTimer > 0)
                 {
                     skill.CurrentChannelTimer -= dt;
-                    if (config.IsRepeated) ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus);
+
+                    if (config.IsRepeated)
+                    {
+                        if (config.TickRate > 0)
+                        {
+                            skill.TimeSinceLastTick += dt;
+                            if (skill.TimeSinceLastTick >= config.TickRate)
+                            {
+                                skill.TimeSinceLastTick -= config.TickRate;
+                                ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus);
+                            }
+                        }
+                        else
+                        {
+                            ExecuteSkill(config, player.ConnectionId, player.X, player.Y, player.Team, state, _configs, _eventBus);
+                        }
+                    }
 
                     if (skill.CurrentChannelTimer <= 0)
                     {
                         skill.CurrentCooldown = config.CooldownSeconds / hasteMult;
+                        skill.TimeSinceLastTick = 0f;
                         _eventBus.Publish(new BeamEndedEvent { CasterId = player.ConnectionId, SkillId = config.Id });
                     }
+
                 }
 
                 if (config.IsIndependent && skill.CurrentCastTimer > 0)

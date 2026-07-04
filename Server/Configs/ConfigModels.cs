@@ -390,6 +390,8 @@ public class SkillConfig
     public float SweepAngleSpeed { get; set; } = 0.2f;
     public float Radius { get; set; } = 0f;
     public float BaseDamage { get; set; } = 0f;
+    public float TickRate { get; set; } = 0f;
+
     public float Lifespan { get; set; } = 0f;
     public List<string> ApplyEffects { get; set; } = new();
     public bool StopMoving { get; set; } = false;

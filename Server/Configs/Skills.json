@@ -180,6 +180,7 @@
         "vfxScale": 1.0,
         "cooldownSeconds": 2.0,
         "castTimeSeconds": 2.0,
+        "channelDurationSeconds": 5.0,
         "triggerType": "Auto",
         "targetType": "Self",
         "actionType": "AoE",
@@ -297,15 +298,6 @@
         "baseDamage": 25,
         "spreadAngle": 360.0
     },
-    "test_laser_beam": {
-        "id": "test_laser_beam",
-        "name": "Lasser beam",
-        "actionType": "Beam",
-        "range": 800,
-        "beamWidth": 25,
-        "baseDamage": 30,
-        "colorTint": "0x00ffff"
-    },
     "cast_fire_aura": {
         "id": "cast_fire_aura",
         "actionType": "SelfBuff",
@@ -315,12 +307,13 @@
     },
     "laser_closest": {
         "id": "laser_closest",
+        "name": "Laser Beam",
         "nextLevelId": "laser_closest_2",
         "actionType": "Beam",
         "targetType": "ClosestEnemy",
-        "range": 1000,
-        "beamWidth": 20,
-        "baseDamage": 15,
+        "range": 200,
+        "beamWidth": 10,
+        "baseDamage": 5,
         "castTimeSeconds": 0.8,
         "channelDurationSeconds": 0.5,
         "cooldownSeconds": 0.8,
@@ -328,17 +321,18 @@
     },
     "laser_closest_2": {
         "id": "laser_closest_2",
+        "name": "Laser Beam Lv.2",
         "actionType": "Beam",
         "targetType": "ClosestEnemy",
-        "range": 1200,
-        "beamWidth": 35,
+        "range": 400,
+        "beamWidth": 10,
         "baseDamage": 35,
         "colorTint": "0xff00ff"
     },
     "laser_sweep": {
         "id": "laser_sweep",
-        "nextLevelId": "laser_sweep_2",
         "name": "Sweeping Laser",
+        "nextLevelId": "laser_sweep_2",
         "actionType": "Beam",
         "targetType": "Sweep",
         "sweepAngleSpeed": 0.05,

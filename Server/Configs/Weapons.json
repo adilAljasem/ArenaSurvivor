@@ -40,7 +40,7 @@
     "RequiredAchievements": [
       "ach_getting_started",
       "ach_wave_5",
-      "ach_heal_150000"
+      "ach_kills_100"
     ],
     "statRollChance": 0.50,
     "maxRandomStats": 2,

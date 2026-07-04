@@ -123,7 +123,16 @@ public class SpawnProjectileEvent
 }
 
 // Visual routing events
-public class AoeVisualEvent { public AoeEventDto Dto { get; set; } = null!; }
+public class AoeVisualEvent
+{
+    public AoeEventDto Dto { get; set; } = null!;
+
+    // >>> NEW: Identity for a looping AoE instance, mirrors BeamVisualEvent, so the client can
+    // track ONE persistent sprite per (caster, skill) for isRepeated AoEs instead of spawning
+    // a new burst every tick.
+    public string CasterId { get; set; } = string.Empty;
+    public string SkillId { get; set; } = string.Empty;
+}
 public class BeamVisualEvent
 {
     public BeamEventDto Dto { get; set; } = null!;

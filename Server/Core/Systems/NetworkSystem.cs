@@ -20,7 +20,7 @@ public class NetworkSystem : IGameSystem
     private EventBus _eventBus = null!;
     private readonly IHubContext<MatchHub> _hubContext;
     private ConcurrentBag<DamageEventDto> _damageEvents = new();
-    private ConcurrentBag<AoeEventDto> _aoeEvents = new();
+    private ConcurrentBag<AoeVisualEvent> _aoeEvents = new();
     private ConcurrentBag<BeamVisualEvent> _beamEvents = new();
     private ConcurrentBag<BeamEndedEvent> _beamEndedEvents = new();
     // FIX B: Cache a single empty dictionary to stop 30,000 allocations per second
@@ -51,7 +51,7 @@ public class NetworkSystem : IGameSystem
             });
         });
 
-        _eventBus.Subscribe<AoeVisualEvent>(ev => _aoeEvents.Add(ev.Dto));
+        _eventBus.Subscribe<AoeVisualEvent>(ev => _aoeEvents.Add(ev));
         _eventBus.Subscribe<BeamVisualEvent>(ev => _beamEvents.Add(ev));
         _eventBus.Subscribe<BeamEndedEvent>(ev => _beamEndedEvents.Add(ev));
         _eventBus.Subscribe<ChatMessageEvent>(ev =>
@@ -127,7 +127,7 @@ public class NetworkSystem : IGameSystem
         PerformCleanup(gameState);
 
         _damageEvents = new ConcurrentBag<DamageEventDto>();
-        _aoeEvents = new ConcurrentBag<AoeEventDto>();
+        _aoeEvents = new ConcurrentBag<AoeVisualEvent>();
         _beamEvents = new ConcurrentBag<BeamVisualEvent>();
         _beamEndedEvents = new ConcurrentBag<BeamEndedEvent>();
     }
@@ -164,8 +164,9 @@ public class NetworkSystem : IGameSystem
     // FIX: Method signature updated to accept IEnumerable for thread-safe bags
     private static FlatState FlattenGlobalState(GameState gameState, ConfigManager configManager,
         IEnumerable<DamageEventDto> dmgEvents,
-        IEnumerable<AoeEventDto> aoeEvents,
+        IEnumerable<AoeVisualEvent> aoeEvents,
         IEnumerable<BeamVisualEvent> beamEvents)
+
     {
         return new FlatState
         {
@@ -216,7 +217,7 @@ public class NetworkSystem : IGameSystem
             }).ToList(),
 
             Damage = dmgEvents.Select(d => new object[] { (int)d.X, (int)d.Y, (int)d.Amount, d.IsCritical ? 1 : 0, d.IsDodge ? 1 : 0, d.IsBlock ? 1 : 0 }).ToList(),
-            Aoe = aoeEvents.Select(a => new object[] { (int)a.X, (int)a.Y, (int)a.Radius, a.IsFriendly, a.ConfigId }).ToList(),
+            Aoe = aoeEvents.Select(a => new object[] { (int)a.Dto.X, (int)a.Dto.Y, (int)a.Dto.Radius, a.Dto.IsFriendly, a.Dto.ConfigId, a.CasterId, a.SkillId }).ToList(),
             Beams = beamEvents.Select(b => new object[] { (int)b.Dto.StartX, (int)b.Dto.StartY, (int)b.Dto.TargetX, (int)b.Dto.TargetY, (int)b.Dto.Width, b.Dto.ColorTint, b.CasterId, b.SkillId }).ToList()
         };
     }
