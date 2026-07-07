@@ -1,14 +1,9 @@
 {
-    "boss_stomp": {
-        "id": "boss_stomp",
+    "skill_boss_stomp_t1": {
+        "id": "skill_boss_stomp_t1",
         "name": "Ground Stomp",
         "textureKey": "skill_icons",
         "iconFrame": 0,
-        "vfxTextureKey": "boss_skills_sheet",
-        "vfxAnimFrames": [
-            10,
-            15
-        ],
         "vfxFrameRate": 15,
         "vfxScale": 2.0,
         "cooldownSeconds": 5.0,
@@ -16,18 +11,25 @@
         "triggerType": "Auto",
         "targetType": "Self",
         "actionType": "AoE",
-        "radius": 150,
+        "radius": 350,
         "baseDamage": 25,
+        "applyEffects": [
+            "effect_debuff_slow_t1"
+        ],
+        "stopMoving": true,
         "soundCast": "sfx_stomp_cast",
         "soundHit": "sfx_stomp_hit",
         "colorTint": "0xff0000"
     },
-    "magic_missile": {
-        "id": "magic_missile",
+    "skill_magic_missile_t1": {
+        "id": "skill_magic_missile_t1",
+        "textureKey": "skill_icons",
+        "iconFrame": 0,
         "name": "Magic Missile",
-        "nextLevelId": "magic_missile_2",
+        "nextLevelId": "skill_magic_missile_t2",
         "cooldownSeconds": 2.0,
-        "castTimeSeconds": 0.2,
+        "castTimeSeconds": 0.0,
+        "lifespan": 1.0,
         "triggerType": "Auto",
         "targetType": "ClosestEnemy",
         "actionType": "Projectile",
@@ -35,11 +37,14 @@
         "baseDamage": 15,
         "soundCast": "sfx_magic_missile_cast"
     },
-    "magic_missile_2": {
-        "id": "magic_missile_2",
+    "skill_magic_missile_t2": {
+        "id": "skill_magic_missile_t2",
+        "textureKey": "skill_icons",
+        "iconFrame": 0,
         "name": "Magic Missile Lv.2",
-        "cooldownSeconds": 1.5,
-        "castTimeSeconds": 0.2,
+        "cooldownSeconds": 1.0,
+        "castTimeSeconds": 0.0,
+        "lifespan": 1.5,
         "triggerType": "Auto",
         "targetType": "ClosestEnemy",
         "actionType": "Projectile",
@@ -47,21 +52,36 @@
         "baseDamage": 25,
         "soundCast": "sfx_magic_missile_cast"
     },
-    "goblin_ambush": {
-        "id": "goblin_ambush",
+    "skill_magic_missile_t3": {
+        "id": "skill_magic_missile_t3",
+        "textureKey": "skill_icons",
+        "iconFrame": 0,
+        "name": "Magic Missile Lv.3",
+        "cooldownSeconds": 0.5,
+        "castTimeSeconds": 0.0,
+        "lifespan": 2.0,
+        "triggerType": "Auto",
+        "targetType": "ClosestEnemy",
+        "actionType": "Projectile",
+        "projectileId": "fireball",
+        "baseDamage": 30,
+        "soundCast": "sfx_magic_missile_cast"
+    },
+    "skill_boss_goblin_ambush_t1": {
+        "id": "skill_boss_goblin_ambush_t1",
         "name": "Goblin Ambush",
         "cooldownSeconds": 15.0,
         "castTimeSeconds": 1.0,
         "triggerType": "Auto",
         "targetType": "Self",
         "actionType": "Summon",
-        "summonConfigId": "goblin_basic",
+        "summonConfigId": "spring_enemy",
         "summonCount": 10,
         "summonRadius": 120.0,
         "soundCast": "sfx_ambush_cast"
     },
-    "summon_trees": {
-        "id": "summon_trees",
+    "skill_summon_trees_t1": {
+        "id": "skill_summon_trees_t1",
         "name": "Grow Forest",
         "textureKey": "skill_icons",
         "iconFrame": 5,
@@ -71,40 +91,66 @@
             55
         ],
         "chargeVfxFrameRate": 15,
-        "chargeVfxScale": 1.0,
-        "nextLevelId": "summon_trees_2",
+        "chargeVfxScale": 0.8,
+        "nextLevelId": "skill_summon_trees_t2",
         "cooldownSeconds": 1.0,
         "castTimeSeconds": 10.0,
         "triggerType": "Auto",
         "targetType": "Self",
         "actionType": "Summon",
         "summonConfigId": "tree_obstacle",
-        "summonCount": 5,
+        "summonCount": 3,
         "summonRadius": 200.0,
         "soundCast": "sfx_summon_trees_cast"
     },
-    "summon_trees_2": {
-        "id": "summon_trees_2",
+    "skill_summon_trees_t2": {
+        "id": "skill_summon_trees_t2",
         "name": "Grow Forest Lv.2",
         "cooldownSeconds": 18.0,
-        "castTimeSeconds": 4.0,
+        "castTimeSeconds": 2.0,
         "triggerType": "Auto",
         "targetType": "Self",
         "actionType": "Summon",
         "summonConfigId": "tree_obstacle",
-        "summonCount": 9,
+        "summonCount": 6,
         "summonRadius": 250.0,
         "soundCast": "sfx_summon_trees_cast"
     },
-    "nature_pulse": {
-        "id": "nature_pulse",
+    "skill_summon_trees_t3": {
+        "id": "skill_summon_trees_t3",
+        "name": "Grow Forest Lv.3",
+        "cooldownSeconds": 18.0,
+        "castTimeSeconds": 2.0,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "Summon",
+        "summonConfigId": "tree_obstacle",
+        "summonCount": 4,
+        "summonRadius": 250.0,
+        "soundCast": "sfx_summon_trees_cast"
+    },
+    "skill_summon_trees_t4": {
+        "id": "skill_summon_trees_t4",
+        "name": "Grow Forest Lv.4",
+        "cooldownSeconds": 20.0,
+        "castTimeSeconds": 3.0,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "Summon",
+        "summonConfigId": "tree_obstacle",
+        "summonCount": 4,
+        "summonRadius": 250.0,
+        "soundCast": "sfx_summon_trees_cast"
+    },
+    "skill_nature_pulse_t1": {
+        "id": "skill_nature_pulse_t1",
         "name": "Nature Pulse",
         "textureKey": "skill_icons",
         "showCastBar": true,
         "iconFrame": 9,
-        "nextLevelId": "nature_pulse_2",
+        "nextLevelId": "skill_nature_pulse_t2",
         "cooldownSeconds": 4.0,
-        "castTimeSeconds": 10.0,
+        "castTimeSeconds": 5.0,
         "triggerType": "Auto",
         "targetType": "Self",
         "actionType": "AoE",
@@ -112,24 +158,26 @@
         "baseDamage": -15,
         "StopMoving": true,
         "soundCast": "sfx_nature_pulse_cast",
-        "soundHit": "sfx_nature_pulse_hit"
+        "soundHit": "sfx_nature_pulse_hit",
+        "colorTint": "#008000"
     },
-    "nature_pulse_2": {
-        "id": "nature_pulse_2",
+    "skill_nature_pulse_t2": {
+        "id": "skill_nature_pulse_t2",
         "name": "Nature Pulse Lv.2",
-        "cooldownSeconds": 0.0,
-        "castTimeSeconds": 1.0,
+        "cooldownSeconds": 2.0,
+        "castTimeSeconds": 3.0,
         "triggerType": "Auto",
         "targetType": "Self",
         "actionType": "AoE",
-        "radius": 500,
-        "baseDamage": -30,
+        "radius": 300,
+        "baseDamage": -20,
         "StopMoving": false,
         "soundCast": "sfx_nature_pulse_cast",
-        "soundHit": "sfx_nature_pulse_hit"
+        "soundHit": "sfx_nature_pulse_hit",
+        "colorTint": "#0xff0000"
     },
-    "adrenaline_surge": {
-        "id": "adrenaline_surge",
+    "skill_adrenaline_surge_t1": {
+        "id": "skill_adrenaline_surge_t1",
         "name": "Adrenaline Surge",
         "textureKey": "skill_icons",
         "iconFrame": 2,
@@ -140,36 +188,36 @@
         ],
         "chargeVfxFrameRate": 15,
         "chargeVfxScale": 0.7,
-        "cooldownSeconds": 10.0,
-        "castTimeSeconds": 3.5,
+        "cooldownSeconds": 30.0,
+        "castTimeSeconds": 1.5,
         "triggerType": "Auto",
         "targetType": "Self",
         "actionType": "SelfBuff",
         "applyEffects": [
-            "adrenaline"
+            "effect_buff_adrenaline_t1"
         ],
         "colorTint": "0xff0000",
         "soundCast": "sfx_adrenaline_cast"
     },
-    "adrenaline_surge_2": {
-        "id": "adrenaline_surge_2",
+    "skill_adrenaline_surge_t2": {
+        "id": "skill_adrenaline_surge_t2",
         "name": "Adrenaline Surge Lv.2",
         "animFrameRate": 15,
-        "cooldownSeconds": 7.0,
-        "castTimeSeconds": 2.5,
+        "cooldownSeconds": 20.0,
+        "castTimeSeconds": 1.5,
         "triggerType": "Auto",
         "targetType": "Self",
         "actionType": "SelfBuff",
         "applyEffects": [
-            "adrenaline"
+            "effect_buff_adrenaline_t2"
         ],
         "colorTint": "0xff0000",
         "soundCast": "sfx_adrenaline_cast"
     },
-    "frost_nova": {
-        "id": "frost_nova",
+    "skill_frost_nova_t1": {
+        "id": "skill_frost_nova_t1",
         "name": "Frost Nova",
-        "nextLevelId": "frost_nova_2",
+        "nextLevelId": "skill_frost_nova_t2",
         "vfxTextureKey": "explosion1",
         "vfxAnimFrames": [
             0,
@@ -193,8 +241,8 @@
         "soundCast": "sfx_frost_nova_cast",
         "soundHit": "sfx_frost_nova_hit"
     },
-    "frost_nova_2": {
-        "id": "frost_nova_2",
+    "skill_frost_nova_t2": {
+        "id": "skill_frost_nova_t2",
         "name": "Frost Nova Lv.2",
         "cooldownSeconds": 6.5,
         "castTimeSeconds": 1.5,
@@ -210,25 +258,25 @@
         "soundCast": "sfx_frost_nova_cast",
         "soundHit": "sfx_frost_nova_hit"
     },
-    "enrage": {
-        "id": "enrage",
-        "name": "Boss Enrage",
+    "skill_enrage_t2": {
+        "id": "skill_enrage_t2",
+        "name": "Boss Enrage Lv.2",
         "cooldownSeconds": 20.0,
         "castTimeSeconds": 3.0,
         "triggerType": "Auto",
         "targetType": "Self",
         "actionType": "SelfBuff",
         "applyEffects": [
-            "adrenaline",
-            "vampiric_aura"
+            "effect_buff_adrenaline_t1",
+            "effect_buff_vampiric_aura_t1"
         ],
         "soundCast": "sfx_enrage_cast"
     },
-    "poison_volley": {
-        "id": "poison_volley",
+    "skill_poison_volley_t1": {
+        "id": "skill_poison_volley_t1",
         "name": "Poison Volley",
-        "nextLevelId": "poison_volley_2",
-        "cooldownSeconds": 4.0,
+        "nextLevelId": "skill_poison_volley_2",
+        "cooldownSeconds": 20.0,
         "castTimeSeconds": 1.0,
         "triggerType": "Auto",
         "targetType": "ClosestEnemy",
@@ -236,27 +284,59 @@
         "projectileId": "toxic_sludge",
         "baseDamage": 5,
         "applyEffects": [
-            "poison_dot"
+            "effect_debuff_poison_dot_t1"
         ],
         "soundCast": "sfx_poison_volley_cast"
     },
-    "poison_volley_2": {
-        "id": "poison_volley_2",
+    "skill_poison_volley_t2": {
+        "id": "skill_poison_volley_t2",
         "name": "Poison Volley Lv.2",
-        "cooldownSeconds": 3.0,
+        "nextLevelId": "skill_poison_volley_t3",
+        "cooldownSeconds": 15.0,
         "castTimeSeconds": 0.8,
         "triggerType": "Auto",
         "targetType": "ClosestEnemy",
         "actionType": "Projectile",
         "projectileId": "toxic_sludge",
-        "baseDamage": 12,
+        "baseDamage": 7,
         "applyEffects": [
-            "poison_dot"
+            "effect_debuff_poison_dot_t2"
         ],
         "soundCast": "sfx_poison_volley_cast"
     },
-    "test_rocket_explosion": {
-        "id": "test_rocket_explosion",
+    "skill_poison_volley_t3": {
+        "id": "skill_poison_volley_t3",
+        "name": "Poison Volley",
+        "nextLevelId": "skill_poison_volley_t4",
+        "cooldownSeconds": 12.0,
+        "castTimeSeconds": 0.5,
+        "triggerType": "Auto",
+        "targetType": "ClosestEnemy",
+        "actionType": "Projectile",
+        "projectileId": "toxic_sludge",
+        "baseDamage": 7,
+        "applyEffects": [
+            "effect_debuff_poison_dot_t3"
+        ],
+        "soundCast": "sfx_poison_volley_cast"
+    },
+    "skill_poison_volley_t4": {
+        "id": "skill_poison_volley_t4",
+        "name": "Poison Volley",
+        "cooldownSeconds": 5.0,
+        "castTimeSeconds": 0.0,
+        "triggerType": "Auto",
+        "targetType": "ClosestEnemy",
+        "actionType": "Projectile",
+        "projectileId": "toxic_sludge",
+        "baseDamage": 10,
+        "applyEffects": [
+            "effect_debuff_poison_dot_t4"
+        ],
+        "soundCast": "sfx_poison_volley_cast"
+    },
+    "skill_rocket_explosion_t1": {
+        "id": "skill_rocket_explosion_t1",
         "actionType": "AoE",
         "targetType": "Self",
         "vfxTextureKey": "explosion2",
@@ -271,10 +351,26 @@
         "baseDamage": 5000,
         "colorTint": "0xff4400"
     },
-    "cast_orbital_fireballs": {
-        "id": "cast_orbital_fireballs",
+    "skill_rocket_explosion_t2": {
+        "id": "skill_rocket_explosion_t2",
+        "actionType": "AoE",
+        "targetType": "Self",
+        "vfxTextureKey": "explosion2",
+        "vfxAnimFrames": [
+            0,
+            13
+        ],
+        "vfxFrameRate": 15,
+        "vfxBaseRadius": 50,
+        "vfxScale": 1.0,
+        "radius": 100,
+        "baseDamage": 5000,
+        "colorTint": "0xff4400"
+    },
+    "skill_orbital_fireballs_t1": {
+        "id": "skill_orbital_fireballs_t1",
         "name": "Orbital Fireballs",
-        "nextLevelId": "cast_orbital_fireballs_2",
+        "nextLevelId": "skill_orbital_fireballs_t2",
         "actionType": "Projectile",
         "projectileId": "test_orbital_fireball",
         "castTimeSeconds": 1.5,
@@ -286,8 +382,8 @@
         "baseDamage": 20,
         "spreadAngle": 360.0
     },
-    "cast_orbital_fireballs_2": {
-        "id": "cast_orbital_fireballs_2",
+    "skill_orbital_fireballs_t2": {
+        "id": "skill_orbital_fireballs_t2",
         "name": "Orbital Fireballs Lv.2",
         "actionType": "Projectile",
         "projectileId": "test_orbital_fireball",
@@ -298,17 +394,10 @@
         "baseDamage": 25,
         "spreadAngle": 360.0
     },
-    "cast_fire_aura": {
-        "id": "cast_fire_aura",
-        "actionType": "SelfBuff",
-        "applyEffects": [
-            "test_fire_aura_buff"
-        ]
-    },
-    "laser_closest": {
-        "id": "laser_closest",
+    "skill_laser_closest_t1": {
+        "id": "skill_laser_closest_t1",
         "name": "Laser Beam",
-        "nextLevelId": "laser_closest_2",
+        "nextLevelId": "skill_laser_closest_t2",
         "actionType": "Beam",
         "targetType": "ClosestEnemy",
         "range": 200,
@@ -319,8 +408,8 @@
         "cooldownSeconds": 0.8,
         "colorTint": "0xff00ff"
     },
-    "laser_closest_2": {
-        "id": "laser_closest_2",
+    "skill_laser_closest_t2": {
+        "id": "skill_laser_closest_t2",
         "name": "Laser Beam Lv.2",
         "actionType": "Beam",
         "targetType": "ClosestEnemy",
@@ -329,10 +418,10 @@
         "baseDamage": 35,
         "colorTint": "0xff00ff"
     },
-    "laser_sweep": {
-        "id": "laser_sweep",
+    "skill_laser_sweep_t1": {
+        "id": "skill_laser_sweep_t1",
         "name": "Sweeping Laser",
-        "nextLevelId": "laser_sweep_2",
+        "nextLevelId": "skill_laser_sweep_t2",
         "actionType": "Beam",
         "targetType": "Sweep",
         "sweepAngleSpeed": 0.05,
@@ -345,8 +434,8 @@
         "StopMoving": true,
         "colorTint": "0xff4400"
     },
-    "laser_sweep_2": {
-        "id": "laser_sweep_2",
+    "skill_laser_sweep_t2": {
+        "id": "skill_laser_sweep_t2",
         "name": "Sweeping Laser Lv2",
         "actionType": "Beam",
         "targetType": "Sweep",
@@ -358,11 +447,11 @@
         "castTimeSeconds": 0.0,
         "colorTint": "0xff4400"
     },
-    "cast_invisible_drone": {
-        "id": "cast_invisible_drone",
-        "nextLevelId": "cast_invisible_drone_2",
+    "skill_invisible_drone_t1": {
+        "id": "skill_invisible_drone_t1",
+        "nextLevelId": "skill_invisible_drone_t2",
         "actionType": "Projectile",
-        "targetType": "AimDirection",
+        "targetType": "ClosestEnemy",
         "projectileId": "invisible_drone",
         "isIndependent": true,
         "projectileCount": 1,
@@ -370,10 +459,10 @@
         "castTimeSeconds": 0.0,
         "channelDurationSeconds": 0.0
     },
-    "cast_invisible_drone_2": {
-        "id": "cast_invisible_drone_2",
+    "skill_invisible_drone_t2": {
+        "id": "skill_invisible_drone_t2",
         "actionType": "Projectile",
-        "targetType": "AimDirection",
+        "targetType": "ClosestEnemy",
         "projectileId": "invisible_drone",
         "projectileCount": 2,
         "cooldownSeconds": 3.0,
@@ -402,27 +491,53 @@
         "castTimeSeconds": 0.5,
         "colorTint": "0xff0000"
     },
-    "boss_cast_sweeper": {
-        "id": "boss_cast_sweeper",
-        "name": "Boos Sweeper",
-        "actionType": "SelfBuff",
-        "targetType": "Self",
+    "skill_boss_laser_sweeper_t1": {
+        "id": "skill_boss_laser_sweeper_t1",
+        "name": "Boss Sweeper",
+        "actionType": "Beam",
+        "targetType": "Sweep",
+        "sweepAngleSpeed": 0.05,
         "cooldownSeconds": 8.0,
         "castTimeSeconds": 2.0,
-        "applyEffects": [
-            "boss_sweeping_aura"
-        ]
+        "channelDurationSeconds": 20.0,
+        "beamWidth": 10,
+        "baseDamage": 20,
+        "tickRate": 0.01
     },
-    "fier_foom": {
-        "id": "fier_foom",
+    "skill_fier_boom_t1": {
+        "id": "skill_fier_boom_t1",
         "name": "Fire Boom",
         "actionType": "Projectile",
         "targetType": "Self",
-        "cooldownSeconds": 1.0,
-        "castTimeSeconds": 1.0,
-        "projectileCount": 120,
+        "cooldownSeconds": 10.0,
+        "castTimeSeconds": 0.0,
+        "projectileCount": 10,
         "spreadAngle": 360.0,
         "baseDamage": 20,
+        "projectileId": "fireball"
+    },
+    "skill_fier_boom_t2": {
+        "id": "skill_fier_boom_t2",
+        "name": "Fire Boom lv.2",
+        "actionType": "Projectile",
+        "targetType": "Self",
+        "cooldownSeconds": 8.0,
+        "castTimeSeconds": 0.0,
+        "projectileCount": 15,
+        "spreadAngle": 360.0,
+        "baseDamage": 20,
+        "projectileId": "fireball"
+    },
+    "skill_fier_boom_t3": {
+        "id": "skill_fier_boom_t3",
+        "name": "Fire Boom lv.3",
+        "actionType": "Projectile",
+        "targetType": "Self",
+        "cooldownSeconds": 6.0,
+        "castTimeSeconds": 0.0,
+        "projectileCount": 20,
+        "spreadAngle": 360.0,
+        "baseDamage": 25,
         "projectileId": "fireball"
     },
     "barrier": {

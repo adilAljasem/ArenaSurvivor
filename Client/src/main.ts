@@ -88,7 +88,8 @@ interface ServerPlayer {
     x: number; y: number; velX?: number;
     weapons: EquippedWeapon[]; currentHp: number; maxHp: number; gold: number;
     currentShop: ShopItem[]; stats: any; ownedItems: any;
-    aimX: number; aimY: number; firedWeapons: number[]; activeEffects: string[];
+    aimX: number; aimY: number; firedWeapons: number[]; activeEffects: [string, number][];
+
     currentCastingSkillId: string; currentCastTimer: number; maxCastTimer: number;
     synergizedSkills: { configId: string, currentCooldown: number }[];
     statDiff?: Record<string, number>;
@@ -96,7 +97,7 @@ interface ServerPlayer {
 }
 interface ServerEnemy {
     id: string; configId: string; x: number; y: number; velX?: number;
-    currentHp: number; maxHp: number; actionState: string; activeEffects: string[];
+    currentHp: number; maxHp: number; actionState: string; activeEffects: [string, number][];
     currentCastingSkillId: string; currentCastTimer: number; maxCastTimer: number;
     aimX?: number; aimY?: number; firedWeapons: number[];
     weapons: { configId: string; slotIndex: number; level: number; rolledStats: Record<string, number>; totalBaseStats: Record<string, number>; }[];
@@ -123,6 +124,12 @@ let masterConfigs: any = {};
 
 // --- PHASER SCENE ---
 class GameScene extends Phaser.Scene {
+    private uiCamera!: Phaser.Cameras.Scene2D.Camera;
+    private processedObjects = new WeakSet<Phaser.GameObjects.GameObject>();
+    // The strict competitive view area (16:9 ratio, zoomed in)
+    private readonly FAIR_WIDTH = 1536;
+    private readonly FAIR_HEIGHT = 864;
+
     private playerSprites: Map<string, Phaser.GameObjects.Container> = new Map();
     private enemySprites: Map<string, Phaser.GameObjects.Container> = new Map();
     private projectileSprites: Map<string, Phaser.GameObjects.Rectangle | Phaser.GameObjects.Sprite> = new Map();
@@ -189,6 +196,8 @@ class GameScene extends Phaser.Scene {
 
 
 
+
+
     constructor() { super('GameScene'); }
 
     preload() {
@@ -237,13 +246,17 @@ class GameScene extends Phaser.Scene {
     }
 
     create() {
+        // 1. Zoom the main game world (Adjust this number to whatever zoom you like!)
+        this.cameras.main.setZoom(1.2);
+
+        // 2. Create a dedicated UI Camera that stays perfectly crisp and unzoomed
+        this.uiCamera = this.cameras.add(0, 0, this.scale.width, this.scale.height);
         const jwt = localStorage.getItem('arena_jwt');
         if (!jwt) {
             new AuthUI(() => window.location.reload());
             return; // Nothing else runs until the player logs in
         }
 
-        this.cameras.main.setBackgroundColor('#2d2d2d');
         this.groundTooltip = new Tooltip(this);
         this.skillActionBar = new SkillActionBar(this);
         this.skillActionBar.updateLayout(this.scale.width, this.scale.height);
@@ -261,7 +274,6 @@ class GameScene extends Phaser.Scene {
             this.scoreboardUI.show();
 
             if (matchConnection.state === HubConnectionState.Connected) {
-                // >>> FIX: Remove 'currentRoomId'. Just ask the server directly! <<<
                 matchConnection.invoke("RequestScoreboard").catch(console.error);
             }
         });
@@ -478,19 +490,82 @@ class GameScene extends Phaser.Scene {
             }
         });
 
-        this.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
-            this.versionText.setPosition(10, gameSize.height - 10);
-            this.perfText.setPosition(10, gameSize.height - 35);
-            this.waveUIText.setPosition(gameSize.width / 2, 20);
-            this.escMenu.reposition(gameSize.width, gameSize.height);
-            this.skillActionBar.updateLayout(gameSize.width, gameSize.height);
-            this.fpsText.setPosition(gameSize.width - 20, gameSize.height - 20);
+        // =========================================================
+        // CAMERA SETUP AND FAIR PLAY LETTERBOX
+        // =========================================================
+        this.cameras.main.setBackgroundColor('#2d2d2d');
 
+        const updateCamerasForFairPlay = (gameSize?: Phaser.Structs.Size) => {
+            // Phaser passes the freshest size straight into the resize event — prefer that
+            // over this.scale.width/height, which can lag a tick behind on some browsers.
+            const width = gameSize?.width ?? this.scale.width;
+            const height = gameSize?.height ?? this.scale.height;
 
+            // Some browsers/devices briefly report 0 (or a stale collapsed value) while
+            // minimizing, switching tabs, rotating, or toggling fullscreen. Computing zoom
+            // off that garbage is exactly what produces the "stuck zoomed out" camera —
+            // bail out here and keep the last good viewport/zoom instead of applying it.
+            if (!width || !height) return;
 
-        });
+            if (this.uiCamera) {
+                this.uiCamera.setSize(width, height);
+            }
 
-        this.skillActionBar.setPosition(this.scale.width / 2, this.scale.height - 40);
+            const targetRatio = this.FAIR_WIDTH / this.FAIR_HEIGHT;
+            const currentRatio = width / height;
+
+            let viewWidth = width;
+            let viewHeight = height;
+
+            if (currentRatio > targetRatio) {
+                viewWidth = height * targetRatio;
+            } else {
+                viewHeight = width / targetRatio;
+            }
+
+            const viewX = (width - viewWidth) / 2;
+            const viewY = (height - viewHeight) / 2;
+
+            this.cameras.main.setViewport(viewX, viewY, viewWidth, viewHeight);
+            this.cameras.main.setZoom(viewWidth / this.FAIR_WIDTH);
+
+            // ---> FIX 2: UPDATE UI POSITIONS ON RESIZE <---
+            if (this.fpsText) {
+                this.fpsText.setPosition(width - 20, height - 20);
+            }
+            if (this.versionText) {
+                this.versionText.setPosition(10, height - 10);
+            }
+            if (this.perfText) {
+                this.perfText.setPosition(10, height - 35);
+            }
+            if (this.skillActionBar) {
+                this.skillActionBar.updateLayout(width, height);
+            }
+            // >>> NEW: Keep Wave Text and Menus Centered on Resize <<<
+            if (this.waveUIText) {
+                this.waveUIText.setPosition(width / 2, 20);
+            }
+            if (this.escMenu) {
+                if (typeof (this.escMenu as any).updateLayout === 'function') {
+                    (this.escMenu as any).updateLayout(width, height);
+                } else if (typeof (this.escMenu as any).setPosition === 'function') {
+                    (this.escMenu as any).setPosition(width / 2, height / 2);
+                }
+            }
+        };
+
+        // Hook the function up to Phaser's resize event safely. Remove any listener from a
+        // prior create() first — otherwise a scene restart/reconnect stacks duplicate
+        // handlers that keep firing on every future resize.
+        this.scale.off('resize', updateCamerasForFairPlay);
+        this.scale.on('resize', updateCamerasForFairPlay);
+
+        // Trigger math immediately on startup
+        updateCamerasForFairPlay();
+
+        // Remove the old manual skillActionBar setPosition line right below this!
+        // this.skillActionBar.setPosition(this.scale.width / 2, this.scale.height - 40);
 
         this.input.keyboard?.on('keydown-B', () => {
             const isNowVisible = !this.shopUIModule.visible;
@@ -515,17 +590,7 @@ class GameScene extends Phaser.Scene {
             }
         });
 
-        // >>> NEW: The Browser Safety Fallback
-        // If the browser forces an exit from fullscreen, ensure the menu pops up automatically
-        document.addEventListener('fullscreenchange', () => {
-            if (!document.fullscreenElement) {
-                // We just dropped out of fullscreen.
-                // If the shop isn't open, forcefully open the pause menu.
-                if (!this.shopUIModule.visible && !this.escMenu.visible) {
-                    this.escMenu.setVisible(true);
-                }
-            }
-        });
+
 
         this.input.keyboard?.on('keydown-H', () => {
             this.isDebugMode = !this.isDebugMode;
@@ -786,7 +851,22 @@ class GameScene extends Phaser.Scene {
             // ==========================================
             if (rawState.nb) {
                 rawState.nb.forEach((b: any[]) => {
-                    const id = b[0], configId = b[1], x = b[2], y = b[3], vx = b[4], vy = b[5];
+                    const id = b[0], configId = b[1], vx = b[4], vy = b[5];
+                    let x = b[2], y = b[3]; // server-truth fallback
+
+                    // NEW: anchor visual spawn point to the actual on-screen weapon sprite,
+                    // so the bullet comes out of the barrel you see, not the un-lagged server
+                    // coordinate. Trajectory (vx/vy) stays server-authoritative either way.
+                    const ownerId = b[7], slotIndex = b[8]; // <-- adjust indices to match your server payload
+                    const ownerContainer = this.playerSprites.get(ownerId) || this.enemySprites.get(ownerId);
+                    const refs = ownerContainer && (ownerContainer as any).__refs;
+                    const weaponSprite = refs?.weaponSprites.get(slotIndex);
+                    if (weaponSprite) {
+                        const wt = weaponSprite.getWorldTransformMatrix();
+                        x = wt.tx;
+                        y = wt.ty;
+                    }
+
                     const config = masterConfigs.projectiles ? (masterConfigs.projectiles[configId] || masterConfigs.Projectiles?.[configId]) : null;
 
                     let sprite: any;
@@ -817,6 +897,7 @@ class GameScene extends Phaser.Scene {
                     this.projectileSprites.set(id, sprite);
                 });
             }
+
 
             if (rawState.e?.length > 0) {
                 rawState.e.forEach((e: any[]) => {
@@ -985,8 +1066,9 @@ class GameScene extends Phaser.Scene {
                         : (masterConfigs.items?.[pickup.gearConfigId]);
                     if (gearConfig) {
                         const cam = this.cameras.main;
-                        const screenX = (pickup.x - cam.scrollX) * cam.zoom;
-                        const screenY = (pickup.y - cam.scrollY) * cam.zoom - 80;
+                        // Correct coordinate mapping for letterboxed cameras:
+                        const screenX = (pickup.x - cam.midPoint.x) * cam.zoom + (cam.width / 2) + cam.x;
+                        const screenY = (pickup.y - cam.midPoint.y) * cam.zoom + (cam.height / 2) + cam.y - 80;
                         this.groundTooltip.show(gearConfig, screenX, screenY, 1, masterConfigs, pickup.totalBaseStats, pickup.rolledStats, pickup.skills);
                     }
                 } else {
@@ -1044,7 +1126,6 @@ class GameScene extends Phaser.Scene {
             const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
             window.location.href = cleanUrl;
         });
-
         matchConnection.off("AllPlayersSynced");
         matchConnection.on("AllPlayersSynced", () => {
             // FIX: Previously inline inside MatchStarted — moved here for the same reason.
@@ -1055,6 +1136,20 @@ class GameScene extends Phaser.Scene {
             if (lobbyWrapper) lobbyWrapper.style.display = 'none';
 
             lobbyConnection.stop().then(() => console.log("Safely dropped Master connection. Game On!"));
+
+            // >>> NEW: AUTO-FULLSCREEN ON LAUNCH <<<
+            if (!SKIP_LOBBY_IN_DEV && !document.fullscreenElement) {
+                const requestFS = () => {
+                    document.documentElement.requestFullscreen().catch(err => console.warn("Fullscreen blocked until user click.", err));
+                };
+
+                // Try immediately (works if triggered closely to the lobby button click)
+                requestFS();
+
+                // Fallback: If the browser blocks it due to strict user-gesture rules, 
+                // trigger it invisibly the exact moment they click anywhere in the game for the first time.
+                this.input.once('pointerdown', requestFS);
+            }
 
             setupChatUI(this, matchConnection);
 
@@ -1197,17 +1292,29 @@ class GameScene extends Phaser.Scene {
     }
 
     update(time: number, delta: number) {
+        // --- PASTE THIS NEW BLOCK AT THE VERY TOP OF UPDATE ---
+        this.children.list.forEach(child => {
+            if (!this.processedObjects.has(child)) {
+                if ((child as any).scrollFactorX === 0 || (child as any).scrollFactorY === 0) {
+                    this.cameras.main.ignore(child); // World camera ignores UI
+                } else {
+                    this.uiCamera.ignore(child);     // UI camera ignores World
+                }
+                this.processedObjects.add(child);
+            }
+        });
+
         if (!this.debugGraphics) return;
         this.handleInput(time);
-        this.smoothInterpolateSprites(this.playerSprites, 0.2);
-        this.smoothInterpolateSprites(this.enemySprites, 0.2);
+        this.smoothInterpolateSprites(this.playerSprites, delta);
+        this.smoothInterpolateSprites(this.enemySprites, delta);
         // Update the FPS text with the actual current FPS from the game loop
         this.fpsText.setText(`FPS: ${Math.round(this.game.loop.actualFps)}`);
 
 
 
 
-        VfxRenderer.updateBeams60FPS(this, this.activeBeams, this.playerSprites, this.enemySprites);
+        VfxRenderer.updateBeams60FPS(this, this.activeBeams, this.playerSprites, this.enemySprites, delta);
 
         const dtSeconds = delta / 1000;
 
@@ -1289,8 +1396,9 @@ class GameScene extends Phaser.Scene {
             const pickup = world.pickups.get(this.nearbyLootId);
             if (pickup) {
                 const cam = this.cameras.main;
-                const screenX = (pickup.x - cam.scrollX) * cam.zoom;
-                const screenY = (pickup.y - cam.scrollY) * cam.zoom - 80;
+                // Correct coordinate mapping for letterboxed cameras:
+                const screenX = (pickup.x - cam.midPoint.x) * cam.zoom + (cam.width / 2) + cam.x;
+                const screenY = (pickup.y - cam.midPoint.y) * cam.zoom + (cam.height / 2) + cam.y - 80;
                 this.groundTooltip.updatePosition(screenX, screenY);
             }
         }
@@ -1572,13 +1680,21 @@ class GameScene extends Phaser.Scene {
         zone.addEventListener('touchcancel', releaseJoystick, { passive: false });
     }
 
-    private smoothInterpolateSprites(map: Map<string, any>, speed: number = 0.2) {
+    private smoothInterpolateSprites(map: Map<string, any>, delta: number, halfLife: number = 52) {
         const cam = this.cameras.main;
-        // Add a 200px buffer outside the camera view
-        const cullLeft = cam.scrollX - 200;
-        const cullRight = cam.scrollX + cam.width + 200;
-        const cullTop = cam.scrollY - 200;
-        const cullBottom = cam.scrollY + cam.height + 200;
+        // cam.worldView is the zoom/viewport-aware visible rect — cam.width is screen
+        // pixels and stopped matching world-space width once the letterbox zoom went in.
+        const view = cam.worldView;
+        const cullLeft = view.x - 200;
+        const cullRight = view.right + 200;
+        const cullTop = view.y - 200;
+        const cullBottom = view.bottom + 200;
+
+        // Frame-rate independent smoothing (exponential decay). `halfLife` = ms for the
+        // remaining distance to halve — same visual feel at 60fps, 120fps, or 144fps,
+        // unlike the old fixed-0.2-per-frame factor which converged faster on high-refresh
+        // screens and produced a visible snap-then-hold-then-snap "shake" at high speed.
+        const factor = 1 - Math.pow(2, -delta / halfLife);
 
         map.forEach((sprite, id) => {
             const target = this.targetPositions.get(id);
@@ -1592,17 +1708,17 @@ class GameScene extends Phaser.Scene {
             }
 
             // 2. On-screen? Interpolate with a 0.5px deadzone.
-            // If a sprite is within half a pixel of its target, snap it to prevent endless micro-updates.
             const dx = target.x - sprite.x;
             const dy = target.y - sprite.y;
 
-            if (Math.abs(dx) > 0.5) sprite.x += dx * speed;
+            if (Math.abs(dx) > 0.5) sprite.x += dx * factor;
             else if (sprite.x !== target.x) sprite.x = target.x;
 
-            if (Math.abs(dy) > 0.5) sprite.y += dy * speed;
+            if (Math.abs(dy) > 0.5) sprite.y += dy * factor;
             else if (sprite.y !== target.y) sprite.y = target.y;
         });
     }
+
 
     private cleanupSprites(map: Map<string, any>, activeIds: Set<string>) {
         map.forEach((sprite, id) => {
@@ -1731,7 +1847,9 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
   `;
 
     if (!document.getElementById('chat-wrapper')) {
-        document.body.insertAdjacentHTML('beforeend', chatHTML);
+        // Fix: Append to the app container so it stays visible in Fullscreen
+        const appContainer = document.getElementById('app') || document.body;
+        appContainer.insertAdjacentHTML('beforeend', chatHTML);
     }
 
     const historyBox = document.getElementById('chat-history')!;
@@ -1874,12 +1992,11 @@ const config: Phaser.Types.Core.GameConfig = {
     scale: {
         mode: Phaser.Scale.RESIZE,
         autoCenter: Phaser.Scale.CENTER_BOTH,
-        width: 1920,
-        height: 1080
+        fullscreenTarget: 'app', // <--- ADD THIS LINE!
     },
     scene: GameScene,
     parent: 'app',
     pixelArt: true,
-    backgroundColor: '#2d2d2d'
+    backgroundColor: '#000000'
 };
 new Phaser.Game(config);

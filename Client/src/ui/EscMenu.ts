@@ -75,15 +75,23 @@ export class EscMenu {
 
   toggle(): void { this.setVisible(!this._visible); }
 
-  reposition(_width: number, _height: number): void {
+  updateLayout(width: number, height: number): void {
     for (const el of this._elements) {
       (el as unknown as Phaser.GameObjects.GameObject).destroy();
     }
     this._elements = [];
     this._mainViewElements = [];
     this._optionsViewElements = [];
-    this._build();
-    if (!this._visible) this.setVisible(false);
+
+    // Pass the new fullscreen dimensions to the builder
+    this._build(width, height);
+
+    if (!this._visible) {
+      this.setVisible(false);
+    } else {
+      // If the menu was already open when the screen resized, keep it visible
+      this.switchView('main');
+    }
   }
 
   private switchView(target: 'main' | 'options') {
@@ -98,9 +106,13 @@ export class EscMenu {
     }
   }
 
-  private _build(): void {
+  private _build(customWidth?: number, customHeight?: number): void {
     const scene = this.scene;
-    const { width, height } = scene.scale;
+
+    // Use the new width/height if provided by the resize event, otherwise fallback to scale
+    const width = customWidth ?? scene.scale.width;
+    const height = customHeight ?? scene.scale.height;
+
     const cx = width / 2;
     const cy = height / 2;
     const D = this.DEPTH;

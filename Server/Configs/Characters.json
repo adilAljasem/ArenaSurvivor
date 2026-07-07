@@ -24,7 +24,7 @@
     "animDeathFrameRate": 12,
     "baseStats": {
       "maxHp": 10000,
-      "movementSpeed": 150,
+      "movementSpeed": 500,
       "meleeDamage": 50,
       "rangedDamage": 50,
       "harvesting": 1,

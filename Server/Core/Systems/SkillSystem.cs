@@ -76,9 +76,20 @@ public class SkillSystem : IGameSystem
             float targetY = startY;
             string intendedTargetId = casterId;
 
-            if (config.TargetType == SkillTargetType.ClosestEnemy && team == "Player")
+            if (config.TargetType == SkillTargetType.ClosestEnemy)
             {
                 float closestDistSq = float.MaxValue;
+
+                foreach (var player in state.Players.Values)
+                {
+                    if (player.ActionState == "Dead" || player.Team == team) continue;
+                    float distSq = (player.X - startX) * (player.X - startX) + (player.Y - startY) * (player.Y - startY);
+                    if (distSq < closestDistSq)
+                    {
+                        closestDistSq = distSq; targetX = player.X; targetY = player.Y;
+                    }
+                }
+
                 foreach (var enemy in state.Enemies.Values)
                 {
                     if (enemy.ActionState == "Dead" || enemy.Team == team) continue;
@@ -88,6 +99,7 @@ public class SkillSystem : IGameSystem
                         closestDistSq = distSq; targetX = enemy.X; targetY = enemy.Y;
                     }
                 }
+
                 if (closestDistSq == float.MaxValue) return;
             }
             else if (config.TargetType == SkillTargetType.AimDirection && team == "Player")

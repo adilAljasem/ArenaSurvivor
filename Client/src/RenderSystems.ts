@@ -95,9 +95,15 @@ export class ActorRenderer {
 
 
 
-    // Grab camera bounds for culling...
+    // Grab camera bounds for culling (zoom-aware — cam.width is screen pixels and no
+    // longer matches world-space width once the fair-view letterbox zoom is applied,
+    // so derive the cull box from cam.worldView, same fix as smoothInterpolateSprites)
     const cam = scene.cameras.main;
-    const viewLeft = cam.worldView.x - 100;
+    const view = cam.worldView;
+    const viewLeft = view.x - 100;
+    const viewRight = view.right + 100;
+    const viewTop = view.y - 100;
+    const viewBottom = view.bottom + 100;
 
 
     actorList.forEach((actor: any) => {
@@ -242,13 +248,7 @@ export class ActorRenderer {
       const refs = getRefs(container);
       const body = refs.bodySprite as Phaser.GameObjects.Sprite;
 
-      // Aggressive Camera Culling for the Network Tick
-      const cam = scene.cameras.main;
-      const viewLeft = cam.scrollX - 100;
-      const viewRight = cam.scrollX + cam.width + 100;
-      const viewTop = cam.scrollY - 100;
-      const viewBottom = cam.scrollY + cam.height + 100;
-
+      // Aggressive Camera Culling for the Network Tick (uses the zoom-aware bounds computed once above)
       const isVisible = targetX >= viewLeft && targetX <= viewRight && targetY >= viewTop && targetY <= viewBottom;
 
       if (!isVisible) {
@@ -994,7 +994,7 @@ export class WorldRenderer {
           if (!scene.tweens.isTweening(cam)) {
             scene.tweens.add({
               targets: cam,
-              zoom: 1.002,
+              zoom: cam.zoom * 1.002,
               rotation: (Math.random() - 0.5) * 0.005,
               duration: 50,
               yoyo: true,
@@ -1002,6 +1002,7 @@ export class WorldRenderer {
             });
           }
         }
+
 
         // 2. CHUNKY BROTATO PARTICLES 
         // >>> We now skip this entirely if isFriendlyHit is true! <
@@ -1113,36 +1114,12 @@ export class WorldRenderer {
     });
 
 
-    const beamList = state.beamEvents || state.BeamEvents || [];
-    beamList.forEach((beam: any) => {
-      const color = beam.colorTint ? parseColor(beam.colorTint, 0x00ffff) : 0x00ffff;
-
-      const length = Phaser.Math.Distance.Between(beam.startX, beam.startY, beam.targetX, beam.targetY);
-      const angle = Phaser.Math.Angle.Between(beam.startX, beam.startY, beam.targetX, beam.targetY);
-
-      // 1. The Glow (Thick, colored, semi-transparent, ADD blend mode for light effect)
-      const glow = scene.add.rectangle(beam.startX, beam.startY, length, beam.width, color, 0.6)
-        .setOrigin(0, 0.5)
-        .setRotation(angle)
-        .setBlendMode(Phaser.BlendModes.ADD)
-        .setDepth(15);
-
-      // 2. The Core (Thin, stark white, solid)
-      const core = scene.add.rectangle(beam.startX, beam.startY, length, Math.max(2, beam.width * 0.3), 0xffffff, 1.0)
-        .setOrigin(0, 0.5)
-        .setRotation(angle)
-        .setDepth(16);
-
-      // 3. The Anime "Snap" Tween (fades out while shrinking thickness to 0)
-      scene.tweens.add({
-        targets: [glow, core],
-        alpha: 0,
-        scaleY: 0, // This is the secret! It shrinks the thickness of the rectangle!
-        duration: 50,
-        ease: 'Linear',
-        onComplete: () => { glow.destroy(); core.destroy(); }
-      });
-    });
+    // NOTE: the old one-shot "flash" beam renderer that used to live here (drawing its
+    // own glow+core rectangles straight from raw, un-smoothed server coordinates every
+    // network tick) has been removed. It was superseded by VfxRenderer.renderBeamEvents +
+    // updateBeams60FPS (the persistent, smoothly-interpolated beam system below), but was
+    // never deleted — so every beam was being drawn twice: once smooth, once snapping to
+    // the raw per-tick position. That second copy was the "2nd laser" / shake-on-movement.
 
     return { activeProjectiles, activePickups };
   }
@@ -1161,7 +1138,7 @@ export function applyVisualFX(
   currentTime: number
 ) {
   const castSkillId = entity.currentCastingSkillId || '';
-  const effectsKey = (entity.activeEffects || []).join(',');
+  const effectsKey = (entity.activeEffects || []).map((e: any) => `${e[0]}:${e[1]}`).join(',');
 
   const isFlashing = currentTime < (refs.flashTimer || 0);
 
@@ -1256,8 +1233,10 @@ export function applyVisualFX(
     // status icons sit above that. Enemies have no nameplate, so they keep the original
     // tighter offset right above the health bar.
     const effectY = (refs.isPlayer && refs.nameText) ? (topY - 32) : (topY - 14);
-    entity.activeEffects.forEach((effectId: string) => {
+    entity.activeEffects.forEach((effectEntry: [string, number]) => {
+      const [effectId, stackCount] = effectEntry;
       const effectConfig = (masterConfigs.effects || masterConfigs.Effects)?.[effectId] ?? null;
+
       if (!effectConfig) return;
 
       const tex = effectConfig.textureKey || effectConfig.TextureKey;
@@ -1266,15 +1245,25 @@ export function applyVisualFX(
       const isBuff = effectConfig.isBuff ?? effectConfig.IsBuff ?? false;
 
       if (tex) {
-        const iconSprite = scene.add.sprite(currentX, effectY, tex, frame).setName('status_fx');
-        iconSprite.setDisplaySize(iconSize, iconSize);
-
         const glowColor = isBuff ? 0x00ff00 : 0xff0000;
 
-        // Add the ? right after preFX
-        iconSprite.preFX?.addGlow(glowColor, 2, 0, false, 0.1, 4);
+        // The '0' at the end of the rectangle makes the black background 100% transparent
+        const iconBg = scene.add.rectangle(currentX, effectY, iconSize + 2, iconSize + 2, 0x000000, 0)
+          .setStrokeStyle(1.5, glowColor, 1)
+          .setName('status_fx');
+        container.add(iconBg);
 
+        const iconSprite = scene.add.sprite(currentX, effectY, tex, frame).setName('status_fx');
+        iconSprite.setDisplaySize(iconSize, iconSize);
         container.add(iconSprite);
+
+        if (stackCount > 1) {
+          const stackText = scene.add.text(currentX + iconSize / 2 - 2, effectY + iconSize / 2 - 2, `${stackCount}`, {
+            fontSize: '11px', fontStyle: 'bold', color: '#ffffff', stroke: '#000000', strokeThickness: 3
+          }).setOrigin(1, 1).setName('status_fx');
+          container.add(stackText);
+        }
+
         currentX += (iconSize + spacing);
       }
 
@@ -1482,7 +1471,12 @@ export class VfxRenderer {
   }
 
   // >>> NEW: Run this at 60FPS to lock the beam smoothly to the moving sprites! <
-  static updateBeams60FPS(scene: Phaser.Scene, activeBeams: Map<string, any>, playerSprites: Map<string, any>, enemySprites: Map<string, any>) {
+  static updateBeams60FPS(scene: Phaser.Scene, activeBeams: Map<string, any>, playerSprites: Map<string, any>, enemySprites: Map<string, any>, delta: number) {
+    // Same half-life as body interpolation, so the far end of the beam eases in step
+    // with the caster instead of snapping to a new point every ~50ms network tick
+    // (that snap is what reads as "shaking" whenever the caster is moving).
+    const factor = 1 - Math.pow(2, -delta / 52);
+
     activeBeams.forEach(entry => {
       let currentStartX = entry.serverStartX;
       let currentStartY = entry.serverStartY;
@@ -1494,8 +1488,17 @@ export class VfxRenderer {
         currentStartY = casterContainer.y;
       }
 
-      const dx = entry.serverTargetX - currentStartX;
-      const dy = entry.serverTargetY - currentStartY;
+      // Ease the endpoint toward the latest server value instead of snapping to it.
+      if (entry.currentTargetX === undefined) {
+        entry.currentTargetX = entry.serverTargetX;
+        entry.currentTargetY = entry.serverTargetY;
+      } else {
+        entry.currentTargetX += (entry.serverTargetX - entry.currentTargetX) * factor;
+        entry.currentTargetY += (entry.serverTargetY - entry.currentTargetY) * factor;
+      }
+
+      const dx = entry.currentTargetX - currentStartX;
+      const dy = entry.currentTargetY - currentStartY;
       const length = Math.sqrt(dx * dx + dy * dy);
       if (length <= 0) return;
 

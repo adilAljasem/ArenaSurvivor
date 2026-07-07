@@ -25,48 +25,55 @@ public class EffectSystem : IGameSystem
     {
         if (_configs.Effects.TryGetValue(ev.EffectConfigId, out var effectConfig))
         {
-            float shieldToGrant = effectConfig.GrantedShield;
-            if (shieldToGrant > 0 && ev.Caster != null)
-            {
-                // >>> FIX 4: Use GetTotalStat instead of CachedStats to guarantee all 
-                // gear, traits, and base stats are correctly included in the calculation!
-                float shieldPower = Math.Max(0f, ev.Caster.GetTotalStat("shieldPower", _configs));
-                shieldToGrant *= (1f + shieldPower);
-            }
-
-            // >>> NEW: Build the caster ID so tick heals can look up the applier's healPower later.
             string casterId = string.Empty;
             if (ev.Caster != null)
                 casterId = ev.Caster is PlayerEntity cp ? cp.ConnectionId : ((EnemyEntity)ev.Caster).Id;
 
-            var existing = ev.Target.ActiveEffects.FirstOrDefault(e => e.ConfigId == ev.EffectConfigId);
+            float shieldToGrant = effectConfig.GrantedShield;
+            if (shieldToGrant > 0 && ev.Caster != null)
+            {
+                float shieldPower = Math.Max(0f, ev.Caster.GetTotalStat("shieldPower", _configs));
+                shieldToGrant *= (1f + shieldPower);
+            }
+
+            // Matching on ConfigId + SourceId (caster) instead of just ConfigId: player A and
+            // player B applying the same debuff to the same target get two separate instances,
+            // each with its own timer and stack count, instead of overwriting each other.
+            var existing = ev.Target.ActiveEffects.FirstOrDefault(e => e.ConfigId == ev.EffectConfigId && e.SourceId == casterId);
+            int maxStack = Math.Max(1, effectConfig.MaxStack);
+
             if (existing != null)
             {
                 existing.TimeRemaining = effectConfig.Duration;
+                existing.StackCount = Math.Min(maxStack, existing.StackCount + ev.StackAmount);
+
                 if (shieldToGrant > 0)
                 {
+                    float newShield = shieldToGrant * existing.StackCount;
                     ev.Target.CurrentShield -= existing.GrantedShieldAmount;
-                    existing.GrantedShieldAmount = shieldToGrant;
-                    ev.Target.CurrentShield += shieldToGrant;
+                    existing.GrantedShieldAmount = newShield;
+                    ev.Target.CurrentShield += newShield;
                 }
-                // SourceId stays as original applier
             }
             else
             {
+                int startingStacks = Math.Min(maxStack, ev.StackAmount);
+                float initialShield = shieldToGrant * startingStacks;
+
                 ev.Target.ActiveEffects.Add(new ActiveEffect
                 {
                     ConfigId = ev.EffectConfigId,
                     TimeRemaining = effectConfig.Duration,
-                    GrantedShieldAmount = shieldToGrant,
-                    // >>> Who applied this effect — HealthSystem uses it to scale tick heals
-                    // by the original applier's healPower (e.g. a doctor's HoT scales with their stat)
+                    GrantedShieldAmount = initialShield,
+                    StackCount = startingStacks,
                     SourceId = casterId,
-
-                    // >>> ADD THIS EXACT LINE RIGHT HERE <<<
                     Caster = ev.Caster
                 });
-                ev.Target.CurrentShield += shieldToGrant;
+                ev.Target.CurrentShield += initialShield;
             }
+
+            // A stack change can shift a buff's magnitude — force StatSystem to pick it up.
+            ev.Target.StatsNeedRecalculation = true;
         }
     }
 
@@ -101,7 +108,7 @@ public class EffectSystem : IGameSystem
                     Target = entity,
                     AttackerId = effect.SourceId,
                     State = state,
-                    Amount = config.TickDamage,
+                    Amount = config.TickDamage * effect.StackCount,
                     IsCritical = false,
                     IsBlock = false,
                     IsDodge = false

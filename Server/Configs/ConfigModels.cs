@@ -299,6 +299,8 @@ public class EffectConfig
     public string Description { get; set; } = string.Empty;
     public bool IsBuff { get; set; }
     public float GrantedShield { get; set; }
+    public int MaxStack { get; set; } = 1;
+
     // --- Visuals ---
     public string TextureKey { get; set; } = string.Empty;
     public int? IconFrame { get; set; }

@@ -2,8 +2,8 @@
   "map_forest": {
     "Id": "map_forest",
     "Name": "Dark Forest",
-    "Width": 4000,
-    "Height": 4000,
+    "Width": 2500,
+    "Height": 2500,
     "TextureKey": "tex_grass",
     "TextureScale": 1.0
   },

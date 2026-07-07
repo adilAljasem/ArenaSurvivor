@@ -10,7 +10,9 @@ export class ScoreboardUI {
         this.wrapper.id = 'scoreboard-overlay';
         this.wrapper.style.display = 'none';
         this.injectCSS();
-        document.body.appendChild(this.wrapper);
+        // Fix: Append to the app container so it stays visible in Fullscreen
+        const appContainer = document.getElementById('app') || document.body;
+        appContainer.appendChild(this.wrapper);
     }
 
     private injectCSS() {

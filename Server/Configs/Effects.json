@@ -1,33 +1,103 @@
 {
-  "poison_dot": {
-    "id": "poison_dot",
+  "effect_debuff_poison_dot_t1": {
+    "id": "effect_debuff_poison_dot_t1",
     "name": "Poisoned",
     "textureKey": "icons1",
     "iconFrame": 1,
     "isBuff": false,
-    "duration": 5.0,
-    "tickRate": 1.0,
-    "tickDamage": 1.0,
+    "duration": 7.0,
+    "tickRate": 2.0,
+    "tickDamage": 2.0,
+    "maxStack": 1,
     "statModifiers": {},
     "colorTint": "0x00ff00"
   },
-  "adrenaline": {
-    "id": "adrenaline",
+  "effect_debuff_poison_dot_t2": {
+    "id": "effect_debuff_poison_dot_t2",
+    "name": "Poisoned",
+    "textureKey": "icons1",
+    "iconFrame": 1,
+    "isBuff": false,
+    "duration": 10.0,
+    "tickRate": 1.5,
+    "tickDamage": 3.0,
+    "maxStack": 2,
+    "statModifiers": {},
+    "colorTint": "0x00ff00"
+  },
+  "effect_debuff_poison_dot_t3": {
+    "id": "effect_debuff_poison_dot_t3",
+    "name": "Poisoned",
+    "textureKey": "icons1",
+    "iconFrame": 1,
+    "isBuff": false,
+    "duration": 12.0,
+    "tickRate": 1.0,
+    "tickDamage": 4.0,
+    "maxStack": 4,
+    "statModifiers": {},
+    "colorTint": "0x00ff00"
+  },
+  "effect_debuff_poison_dot_t4": {
+    "id": "effect_debuff_poison_dot_t4",
+    "name": "Poisoned",
+    "textureKey": "icons1",
+    "iconFrame": 1,
+    "isBuff": false,
+    "duration": 15.0,
+    "tickRate": 1.0,
+    "tickDamage": 5.0,
+    "maxStack": 7,
+    "statModifiers": {},
+    "colorTint": "0x00ff00"
+  },
+  "effect_buff_adrenaline_t1": {
+    "id": "effect_buff_adrenaline_t1",
     "name": "Adrenaline Rush",
     "textureKey": "icons1",
     "iconFrame": 2,
     "isBuff": true,
-    "duration": 4.0,
+    "duration": 5.0,
     "tickRate": 0.0,
     "tickDamage": 0.0,
     "statModifiers": {
       "attackSpeedPercent": 0.05,
-      "movementSpeed": 10
+      "movementSpeed": 15
     },
     "colorTint": "0xffd700"
   },
-  "stunned": {
-    "id": "stunned",
+  "effect_buff_adrenaline_t2": {
+    "id": "effect_buff_adrenaline_t2",
+    "name": "Adrenaline Rush",
+    "textureKey": "icons1",
+    "iconFrame": 2,
+    "isBuff": true,
+    "duration": 8.0,
+    "tickRate": 0.0,
+    "tickDamage": 0.0,
+    "statModifiers": {
+      "attackSpeedPercent": 0.10,
+      "movementSpeed": 15
+    },
+    "colorTint": "0xffd700"
+  },
+  "effect_debuff_slow_t1": {
+    "Id": "effect_debuff_slow_t1",
+    "Name": "Slowed",
+    "textureKey": "icons1",
+    "iconFrame": 61,
+    "isBuff": false,
+    "Duration": 3.0,
+    "TickRate": 0.0,
+    "TickDamage": 0.0,
+    "PreventsActions": false,
+    "statModifiers": {
+      "movementSpeed": -15
+    },
+    "ColorTint": "#00ffff"
+  },
+  "effect_debuff_stunned_t1": {
+    "id": "effect_debuff_stunned_t1",
     "name": "Stunned",
     "textureKey": "icons1",
     "iconFrame": 3,
@@ -39,8 +109,8 @@
     "StatMultipliers": {},
     "colorTint": "0x888888"
   },
-  "burning": {
-    "id": "burning",
+  "effect_debuff_burning_t1": {
+    "id": "effect_debuff_burning_t1",
     "name": "On Fire",
     "textureKey": "icons1",
     "iconFrame": 288,
@@ -53,18 +123,18 @@
     },
     "colorTint": "0xff4400"
   },
-  "vampiric_aura": {
-    "id": "vampiric_aura",
+  "effect_buff_vampiric_aura_t1": {
+    "id": "effect_buff_vampiric_aura_t1",
     "name": "Blood Leech",
     "textureKey": "icons1",
     "iconFrame": 4,
     "isBuff": true,
-    "duration": 3.0,
+    "duration": 5.0,
     "tickRate": 0.0,
     "tickDamage": 0.0,
     "statModifiers": {
-      "lifeSteal": 0.05,
-      "damagePercent": 0.02
+      "lifeSteal": 0.10,
+      "damagePercent": 0.05
     },
     "colorTint": "0xff0000"
   },
@@ -79,18 +149,6 @@
     "tickDamage": -3.0,
     "colorTint": "#cefad0"
   },
-  "test_fire_aura_buff": {
-    "id": "test_fire_aura_buff",
-    "name": "Fire Aura Buff",
-    "textureKey": "icons1",
-    "iconFrame": 6,
-    "isBuff": true,
-    "duration": 5.0,
-    "tickRate": 0.5,
-    "tickDamage": 0.0,
-    "tickSkillId": "test_fire_aura_explosion",
-    "colorTint": "0xffaa00"
-  },
   "boss_sweeping_aura": {
     "id": "boss_sweeping_aura",
     "textureKey": "icons1",
@@ -99,7 +157,7 @@
     "duration": 5.0,
     "tickRate": 0.05,
     "tickDamage": 0,
-    "tickSkillId": "laser_sweep"
+    "tickSkillId": "skill_laser_sweep_t1"
   },
   "holy_barrier": {
     "id": "holy_barrier",

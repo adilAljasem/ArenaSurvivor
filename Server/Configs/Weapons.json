@@ -30,7 +30,7 @@
       "rangedDamage": 0.5
     },
     "applyEffectsOnHit": [
-      "burning"
+      "effect_debuff_poison_dot_t1"
     ],
     "grantedSkills": [
       "barrier",
@@ -93,7 +93,7 @@
       "poison_dot"
     ],
     "grantedSkills": [
-      "adrenaline_surge"
+      "skill_fier_boom_t1"
     ],
     "statRollChance": 0.90,
     "maxRandomStats": 3,
@@ -142,7 +142,8 @@
       "poison_dot"
     ],
     "grantedSkills": [
-      "laser_closest"
+      "skill_laser_closest_t1",
+      "skill_fier_boom_t2"
     ],
     "allowedCharacters": [
       "char_chunky"
@@ -194,7 +195,7 @@
       "rangedDamage": 0.6
     },
     "grantedSkills": [
-      "laser_sweep",
+      "skill_laser_sweep_t1",
       "fier_foom"
     ],
     "statRollChance": 0.50,
@@ -242,7 +243,7 @@
       "rangedDamage": 1.2
     },
     "grantedSkills": [
-      "cast_invisible_drone"
+      "skill_invisible_drone_t1"
     ],
     "statRollChance": 0.60,
     "maxRandomStats": 3,
@@ -339,7 +340,7 @@
       "meleeDamage": 0.5
     },
     "grantedSkills": [
-      "cast_orbital_fireballs",
+      "skill_orbital_fireballs_t1",
       "summon_trees"
     ],
     "statRollChance": 0.40,
@@ -387,7 +388,7 @@
       "meleeDamage": 0.8
     },
     "grantedSkills": [
-      "cast_orbital_fireballs"
+      "skill_orbital_fireballs_t1"
     ],
     "statRollChance": 0.50,
     "maxRandomStats": 2,
@@ -437,7 +438,7 @@
       "meleeDamage": 1.5
     },
     "grantedSkills": [
-      "laser_sweep"
+      "skill_laser_sweep_t1"
     ],
     "statRollChance": 0.60,
     "maxRandomStats": 2,

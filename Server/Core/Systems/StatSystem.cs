@@ -80,8 +80,8 @@ public class StatSystem : IGameSystem
             {
                 if (_configs.Effects.TryGetValue(effect.ConfigId, out var effectConfig))
                 {
-                    if (effectConfig.StatModifiers != null && effectConfig.StatModifiers.TryGetValue(statName, out float amount)) flatBonus += amount;
-                    if (effectConfig.StatMultipliers != null && effectConfig.StatMultipliers.TryGetValue(statName, out float mult)) percentBonus += mult;
+                    if (effectConfig.StatModifiers != null && effectConfig.StatModifiers.TryGetValue(statName, out float amount)) flatBonus += amount * effect.StackCount;
+                    if (effectConfig.StatMultipliers != null && effectConfig.StatMultipliers.TryGetValue(statName, out float mult)) percentBonus += mult * effect.StackCount;
                 }
             }
 

@@ -181,7 +181,7 @@ public class NetworkSystem : IGameSystem
                     w.TotalBaseStats ?? _emptyStats
                 }).ToList(),
                 p.FiredWeaponsThisTick.ToList(),
-                p.ActiveEffects.Select(e => e.ConfigId).ToList(),
+                p.ActiveEffects.Select(e => new object[] { e.ConfigId, e.StackCount }).ToList(),
                 p.SynergizedSkills.Select(s => new object[] { s.ConfigId, Math.Round(Math.Max(0, s.CurrentCooldown), 1) }).ToList(),
                 p.PendingStatDiff.Count > 0 ? (object)p.PendingStatDiff : null,
                 (int)p.CurrentShield
@@ -191,7 +191,7 @@ public class NetworkSystem : IGameSystem
                 e.Id, e.ConfigId, (int)e.X, (int)e.Y, (int)e.CurrentHp, (int)e.CurrentMaxHp,
                 (int)e.AimX, (int)e.AimY,
                 GetStateId(e.ActionState), e.CurrentCastingSkillId, Math.Round(e.CurrentCastTimer, 1), Math.Round(e.MaxCastTimer, 1),
-                e.ActiveEffects.Select(a => a.ConfigId).ToList(),
+                e.ActiveEffects.Select(a => new object[] { a.ConfigId, a.StackCount }).ToList(),
                 e.Weapons.Select(w => new object[] {
                     w.ConfigId, w.SlotIndex, w.Level,
                     w.RolledStats ?? _emptyStats, // <--- Cache Fix

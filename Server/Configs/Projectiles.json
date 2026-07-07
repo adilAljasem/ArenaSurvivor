@@ -43,7 +43,7 @@
         ],
         "animFlyFrameRate": 20,
         "baseSpeed": 450,
-        "hitRadius": 30,
+        "hitRadius": 15,
         "pierceCount": 0,
         "soundHit": "sfx_fireball_impact"
     },
@@ -101,7 +101,7 @@
         "hitRadius": 30,
         "pierceCount": 0,
         "soundHit": "sfx_melee_impact",
-        "onDeathSkillId": "test_rocket_explosion"
+        "onDeathSkillId": "skill_rocket_explosion_t1"
     },
     "test_rocket": {
         "id": "test_rocket",

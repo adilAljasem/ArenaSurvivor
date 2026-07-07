@@ -124,6 +124,8 @@ public class ActiveEffect
     // Who caused this effect? (Useful if an enemy dies to poison and we need to know which Player gets the Gold/XP!)
     public string SourceId { get; set; } = string.Empty;
     public float GrantedShieldAmount { get; set; }
+    public int StackCount { get; set; } = 1;
+
     [JsonIgnore]
     public BaseActorEntity? Caster { get; set; }
 }
