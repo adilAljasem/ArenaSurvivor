@@ -23,6 +23,12 @@ public class NetworkSystem : IGameSystem
     private ConcurrentBag<AoeVisualEvent> _aoeEvents = new();
     private ConcurrentBag<BeamVisualEvent> _beamEvents = new();
     private ConcurrentBag<BeamEndedEvent> _beamEndedEvents = new();
+
+    // Accumulated compressed bytes sent since the last WorkerHeartbeatService sample.
+    // Interlocked because the tick loop writes this while the heartbeat's background
+    // loop reads/resets it on a totally different thread.
+    private long _bytesSentSinceLastSample = 0;
+
     // FIX B: Cache a single empty dictionary to stop 30,000 allocations per second
     private static readonly Dictionary<string, float> _emptyStats = new();
     private readonly ConcurrentDictionary<string, HashSet<string>> _clientKnownEnemies = new();
@@ -73,24 +79,36 @@ public class NetworkSystem : IGameSystem
     {
         if (gameState.Players.IsEmpty) return;
 
-        var globalFlatState = FlattenGlobalState(gameState, configManager, _damageEvents, _aoeEvents, _beamEvents);
-
-        // Sent unculled (not run through CullForViewport) and identically to every player:
-        // it's tiny, and a client tracking a persistent beam object must always learn it
-        // ended, even if the beam's last known position was outside that player's viewport.
-        var beamEndedPayload = _beamEndedEvents.Count > 0
-            ? _beamEndedEvents.Select(b => new object[] { b.CasterId, b.SkillId }).ToList()
-            : null;
-
         float mapW = 4000f, mapH = 4000f;
         if (configManager.Maps != null && configManager.Maps.TryGetValue("map_forest", out var currentMap))
         {
             mapW = currentMap.Width; mapH = currentMap.Height;
         }
 
+        // NEW: union of every player's view box. Guaranteed to be a superset of each
+        // individual player's CullForViewport box below, so nothing that would've
+        // reached a player gets dropped — we only skip building data for entities
+        // nobody can currently see.
+        float unionMinX = float.MaxValue, unionMaxX = float.MinValue;
+        float unionMinY = float.MaxValue, unionMaxY = float.MinValue;
+        foreach (var p in gameState.Players.Values)
+        {
+            var (minX, maxX, minY, maxY) = GetViewBounds(p, mapW, mapH);
+            unionMinX = Math.Min(unionMinX, minX); unionMaxX = Math.Max(unionMaxX, maxX);
+            unionMinY = Math.Min(unionMinY, minY); unionMaxY = Math.Max(unionMaxY, maxY);
+        }
+
+        var globalFlatState = FlattenGlobalState(gameState, configManager, _damageEvents, _aoeEvents, _beamEvents,
+            unionMinX, unionMaxX, unionMinY, unionMaxY);
+
+        var beamEndedPayload = _beamEndedEvents.Count > 0
+            ? _beamEndedEvents.Select(b => new object[] { b.CasterId, b.SkillId }).ToList()
+            : null;
+
         foreach (var player in gameState.Players.Values)
         {
             var visibleState = CullForViewport(player, mapW, mapH, globalFlatState);
+
 
             var enemyDeltas = ProcessEnemyDeltas(player.ConnectionId, visibleState.Enemies);
             var pickupDeltas = ProcessPickupDeltas(player.ConnectionId, visibleState.Pickups);
@@ -107,6 +125,7 @@ public class NetworkSystem : IGameSystem
                 db = projectileDeltas.Destroyed.Count > 0 ? projectileDeltas.Destroyed : null,
 
                 pk = pickupDeltas.Full.Count > 0 ? pickupDeltas.Full : null,
+                mpk = pickupDeltas.Mini.Count > 0 ? pickupDeltas.Mini : null,
                 dpk = pickupDeltas.Destroyed.Count > 0 ? pickupDeltas.Destroyed : null,
 
                 dmg = visibleState.Damage.Count > 0 ? visibleState.Damage : null,
@@ -121,16 +140,31 @@ public class NetworkSystem : IGameSystem
             };
 
             byte[] compressedBytes = CompressPayload(payload);
+            Interlocked.Add(ref _bytesSentSinceLastSample, compressedBytes.Length);
             _ = _hubContext.Clients.Client(player.ConnectionId).SendAsync("UpdateStateCompressed", compressedBytes, cancellationToken: stoppingToken);
         }
 
         PerformCleanup(gameState);
+
 
         _damageEvents = new ConcurrentBag<DamageEventDto>();
         _aoeEvents = new ConcurrentBag<AoeVisualEvent>();
         _beamEvents = new ConcurrentBag<BeamVisualEvent>();
         _beamEndedEvents = new ConcurrentBag<BeamEndedEvent>();
     }
+
+    // NEW public method — add near PerformCleanup at the bottom of the class
+    // Called by WorkerHeartbeatService roughly every 5s. Returns Mbps sent since the last
+    // call AND resets the counter — must be read exactly once per interval by exactly one
+    // caller, or bandwidth gets under-reported.
+    public double ConsumeBandwidthMbps(double sinceLastSampleSeconds)
+    {
+        if (sinceLastSampleSeconds <= 0) return 0;
+        long bytes = Interlocked.Exchange(ref _bytesSentSinceLastSample, 0);
+        double megabits = (bytes * 8.0) / 1_000_000.0;
+        return megabits / sinceLastSampleSeconds;
+    }
+
 
     private static byte GetStateId(string state) => state switch
     {
@@ -165,9 +199,11 @@ public class NetworkSystem : IGameSystem
     private static FlatState FlattenGlobalState(GameState gameState, ConfigManager configManager,
         IEnumerable<DamageEventDto> dmgEvents,
         IEnumerable<AoeVisualEvent> aoeEvents,
-        IEnumerable<BeamVisualEvent> beamEvents)
-
+        IEnumerable<BeamVisualEvent> beamEvents,
+        float unionMinX, float unionMaxX, float unionMinY, float unionMaxY)
     {
+        bool InBounds(float x, float y) => x >= unionMinX && x <= unionMaxX && y >= unionMinY && y <= unionMaxY;
+
         return new FlatState
         {
             Players = gameState.Players.Values.Select(p => new object[] {
@@ -187,7 +223,7 @@ public class NetworkSystem : IGameSystem
                 (int)p.CurrentShield
             }).ToList(),
 
-            Enemies = gameState.Enemies.Values.Select(e => new object[] {
+            Enemies = gameState.Enemies.Values.Where(e => InBounds(e.X, e.Y)).Select(e => new object[] {
                 e.Id, e.ConfigId, (int)e.X, (int)e.Y, (int)e.CurrentHp, (int)e.CurrentMaxHp,
                 (int)e.AimX, (int)e.AimY,
                 GetStateId(e.ActionState), e.CurrentCastingSkillId, Math.Round(e.CurrentCastTimer, 1), Math.Round(e.MaxCastTimer, 1),
@@ -207,13 +243,14 @@ public class NetworkSystem : IGameSystem
                             : new object[] { proj.Id, proj.ConfigId, (int)proj.X, (int)proj.Y, (int)proj.VelX, (int)proj.VelY }
             ).ToList(),
 
-            Pickups = gameState.Pickups.Values.Select(pk => new object[] {
+            Pickups = gameState.Pickups.Values.Where(pk => InBounds(pk.X, pk.Y)).Select(pk => new object[] {
                 pk.Id, (int)pk.X, (int)pk.Y, pk.Value, (int)pk.Type,
                 pk.DroppedWeapon?.ConfigId ?? pk.DroppedItem?.ConfigId ?? "",
                 pk.DroppedWeapon?.Level ?? pk.DroppedItem?.Level ?? 1,
-                pk.DroppedWeapon?.TotalBaseStats ?? pk.DroppedItem?.TotalBaseStats ?? _emptyStats, // <--- Cache Fix
-                pk.DroppedWeapon?.RolledStats ?? pk.DroppedItem?.RolledStats ?? _emptyStats, // <--- Cache Fix
-                (pk.DroppedWeapon != null ? (pk.DroppedWeapon.WeaponSkills?.Select(s => s.ConfigId).ToList() ?? new List<string>()) : (pk.DroppedItem?.ItemSkills?.Select(s => s.ConfigId).ToList() ?? new List<string>()))
+                pk.DroppedWeapon?.TotalBaseStats ?? pk.DroppedItem?.TotalBaseStats ?? _emptyStats,
+                pk.DroppedWeapon?.RolledStats ?? pk.DroppedItem?.RolledStats ?? _emptyStats,
+                (pk.DroppedWeapon != null ? (pk.DroppedWeapon.WeaponSkills?.Select(s => s.ConfigId).ToList() ?? new List<string>()) : (pk.DroppedItem?.ItemSkills?.Select(s => s.ConfigId).ToList() ?? new List<string>())),
+                pk.IsMoving // <<< ADD THIS AT THE END (Index 10)
             }).ToList(),
 
             Damage = dmgEvents.Select(d => new object[] { (int)d.X, (int)d.Y, (int)d.Amount, d.IsCritical ? 1 : 0, d.IsDodge ? 1 : 0, d.IsBlock ? 1 : 0 }).ToList(),
@@ -222,28 +259,38 @@ public class NetworkSystem : IGameSystem
         };
     }
 
-    private static FlatState CullForViewport(PlayerEntity player, float mapW, float mapH, FlatState globalState)
-    {
-        float logicalScreenWidth = 1920f;
-        float logicalScreenHeight = 1080f;
+    // AFTER — constants match GameScene.FAIR_WIDTH/FAIR_HEIGHT in main.ts EXACTLY.
+    // If you tune the client zoom again, these two numbers must move with it.
+    private const float FairWidth = 1728f;
+    private const float FairHeight = 972f;
+    private const float ViewMargin = 300f; // small buffer so entities near the letterbox edge don't pop
 
-        float minCamX = Math.Min(logicalScreenWidth / 2f, mapW / 2f);
-        float maxCamX = Math.Max(minCamX, mapW - (logicalScreenWidth / 2f));
+    // Extracted so both CullForViewport AND the union-bounds prefilter (Fix 2) share one source of truth
+    private static (float minX, float maxX, float minY, float maxY) GetViewBounds(PlayerEntity player, float mapW, float mapH)
+    {
+        float minCamX = Math.Min(FairWidth / 2f, mapW / 2f);
+        float maxCamX = Math.Max(minCamX, mapW - (FairWidth / 2f));
         float cameraX = Math.Clamp(player.X, minCamX, maxCamX);
 
-        float minCamY = Math.Min(logicalScreenHeight / 2f, mapH / 2f);
-        float maxCamY = Math.Max(minCamY, mapH - (logicalScreenHeight / 2f));
+        float minCamY = Math.Min(FairHeight / 2f, mapH / 2f);
+        float maxCamY = Math.Max(minCamY, mapH - (FairHeight / 2f));
         float cameraY = Math.Clamp(player.Y, minCamY, maxCamY);
 
-        float minX = cameraX - ((logicalScreenWidth + 400f) / 2);
-        float maxX = cameraX + ((logicalScreenWidth + 400f) / 2);
-        float minY = cameraY - ((logicalScreenHeight + 400f) / 2);
-        float maxY = cameraY + ((logicalScreenHeight + 400f) / 2);
+        return (
+            cameraX - ((FairWidth + ViewMargin) / 2),
+            cameraX + ((FairWidth + ViewMargin) / 2),
+            cameraY - ((FairHeight + ViewMargin) / 2),
+            cameraY + ((FairHeight + ViewMargin) / 2)
+        );
+    }
+
+    private static FlatState CullForViewport(PlayerEntity player, float mapW, float mapH, FlatState globalState)
+    {
+        var (minX, maxX, minY, maxY) = GetViewBounds(player, mapW, mapH);
 
         return new FlatState
         {
             Players = globalState.Players.Where(p => (int)p[1] >= minX && (int)p[1] <= maxX && (int)p[2] >= minY && (int)p[2] <= maxY).ToList(),
-
             Enemies = globalState.Enemies.Where(e => (int)e[EnemyIdx.X] >= minX && (int)e[EnemyIdx.X] <= maxX && (int)e[EnemyIdx.Y] >= minY && (int)e[EnemyIdx.Y] <= maxY).ToList(),
             Pickups = globalState.Pickups.Where(pk => (int)pk[1] >= minX && (int)pk[1] <= maxX && (int)pk[2] >= minY && (int)pk[2] <= maxY).ToList(),
             Damage = globalState.Damage.Where(d => (int)d[0] >= minX && (int)d[0] <= maxX && (int)d[1] >= minY && (int)d[1] <= maxY).ToList(),
@@ -252,6 +299,7 @@ public class NetworkSystem : IGameSystem
             Beams = globalState.Beams.Where(b => ((int)b[0] >= minX && (int)b[0] <= maxX && (int)b[1] >= minY && (int)b[1] <= maxY) || ((int)b[2] >= minX && (int)b[2] <= maxX && (int)b[3] >= minY && (int)b[3] <= maxY)).ToList()
         };
     }
+
 
     private (List<object[]> Full, List<object[]> Mini, List<string> Destroyed) ProcessEnemyDeltas(string connectionId, List<object[]> visibleEnemies)
     {
@@ -276,18 +324,25 @@ public class NetworkSystem : IGameSystem
         return (fullEnemies, miniEnemies, destroyedEnemyIds);
     }
 
-    private (List<object[]> Full, List<string> Destroyed) ProcessPickupDeltas(string connectionId, List<object[]> visiblePickups)
+    private (List<object[]> Full, List<object[]> Mini, List<string> Destroyed) ProcessPickupDeltas(string connectionId, List<object[]> visiblePickups)
     {
         var knownPickups = _clientKnownPickups.GetOrAdd(connectionId, _ => new HashSet<string>());
         var visiblePickupIds = visiblePickups.Select(pk => (string)pk[0]).ToHashSet();
 
         var newPickupIds = visiblePickupIds.Except(knownPickups).ToHashSet();
         var destroyedPickupIds = knownPickups.Except(visiblePickupIds).ToList();
+        var existingPickupIds = visiblePickupIds.Intersect(knownPickups).ToHashSet();
 
         _clientKnownPickups[connectionId] = visiblePickupIds;
         var fullPickups = visiblePickups.Where(pk => newPickupIds.Contains((string)pk[0])).ToList();
 
-        return (fullPickups, destroyedPickupIds);
+        // >>> OPTIMIZATION: Only send X/Y updates if the gold is actively flying! <<<
+        var miniPickups = visiblePickups
+                            .Where(pk => existingPickupIds.Contains((string)pk[0]) && pk.Length > 10 && (bool)pk[10])
+                            .Select(pk => new object[] { pk[0], pk[1], pk[2] })
+                            .ToList();
+
+        return (fullPickups, miniPickups, destroyedPickupIds);
     }
 
     private (List<object[]> Full, List<string> Destroyed) ProcessProjectileDeltas(string connectionId, List<object[]> visibleProjectiles)

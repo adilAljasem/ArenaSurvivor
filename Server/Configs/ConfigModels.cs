@@ -331,7 +331,9 @@ public class SkillConfig
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
-    public string NextLevelId { get; set; } = string.Empty;
+    public string SkillFamily { get; set; } = string.Empty;
+    public int Tier { get; set; } = 1;
+    public bool ScalesWithGearLevel { get; set; } = true;
     public bool ShowCastBar { get; set; } = true;
 
     // --- Visuals ---

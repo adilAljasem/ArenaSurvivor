@@ -127,8 +127,8 @@ class GameScene extends Phaser.Scene {
     private uiCamera!: Phaser.Cameras.Scene2D.Camera;
     private processedObjects = new WeakSet<Phaser.GameObjects.GameObject>();
     // The strict competitive view area (16:9 ratio, zoomed in)
-    private readonly FAIR_WIDTH = 1536;
-    private readonly FAIR_HEIGHT = 864;
+    private readonly FAIR_WIDTH = 1728;
+    private readonly FAIR_HEIGHT = 972;
 
     private playerSprites: Map<string, Phaser.GameObjects.Container> = new Map();
     private enemySprites: Map<string, Phaser.GameObjects.Container> = new Map();
@@ -808,7 +808,8 @@ class GameScene extends Phaser.Scene {
 
             this.lastNetworkEntitiesCount =
                 (rawState.p?.length || 0) + (rawState.e?.length || 0) +
-                (rawState.me?.length || 0) + (rawState.nb?.length || 0) + (rawState.pk?.length || 0);
+                (rawState.me?.length || 0) + (rawState.nb?.length || 0) + (rawState.pk?.length || 0) +
+                (rawState.mpk?.length || 0);
 
             const PhaseMap = ["WaitingForPlayers", "WaveActive", "ShopPhase"];
             const StateMap = ["Idle", "Moving", "Attacking", "Casting", "Dead"];
@@ -926,8 +927,21 @@ class GameScene extends Phaser.Scene {
                         level: pk[6] ?? 1,
                         totalBaseStats: pk[7] || {},
                         rolledStats: pk[8] || {},
-                        skills: pk[9] || []
+                        skills: pk[9] || [],
+                        isMoving: pk[10] || false // <<< ADDED isMoving
                     });
+                });
+            }
+
+            // >>> ADD THIS NEW BLOCK FOR MINI PICKUPS (Moving Gold) <<<
+            if (rawState.mpk) {
+                rawState.mpk.forEach((m: any[]) => {
+                    const pickup = world.pickups.get(m[0]) as any;
+                    if (pickup) {
+                        pickup.x = m[1];
+                        pickup.y = m[2];
+                        pickup.isMoving = true;
+                    }
                 });
             }
 
@@ -1308,7 +1322,7 @@ class GameScene extends Phaser.Scene {
         this.handleInput(time);
         this.smoothInterpolateSprites(this.playerSprites, delta);
         this.smoothInterpolateSprites(this.enemySprites, delta);
-        // Update the FPS text with the actual current FPS from the game loop
+        this.smoothInterpolateSprites(this.pickupSprites, delta); // <<< NEW: Interpolate moving gold        // Update the FPS text with the actual current FPS from the game loop
         this.fpsText.setText(`FPS: ${Math.round(this.game.loop.actualFps)}`);
 
 

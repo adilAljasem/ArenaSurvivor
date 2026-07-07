@@ -17,7 +17,7 @@ public class WorkerHeartbeatService : BackgroundService
     private readonly IConnectionMultiplexer _redis;
     private readonly RoomManager _roomManager;
     private readonly ServerConfig _serverConfig; // <-- Add this
-    
+
     private readonly string _workerId = Guid.NewGuid().ToString();
 
     // Used for CPU calculation
@@ -36,7 +36,7 @@ public class WorkerHeartbeatService : BackgroundService
     {
         var db = _redis.GetDatabase();
         var currentProcess = Process.GetCurrentProcess();
-        
+
         while (!stoppingToken.IsCancellationRequested)
         {
             currentProcess.Refresh();
@@ -44,34 +44,28 @@ public class WorkerHeartbeatService : BackgroundService
 
             var currentTotalProcessorTime = currentProcess.TotalProcessorTime;
             var currentTime = DateTime.UtcNow;
-            
+
             double cpuUsedMs = (currentTotalProcessorTime - _lastTotalProcessorTime).TotalMilliseconds;
             double timePassedMs = (currentTime - _lastCheckTime).TotalMilliseconds;
-            
+            double intervalSeconds = timePassedMs / 1000.0; // real elapsed time, not an assumed 5s
+
             double cpuUsagePercent = (cpuUsedMs / (Environment.ProcessorCount * timePassedMs)) * 100;
 
             _lastTotalProcessorTime = currentTotalProcessorTime;
             _lastCheckTime = currentTime;
 
-            int roomCount = _roomManager.GetAllRooms().Count();
-            
-            var data = JsonSerializer.Serialize(new { 
-                WorkerId = _workerId, 
-                // Use the PublicUrl right from your config system!
-                Url = _serverConfig.PublicUrl, 
-                ActiveRooms = roomCount,
-                CpuUsage = Math.Round(cpuUsagePercent, 2),
-                RamUsageMB = ramUsageMB,
-                LastUpdated = DateTime.UtcNow
-            });
+            var allRooms = _roomManager.GetAllRooms().ToList(); // was enumerated twice before; now once
+            int roomCount = allRooms.Count;
 
-            await db.HashSetAsync("active_workers", _workerId, data);
+            // Each room's bandwidth counter resets on read, so consume it exactly ONCE here
+            // and reuse the value for both the per-room stat and the worker-level total.
+            double workerTotalNetworkMbps = 0;
 
-            // Publish per-room detail for the admin "Live Games" page. Short TTL (15s, longer
-            // than this loop's 5s interval) so a crashed/killed worker's rooms disappear on
-            // their own instead of needing explicit cleanup.
-            foreach (var room in _roomManager.GetAllRooms())
+            foreach (var room in allRooms)
             {
+                double roomNetworkMbps = room.ConsumeNetworkBandwidthMbps(intervalSeconds);
+                workerTotalNetworkMbps += roomNetworkMbps;
+
                 var roomData = JsonSerializer.Serialize(new
                 {
                     RoomId = room.RoomId,
@@ -82,6 +76,7 @@ public class WorkerHeartbeatService : BackgroundService
                     MapId = room.CurrentMapId,
                     PlayerCount = room.State.Players.Count,
                     PlayerNames = room.State.Players.Values.Select(p => p.Name).ToList(),
+                    NetworkMbps = Math.Round(roomNetworkMbps, 3),
                     WorkerId = _workerId,
                     WorkerUrl = _serverConfig.PublicUrl,
                     LastUpdated = DateTime.UtcNow
@@ -89,7 +84,21 @@ public class WorkerHeartbeatService : BackgroundService
                 await db.StringSetAsync($"room_stats:{room.RoomId}", roomData, TimeSpan.FromSeconds(15));
             }
 
-            await Task.Delay(5000, stoppingToken); 
+            var data = JsonSerializer.Serialize(new
+            {
+                WorkerId = _workerId,
+                Url = _serverConfig.PublicUrl,
+                ActiveRooms = roomCount,
+                CpuUsage = Math.Round(cpuUsagePercent, 2),
+                RamUsageMB = ramUsageMB,
+                NetworkMbps = Math.Round(workerTotalNetworkMbps, 3),
+                LastUpdated = DateTime.UtcNow
+            });
+
+            await db.HashSetAsync("active_workers", _workerId, data);
+
+            await Task.Delay(5000, stoppingToken);
         }
     }
+
 }

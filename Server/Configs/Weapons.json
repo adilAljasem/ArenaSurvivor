@@ -93,7 +93,7 @@
       "poison_dot"
     ],
     "grantedSkills": [
-      "skill_fier_boom_t1"
+      "skill_summon_trees_t1"
     ],
     "statRollChance": 0.90,
     "maxRandomStats": 3,
@@ -143,7 +143,7 @@
     ],
     "grantedSkills": [
       "skill_laser_closest_t1",
-      "skill_fier_boom_t2"
+      "skill_summon_trees_t1"
     ],
     "allowedCharacters": [
       "char_chunky"

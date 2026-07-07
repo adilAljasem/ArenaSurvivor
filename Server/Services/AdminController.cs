@@ -65,15 +65,21 @@ public class AdminController : ControllerBase
                 int activeRooms = root.GetProperty("ActiveRooms").GetInt32();
                 totalRooms += activeRooms;
 
+                // TryGetProperty, not GetProperty: a heartbeat entry cached before this field
+                // existed shouldn't throw and drop the whole server from the list.
+                double networkMbps = root.TryGetProperty("NetworkMbps", out var netProp) ? netProp.GetDouble() : 0;
+
                 servers.Add(new ServerStatusDto(
                     root.GetProperty("WorkerId").GetString() ?? "",
                     root.GetProperty("Url").GetString() ?? "",
                     activeRooms,
                     root.GetProperty("CpuUsage").GetDouble(),
                     root.GetProperty("RamUsageMB").GetInt64(),
+                    networkMbps,
                     lastUpdated,
                     isStale
                 ));
+
             }
             catch
             {
@@ -92,6 +98,7 @@ public class AdminController : ControllerBase
         {
             servers = servers.OrderBy(s => s.WorkerId).ToList(),
             totalRooms,
+            totalNetworkMbps = Math.Round(servers.Sum(s => s.NetworkMbps), 3),
             onlinePlayers,
             totalRegisteredUsers = totalUsers,
             totalBannedUsers = totalBanned,
@@ -181,7 +188,7 @@ public class AdminController : ControllerBase
         }
 
         int total = await q.CountAsync();
-        var users = await q.OrderBy(u => u.Username)
+        var pagedUsers = await q.OrderBy(u => u.Username)
             .Skip((page - 1) * pageSize).Take(pageSize)
             .Select(u => new
             {
@@ -195,7 +202,21 @@ public class AdminController : ControllerBase
             })
             .ToListAsync();
 
+        var onlineIds = await _redisService.GetOnlinePlayerIds();
+        var users = pagedUsers.Select(u => new
+        {
+            u.PlayerId,
+            u.Username,
+            u.Email,
+            u.IsAdmin,
+            u.IsBanned,
+            u.IsEmailVerified,
+            u.CreatedAt,
+            IsOnline = onlineIds.Contains(u.PlayerId.ToString())
+        }).ToList();
+
         return Ok(new { total, page, pageSize, players = users });
+
     }
 
     [HttpGet("players/{playerId}")]
@@ -381,7 +402,7 @@ public class AdminController : ControllerBase
 }
 
 public record BanRequest(string? Reason);
-public record ServerStatusDto(string WorkerId, string Url, int ActiveRooms, double CpuUsage, long RamUsageMB, DateTime LastUpdated, bool IsStale);/// Requires the authenticated caller to be an admin. Checks the DB live on every request
+public record ServerStatusDto(string WorkerId, string Url, int ActiveRooms, double CpuUsage, long RamUsageMB, double NetworkMbps, DateTime LastUpdated, bool IsStale);
 /// rather than trusting the JWT's "IsAdmin" claim alone — that claim is baked in at login
 /// for convenience, but this is the actual gate, so revoking admin access takes effect
 /// immediately instead of waiting for the token to expire.

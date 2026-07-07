@@ -8,13 +8,16 @@ interface ServerStatus {
     activeRooms: number;
     cpuUsage: number;
     ramUsageMB: number;
+    networkMbps: number;
     lastUpdated: string;
     isStale: boolean;
 }
 
+
 interface DashboardData {
     servers: ServerStatus[];
     totalRooms: number;
+    totalNetworkMbps: number;
     onlinePlayers: number;
     totalRegisteredUsers: number;
     totalBannedUsers: number;
@@ -48,8 +51,10 @@ interface PlayerSummary {
     isAdmin: boolean;
     isBanned: boolean;
     isEmailVerified: boolean;
+    isOnline: boolean;
     createdAt: string;
 }
+
 
 interface PlayerSearchResponse {
     total: number;
@@ -118,6 +123,7 @@ interface LiveGame {
     MapId: string;
     PlayerCount: number;
     PlayerNames: string[];
+    NetworkMbps: number;
     WorkerId: string;
     WorkerUrl: string;
     LastUpdated: string;
@@ -245,6 +251,13 @@ export class AdminDashboard {
         return `${Math.floor(diff / 86400)}d ago`;
     }
 
+    private metricClass(value: number, warnAt: number, dangerAt: number): string {
+        if (value >= dangerAt) return 'admin-metric-bad';
+        if (value >= warnAt) return 'admin-metric-warn';
+        return '';
+    }
+
+
     private showToast(msg: string, type: 'info' | 'error' = 'info') {
         const container = this.$('#toast-container')!;
         const toast = document.createElement('div');
@@ -364,6 +377,12 @@ export class AdminDashboard {
         .admin-server-id { font-weight: 600; font-size: 13px; color: var(--text); font-family: 'SF Mono', Consolas, monospace; }
         .admin-server-metric-row { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); padding: 3px 0; }
         .admin-server-metric-row b { color: var(--text); font-weight: 500; }
+        .admin-metric-warn { color: var(--warning) !important; }
+.admin-metric-bad { color: var(--danger) !important; }
+.status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:7px; vertical-align:middle; }
+.status-dot.online { background: var(--success); box-shadow: 0 0 6px rgba(63,185,80,0.7); }
+.status-dot.offline { background: var(--muted); }
+
 
         .admin-pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; font-size: 12px; color: var(--muted); }
         .admin-pagination-btns { display: flex; gap: 6px; }
@@ -473,6 +492,7 @@ export class AdminDashboard {
                         <h1 class="admin-page-title">Live Games</h1>
                         <div class="admin-page-subtitle">Matches currently in progress · refreshes every 5s</div>
                     </div>
+                    <div id="live-games-total" class="admin-page-subtitle" style="text-align:right;"></div>
                 </div>
                 <div id="live-games-grid" class="admin-server-grid"></div>
                 <div id="live-games-empty" class="admin-empty-state" style="display:none;">No matches are currently running.</div>
@@ -603,6 +623,7 @@ export class AdminDashboard {
             <div class="admin-stat-card"><div class="admin-stat-value">${data.onlinePlayers}</div><div class="admin-stat-label">Players Online</div></div>
             <div class="admin-stat-card"><div class="admin-stat-value">${data.totalRooms}</div><div class="admin-stat-label">Active Rooms</div></div>
             <div class="admin-stat-card"><div class="admin-stat-value">${data.servers.length}</div><div class="admin-stat-label">Servers Online</div></div>
+            <div class="admin-stat-card"><div class="admin-stat-value">${data.totalNetworkMbps.toFixed(1)}<span style="font-size:14px; color:var(--muted);"> Mbps</span></div><div class="admin-stat-label">Cluster Bandwidth</div></div>
             <div class="admin-stat-card"><div class="admin-stat-value">${data.totalRegisteredUsers}</div><div class="admin-stat-label">Registered Users</div></div>
             <div class="admin-stat-card"><div class="admin-stat-value">${data.totalMatchesPlayed}</div><div class="admin-stat-label">Matches Played (all-time)</div></div>
             <div class="admin-stat-card"><div class="admin-stat-value">${data.totalMatchRecordRows.toLocaleString()}</div><div class="admin-stat-label">Match Record Rows in DB</div></div>
@@ -623,8 +644,9 @@ export class AdminDashboard {
                 </div>
                 <div class="admin-server-metric-row"><span>URL</span><b>${s.url || '—'}</b></div>
                 <div class="admin-server-metric-row"><span>Active Rooms</span><b>${s.activeRooms}</b></div>
-                <div class="admin-server-metric-row"><span>CPU</span><b>${s.cpuUsage.toFixed(1)}%</b></div>
+                <div class="admin-server-metric-row"><span>CPU</span><b class="${this.metricClass(s.cpuUsage, 60, 85)}">${s.cpuUsage.toFixed(1)}%</b></div>
                 <div class="admin-server-metric-row"><span>RAM</span><b>${s.ramUsageMB} MB</b></div>
+                <div class="admin-server-metric-row"><span>Bandwidth</span><b class="${this.metricClass(s.networkMbps, 50, 100)}">${s.networkMbps.toFixed(2)} Mbps</b></div>
                 <div class="admin-server-metric-row"><span>Last Heartbeat</span><b>${this.timeAgo(s.lastUpdated)}</b></div>
             </div>
         `).join('');
@@ -701,7 +723,10 @@ export class AdminDashboard {
         empty.style.display = 'none';
         body.innerHTML = data.players.map(p => `
             <tr class="clickable" data-id="${p.playerId}">
-                <td>${this.escapeHtml(p.username)}${p.isAdmin ? ' <span class="admin-badge admin-badge-blue">ADMIN</span>' : ''}</td>
+                <td>
+                    <span class="status-dot ${p.isOnline ? 'online' : 'offline'}" title="${p.isOnline ? 'Online' : 'Offline'}"></span>
+                    ${this.escapeHtml(p.username)}${p.isAdmin ? ' <span class="admin-badge admin-badge-blue">ADMIN</span>' : ''}
+                </td>
                 <td>${this.escapeHtml(p.email)}</td>
                 <td>${p.isBanned ? '<span class="admin-badge admin-badge-red">BANNED</span>' : (p.isEmailVerified ? '<span class="admin-badge admin-badge-green">VERIFIED</span>' : '<span class="admin-badge admin-badge-gray">UNVERIFIED</span>')}</td>
                 <td>${new Date(p.createdAt).toLocaleDateString()}</td>
@@ -737,8 +762,8 @@ export class AdminDashboard {
                 <tr><td>Player ID</td><td style="font-size:11px; color:var(--muted);">${u.playerId}</td></tr>
                 <tr><td>Joined</td><td>${new Date(u.createdAt).toLocaleString()}</td></tr>
                 <tr><td>Status</td><td>${u.isBanned
-                    ? `<span class="admin-badge admin-badge-red">BANNED</span>${u.banReason ? ' — ' + this.escapeHtml(u.banReason) : ''}`
-                    : '<span class="admin-badge admin-badge-green">ACTIVE</span>'}</td></tr>
+                ? `<span class="admin-badge admin-badge-red">BANNED</span>${u.banReason ? ' — ' + this.escapeHtml(u.banReason) : ''}`
+                : '<span class="admin-badge admin-badge-green">ACTIVE</span>'}</td></tr>
             </table>
 
             <div class="admin-panel-title" style="margin-top:18px;">🏆 Achievements (${data.achievementsUnlocked}/${data.achievementsTotal})</div>
@@ -749,8 +774,8 @@ export class AdminDashboard {
 
             <div style="margin-top:20px; display:flex; gap:10px;">
                 ${u.isBanned
-                    ? `<button class="admin-btn admin-btn-primary" id="btn-unban">Unban Player</button>`
-                    : `<button class="admin-btn admin-btn-danger" id="btn-ban">Ban Player</button>`}
+                ? `<button class="admin-btn admin-btn-primary" id="btn-unban">Unban Player</button>`
+                : `<button class="admin-btn admin-btn-danger" id="btn-ban">Ban Player</button>`}
                 <button class="admin-btn" id="btn-close-modal">Close</button>
             </div>
         `);
@@ -783,13 +808,22 @@ export class AdminDashboard {
 
         const grid = this.$('#live-games-grid')!;
         const empty = this.$('#live-games-empty')!;
+        const totalEl = this.$('#live-games-total')!;
+
         if (data.games.length === 0) {
             grid.innerHTML = '';
             empty.style.display = 'block';
+            totalEl.textContent = '';
             return;
         }
         empty.style.display = 'none';
-        grid.innerHTML = data.games.map(g => `
+
+        // Heaviest games first — the ones actually worth an admin's attention.
+        const sorted = [...data.games].sort((a, b) => (b.NetworkMbps || 0) - (a.NetworkMbps || 0));
+        const totalMbps = sorted.reduce((sum, g) => sum + (g.NetworkMbps || 0), 0);
+        totalEl.textContent = `${totalMbps.toFixed(2)} Mbps combined`;
+
+        grid.innerHTML = sorted.map(g => `
             <div class="admin-server-card">
                 <div class="admin-server-card-top">
                     <span class="admin-server-id">${this.escapeHtml(g.RoomName)}</span>
@@ -799,10 +833,12 @@ export class AdminDashboard {
                 <div class="admin-server-metric-row"><span>Wave</span><b>${g.Wave}</b></div>
                 <div class="admin-server-metric-row"><span>Map</span><b>${this.escapeHtml((g.MapId || '').replace('map_', ''))}</b></div>
                 <div class="admin-server-metric-row"><span>Players</span><b>${g.PlayerCount}</b></div>
+                <div class="admin-server-metric-row"><span>Bandwidth</span><b class="${this.metricClass(g.NetworkMbps || 0, 5, 15)}">${(g.NetworkMbps || 0).toFixed(2)} Mbps</b></div>
                 <div style="margin-top:8px; font-size:12px; color:var(--muted);">${(g.PlayerNames || []).map(n => this.escapeHtml(n)).join(', ') || '—'}</div>
             </div>
         `).join('');
     }
+
 
     // ─── All Matches ────────────────────────────────────────────────────────
     private async previewCleanup() {

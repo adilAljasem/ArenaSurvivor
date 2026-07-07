@@ -62,33 +62,30 @@ export const UIHelpers = {
         const map: Record<string, { e: string, n: string }> = {
             maxHp: { e: "❤️", n: "Max HP" },
             hpRegen: { e: "🩹", n: "HP Regen" },
-            lifeSteal: { e: "🧛", n: "Life Steal" },
-            movementSpeed: { e: "💨", n: "MovementSpeed" },
-            haste: { e: "⏳", n: "Haste" },
-            meleeDamage: { e: "🗡️", n: "Melee Dmg" },
-            rangedDamage: { e: "🏹", n: "Ranged Dmg" },
-            magicDamage: { e: "🔥", n: "Magic Dmg" },
-            engineering: { e: "🔧", n: "Engineering" },
+            lifeSteal: { e: "🦇", n: "Life Steal" },
+            damagePercent: { e: "⚔️", n: "Damage %" },
+            meleeDamage: { e: "🪓", n: "Melee Damage" },
+            rangedDamage: { e: "🏹", n: "Ranged Damage" },
+            magicDamage: { e: "🔮", n: "Magic Damage" },
+            movementSpeed: { e: "👟", n: "Movement Speed" },
+            range: { e: "📏", n: "Range" },
+            haste: { e: "⚡", n: "Haste" },
+            engineering: { e: "⚙️", n: "Engineering" },
             armor: { e: "🛡️", n: "Armor" },
-            magicDefense: { e: "✨", n: "Magic Def" },
-            defensePercent: { e: "🧱", n: "Defense %" },
-            healPower: { e: "💚", n: "Heal Power" },     // <<< ADDED
-            shieldPower: { e: "💠", n: "Shield Power" }, // <<< ADDED
+            magicDefense: { e: "✨", n: "Magic Defense" },
+            defensePercent: { e: "🏰", n: "Defense %" },
+            dodge: { e: "💨", n: "Dodge Chance" },
             luck: { e: "🍀", n: "Luck" },
             harvesting: { e: "🌾", n: "Harvesting" },
-            dodge: { e: "👻", n: "Dodge" },
-            critChance: { e: "💥", n: "Crit Chance" },
-            critMultiplier: { e: "✖️", n: "Crit Mult" },
-            knockback: { e: "💢", n: "Knockback" },
-            pierceCount: { e: "🏹", n: "Pierces" },
-            bounceCount: { e: "🪃", n: "Bounces" },
-            attackSpeedPercent: { e: "⚡", n: "Attack Speed" },
-            xpGainPercent: { e: "🧠", n: "XP Gain" },
-            damagePercent: { e: "💥", n: "Damage %" },
-            projectileSpeedPercent: { e: "☄️", n: "Proj Speed" },
-            range: { e: "📏", n: "Range" },
+            attackSpeedPercent: { e: "⏱️", n: "Attack Speed %" },
+            xpGainPercent: { e: "🧠", n: "XP Gain %" },
+            projectileSpeedPercent: { e: "🚀", n: "Proj. Speed %" },
+            critChance: { e: "🎯", n: "Crit Chance" },
+            healPower: { e: "💖", n: "Heal Power" },
+            shieldPower: { e: "💠", n: "Shield Power" },
+            pickupRange: { e: "🧲", n: "Pickup Range" } // <<< ADDED HERE
         };
-        return map[key] || { e: "❓", n: key.charAt(0).toUpperCase() + key.slice(1) };
+        return map[key] || { e: "❓", n: key };
     },
 
     formatVal: (key: string, val: number): string => {
@@ -107,33 +104,137 @@ export const UIHelpers = {
         return str.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
     },
 
-    resolveSynergies: (rawIds: string[], dict: any): string[] => {
+    resolveSynergies: (rawIds: string[], dict: any, isSkillMap: boolean = false): string[] => {
         if (!rawIds || rawIds.length === 0) return [];
-        const counts: Record<string, number> = {};
-        rawIds.forEach(id => {
-            if (id) counts[id] = (counts[id] || 0) + 1;
-        });
 
-        const finalIds: string[] = [];
-        for (const baseId in counts) {
-            let currentId = baseId;
-            const count = counts[baseId];
+        if (!isSkillMap) {
+            // Legacy Trait Logic
+            const counts: Record<string, number> = {};
+            rawIds.forEach(id => {
+                if (id) counts[id] = (counts[id] || 0) + 1;
+            });
 
-            for (let i = 1; i < count; i++) {
-                let cfg = dict?.[currentId];
+            const finalIds: string[] = [];
+            for (const baseId in counts) {
+                let currentId = baseId;
+                const count = counts[baseId];
+
+                for (let i = 1; i < count; i++) {
+                    let cfg = dict?.[currentId];
+                    if (!cfg && dict) {
+                        const foundKey = Object.keys(dict).find(k => k.toLowerCase() === currentId.toLowerCase());
+                        if (foundKey) cfg = dict[foundKey];
+                    }
+
+                    const nextId = cfg?.nextLevelId || cfg?.NextLevelId;
+                    if (nextId) {
+                        currentId = nextId;
+                    }
+                }
+                finalIds.push(currentId);
+            }
+            return finalIds;
+        } else {
+            // New Auto-Chess Skill Logic (2x Tier 1 = 1x Tier 2)
+            let currentIds = [...rawIds];
+            let merged = true;
+
+            while (merged) {
+                merged = false;
+
+                const familyMap: Record<string, Record<number, string[]>> = {};
+                currentIds.forEach(id => {
+                    let cfg = dict?.[id];
+                    if (!cfg && dict) {
+                        const foundKey = Object.keys(dict).find(k => k.toLowerCase() === id.toLowerCase());
+                        if (foundKey) cfg = dict[foundKey];
+                    }
+
+                    const family = cfg?.skillFamily || cfg?.SkillFamily;
+                    const tier = cfg?.tier || cfg?.Tier || 1;
+
+                    if (family) {
+                        if (!familyMap[family]) familyMap[family] = {};
+                        if (!familyMap[family][tier]) familyMap[family][tier] = [];
+                        familyMap[family][tier].push(id);
+                    }
+                });
+
+                for (const family in familyMap) {
+                    for (const tierStr in familyMap[family]) {
+                        const tier = parseInt(tierStr);
+                        const idsInTier = familyMap[family][tier];
+
+                        // Check if these identical skills are allowed to auto-merge
+                        let scales = false;
+                        if (idsInTier.length >= 2) {
+                            const sampleId = idsInTier[0];
+                            let c = dict?.[sampleId];
+                            if (!c && dict) {
+                                const foundKey = Object.keys(dict).find(k => k.toLowerCase() === sampleId.toLowerCase());
+                                if (foundKey) c = dict[foundKey];
+                            }
+                            scales = c?.scalesWithGearLevel ?? c?.ScalesWithGearLevel ?? false;
+                        }
+
+                        // >>> FIX: Only merge if scales is true <<<
+                        if (idsInTier.length >= 2 && scales) {
+                            let nextTierId: string | null = null;
+                            for (const dictKey in dict) {
+                                const c = dict[dictKey];
+                                const cFam = c?.skillFamily || c?.SkillFamily;
+                                const cTier = c?.tier || c?.Tier || 1;
+
+                                if (cFam === family && cTier === tier + 1) {
+                                    nextTierId = dictKey;
+                                    break;
+                                }
+                            }
+
+                            if (nextTierId) {
+                                const removeId = idsInTier[0];
+                                currentIds.splice(currentIds.indexOf(removeId), 1);
+                                currentIds.splice(currentIds.indexOf(removeId), 1);
+                                currentIds.push(nextTierId);
+                                merged = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (merged) break;
+                }
+            }
+
+            // 2. HIGHEST TIER FILTER FOR UI
+            // Hides the lower tiers from the UI while keeping them in memory.
+            const finalFilteredIds: string[] = [];
+            const familyMaxTiers: Record<string, { id: string, tier: number }> = {};
+            const noFamilyIds: string[] = [];
+
+            currentIds.forEach(id => {
+                let cfg = dict?.[id];
                 if (!cfg && dict) {
-                    const foundKey = Object.keys(dict).find(k => k.toLowerCase() === currentId.toLowerCase());
+                    const foundKey = Object.keys(dict).find(k => k.toLowerCase() === id.toLowerCase());
                     if (foundKey) cfg = dict[foundKey];
                 }
 
-                const nextId = cfg?.nextLevelId || cfg?.NextLevelId;
-                if (nextId) {
-                    currentId = nextId;
+                const family = cfg?.skillFamily || cfg?.SkillFamily;
+                const tier = cfg?.tier || cfg?.Tier || 1;
+
+                if (family) {
+                    if (!familyMaxTiers[family] || tier > familyMaxTiers[family].tier) {
+                        familyMaxTiers[family] = { id, tier };
+                    }
+                } else {
+                    if (!noFamilyIds.includes(id)) noFamilyIds.push(id);
                 }
-            }
-            finalIds.push(currentId);
+            });
+
+            Object.values(familyMaxTiers).forEach(item => finalFilteredIds.push(item.id));
+            finalFilteredIds.push(...noFamilyIds);
+
+            return finalFilteredIds;
         }
-        return finalIds;
     },
 
     buildStatBlocks: (
@@ -232,8 +333,7 @@ export const UIHelpers = {
             const traits = config.traits ?? config.Traits ?? [];
             const rawTraits: string[] = [];
             for (let i = 0; i < stackCount; i++) rawTraits.push(...traits);
-            const finalTraits = UIHelpers.resolveSynergies(rawTraits, traitMap);
-
+            const finalTraits = UIHelpers.resolveSynergies(rawTraits, traitMap, false);
             if (finalTraits.length > 0) {
                 traitBlocks.push({ text: "[ Traits ]", color: "#ffb74d", isHeader: true });
 
@@ -258,31 +358,64 @@ export const UIHelpers = {
             }
 
             const skillMap = atlasConfigs?.skills ?? atlasConfigs?.Skills;
-            const grantedSkills = config.grantedSkills ?? config.GrantedSkills ?? [];
-            const rawGranted: string[] = [];
-            for (let i = 0; i < stackCount; i++) {
-                rawGranted.push(...grantedSkills.map((s: any) => typeof s === 'string' ? s : (s.configId ?? s.ConfigId)));
+            const grantedSkillsRaw = config.grantedSkills ?? config.GrantedSkills ?? [];
+
+            // Map out the base Skill Families so we can recognize them even after they upgrade their Tier
+            const baseExactIds = new Set<string>();
+            const baseFamilies = new Set<string>();
+
+            grantedSkillsRaw.forEach((s: any) => {
+                const id = typeof s === 'string' ? s : (s.configId ?? s.ConfigId);
+                if (id) {
+                    baseExactIds.add(id.toLowerCase());
+                    const sCfg = skillMap?.[id];
+                    const fam = sCfg?.skillFamily || sCfg?.SkillFamily;
+                    if (fam) baseFamilies.add(fam);
+                }
+            });
+
+            const finalGrantedDisplay: string[] = [];
+            const finalRolledDisplay: string[] = [];
+
+            // If the server provided live data for this specific item, it is the single source of truth.
+            if (rolledSkills && rolledSkills.length > 0) {
+                const gearSkillsRaw = rolledSkills.map((s: any) => typeof s === 'string' ? s : (s.configId ?? s.ConfigId));
+                const finalGearSkills = UIHelpers.resolveSynergies(gearSkillsRaw, skillMap, true);
+
+                finalGearSkills.forEach(id => {
+                    const sCfg = skillMap?.[id];
+                    const fam = sCfg?.skillFamily || sCfg?.SkillFamily;
+
+                    // If it shares a family with a native skill, or exactly matches the ID, it's a native ⭐ skill.
+                    if ((fam && baseFamilies.has(fam)) || baseExactIds.has(id.toLowerCase())) {
+                        finalGrantedDisplay.push(id);
+                    } else {
+                        finalRolledDisplay.push(id); // Otherwise, it truly is a random bonus ✨ skill.
+                    }
+                });
+            } else {
+                // Fallback for static Config tooltips (e.g., hovering an item in a wiki/static menu)
+                const rawGranted: string[] = [];
+                for (let i = 0; i < stackCount; i++) {
+                    rawGranted.push(...grantedSkillsRaw.map((s: any) => typeof s === 'string' ? s : (s.configId ?? s.ConfigId)));
+                }
+                finalGrantedDisplay.push(...UIHelpers.resolveSynergies(rawGranted, skillMap, true));
             }
-            const finalGranted = UIHelpers.resolveSynergies(rawGranted, skillMap);
 
-            const baseGrantedSet = new Set(grantedSkills.map((s: any) => typeof s === 'string' ? s : (s.configId ?? s.ConfigId)));
-            const rawRolled = (rolledSkills || [])
-                .map((s: any) => typeof s === 'string' ? s : (s.configId ?? s.ConfigId))
-                .filter((id: string) => !baseGrantedSet.has(id));
-
-            const finalRolled = UIHelpers.resolveSynergies(rawRolled, skillMap);
-
-            if (finalGranted.length > 0) {
-                finalGranted.forEach(id => {
+            // Render final categories
+            if (finalGrantedDisplay.length > 0) {
+                finalGrantedDisplay.forEach(id => {
                     const s = skillMap?.[id];
-                    skillsLines.push(`⭐ ${s ? (s.name ?? s.Name) : id}`);
+                    const scales = (s?.scalesWithGearLevel || s?.ScalesWithGearLevel) ? " ⬆️" : "";
+                    skillsLines.push(`⭐ ${s ? (s.name ?? s.Name) : id}${scales}`);
                 });
             }
 
-            if (finalRolled.length > 0) {
-                finalRolled.forEach(id => {
+            if (finalRolledDisplay.length > 0) {
+                finalRolledDisplay.forEach(id => {
                     const s = skillMap?.[id];
-                    skillsLines.push(`✨ ${s ? (s.name ?? s.Name) : id}`);
+                    const scales = (s?.scalesWithGearLevel || s?.ScalesWithGearLevel) ? " ⬆️" : "";
+                    skillsLines.push(`✨ ${s ? (s.name ?? s.Name) : id}${scales}`);
                 });
             }
 
@@ -436,6 +569,7 @@ export class Tooltip extends Phaser.GameObjects.Container {
             const hasteVal = Math.max(0, playerStats?.haste || 0);
             const hasteMult = (100 + hasteVal) / 100;
 
+
             const rawCd = config.cooldownSeconds ?? config.CooldownSeconds;
             const rawCast = config.castTimeSeconds ?? config.CastTimeSeconds;
             const rad = config.radius ?? config.Radius;
@@ -457,6 +591,12 @@ export class Tooltip extends Phaser.GameObjects.Container {
             if (dmg) addLine(`💥 Base Damage: ${Math.round(dmg)}`, '#ff8a65');
             if (rad) addLine(`📏 Radius/Range: ${Math.round(rad)}`, '#aed581');
             if (root) addLine(`🛑 Roots player while casting!`, '#ef5350');
+
+            const family = config.skillFamily ?? config.SkillFamily;
+            const scales = config.scalesWithGearLevel ?? config.ScalesWithGearLevel;
+
+            if (family) addLine(`👪 Skill Family: ${family}`, '#b0bec5');
+            if (scales) addLine(`⬆️ Upgrades automatically with gear level!`, '#81c784');
 
             if (effects && effects.length > 0) {
                 addLine(`[ Applied Effects ]`, '#ffd54f');

@@ -174,5 +174,14 @@
         "EngineMechanics": {
             "bonusItemSlots": -2
         }
+    },
+    "trait_vacuum": {
+        "id": "trait_vacuum",
+        "name": "Gold Vacuum",
+        "isNegative": false,
+        "description": "Magnetically attracts gold and items from further away.",
+        "statBonuses": {
+            "pickupRange": 100.0
+        }
     }
 }

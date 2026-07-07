@@ -45,6 +45,15 @@ public class RedisService
         return (tokenData.PlayerId, tokenData.RoomId);
     }
 
+    // NEW method, add anywhere in the class — sits next to AddOnlinePlayer/RemoveOnlinePlayer
+    public async Task<HashSet<string>> GetOnlinePlayerIds()
+    {
+        var db = _redis.GetDatabase();
+        var members = await db.SetMembersAsync("online_players");
+        return members.Select(m => m.ToString()).ToHashSet();
+    }
+
+
     public async Task SaveRoomTransferData(RoomTransferDto dto)
     {
         var db = _redis.GetDatabase();

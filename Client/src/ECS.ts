@@ -58,6 +58,7 @@ export interface PickupComponent {
   totalBaseStats: Record<string, number>;
   rolledStats: Record<string, number>;
   skills: string[];
+  isMoving?: boolean;
 }
 
 export class World {

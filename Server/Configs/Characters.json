@@ -39,7 +39,8 @@
     "startingSkills": [],
     "dynamicModifiers": [],
     "traits": [
-      "trait_packrat"
+      "trait_packrat",
+      "trait_vacuum"
     ],
     "statMultipliers": {
       "rangedDamage": 0.20,

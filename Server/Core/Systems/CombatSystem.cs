@@ -384,15 +384,47 @@ public class CombatSystem : IGameSystem
         if (!_configs.Difficulties.TryGetValue(state.CurrentDifficulty, out var currentDiff)) currentDiff = new DifficultyConfig();
         foreach (var player in state.Players.Values)
         {
+            float bonusPickupRange = player.GetTotalStat("pickupRange", _configs);
+            float magneticRadius = 25f + bonusPickupRange;
+            float magneticRadiusSq = magneticRadius * magneticRadius;
+
+            // The tiny core radius where the gold actually gets absorbed
+            float collectionRadiusSq = 25f * 25f;
+
             foreach (var pickup in state.Pickups.Values)
             {
-                if ((player.X - pickup.X) * (player.X - pickup.X) + (player.Y - pickup.Y) * (player.Y - pickup.Y) < 625)
+                if (pickupsToRemove.Contains(pickup.Id)) continue;
+
+                float dx = player.X - pickup.X;
+                float dy = player.Y - pickup.Y;
+                float distSq = (dx * dx) + (dy * dy);
+
+                // 1. Is it close enough to instantly collect?
+                if (distSq < collectionRadiusSq)
                 {
-                    if (pickup.Type == PickupType.Gold && !pickupsToRemove.Contains(pickup.Id))
+                    if (pickup.Type == PickupType.Gold)
                     {
                         player.Gold += (int)Math.Max(1, pickup.Value * currentDiff.GoldMultiplier);
                         player.GainXp(pickup.Value, _configs, currentDiff);
                         pickupsToRemove.Add(pickup.Id);
+                    }
+                }
+                // 2. Is it outside collection range, but inside Vacuum range?
+                else if (distSq < magneticRadiusSq)
+                {
+                    // >>> FIX: ONLY vacuum gold! Leave weapons and items on the floor. <<<
+                    if (pickup.Type == PickupType.Gold)
+                    {
+                        // Calculate the direction towards the player
+                        float dist = (float)Math.Sqrt(distSq);
+                        float dirX = dx / dist;
+                        float dirY = dy / dist;
+
+                        // Fly towards the player at 600 units per second!
+                        float vacuumSpeed = 600f;
+                        pickup.X += dirX * vacuumSpeed * dt;
+                        pickup.Y += dirY * vacuumSpeed * dt;
+                        pickup.IsMoving = true;
                     }
                 }
             }

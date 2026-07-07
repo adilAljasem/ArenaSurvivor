@@ -324,6 +324,9 @@ public class GameRoom
         if (State.Phase != GamePhase.WaitingForPlayers) State.PhaseTimer -= dt;
     }
 
+    public double ConsumeNetworkBandwidthMbps(double sinceLastSampleSeconds) => _networkSystem.ConsumeBandwidthMbps(sinceLastSampleSeconds);
+
+
     public void StartMatch()
     {
         if (State.Phase == GamePhase.WaitingForPlayers)

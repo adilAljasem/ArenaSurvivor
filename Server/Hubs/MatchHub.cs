@@ -817,8 +817,8 @@ public class MatchHub : Hub
                 if (w != null)
                 {
                     if (_configManager.Weapons.TryGetValue(w.ConfigId, out var wc)) basePrice = wc.Price;
-                    player.Weapons.Remove(w);
-                    try { player.RemoveWeapon(slotIndex, _configManager); } catch { }
+                    // FIX: DO NOT call player.Weapons.Remove(w) first! It breaks RemoveWeapon.
+                    player.RemoveWeapon(slotIndex, _configManager);
                 }
             }
             else
@@ -827,41 +827,18 @@ public class MatchHub : Hub
                 if (it != null)
                 {
                     if (_configManager.Items.TryGetValue(it.ConfigId, out var ic)) basePrice = ic.Price;
-                    player.OwnedItems.Remove(it);
-                    try { player.RemoveItem(slotIndex, _configManager); } catch { }
+                    // FIX: DO NOT call player.OwnedItems.Remove(it) first!
+                    player.RemoveItem(slotIndex, _configManager);
                 }
             }
 
-            // --- 4. ROBUST SKILL CLEANUP ---
-            HashSet<string> validSkillIds = new HashSet<string>();
+            // Force a clean recalculation just to be absolutely certain
+            player.RecalculateSynergies(_configManager);
 
-            if (_configManager.Characters.TryGetValue(player.ConfigId, out var charCfg))
-            {
-                if (charCfg.StartingSkills != null) foreach (var s in charCfg.StartingSkills) validSkillIds.Add(s);
-                if (charCfg.DynamicSkills != null) foreach (var ds in charCfg.DynamicSkills) validSkillIds.Add(ds.SkillId);
-            }
+            // Fetch active skills AFTER recalculation
+            HashSet<string> validSkillIds = player.SynergizedSkills.Select(s => s.ConfigId).ToHashSet();
 
-            var activeTraits = player.GetActiveTraits(_configManager);
-            foreach (var tId in activeTraits)
-            {
-                if (_configManager.Traits.TryGetValue(tId, out var tCfg) && tCfg.GrantedSkills != null)
-                    foreach (var s in tCfg.GrantedSkills) validSkillIds.Add(s);
-            }
-
-            foreach (var wp in player.Weapons)
-            {
-                if (wp.WeaponSkills != null) foreach (var s in wp.WeaponSkills) validSkillIds.Add(s.ConfigId);
-            }
-
-            foreach (var itm in player.OwnedItems)
-            {
-                if (itm.ItemSkills != null) foreach (var s in itm.ItemSkills) validSkillIds.Add(s.ConfigId);
-            }
-
-            // Surgically remove any active skill that is no longer in the valid list!
-            player.SynergizedSkills.RemoveAll(s => !validSkillIds.Contains(s.ConfigId));
-
-            // >>> NEW FIX: INTERRUPT ONGOING ACTIONS <<<
+            // >>> INTERRUPT ONGOING ACTIONS <<<
             // If the player is currently casting or channeling a skill that was just deleted, cancel it!
             if (!string.IsNullOrEmpty(player.CurrentCastingSkillId) && !validSkillIds.Contains(player.CurrentCastingSkillId))
             {

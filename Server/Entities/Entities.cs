@@ -166,7 +166,7 @@ public class EquippedWeapon : BaseEquippedGear
 public class EnemyEntity : BaseActorEntity
 {
     private static int _enemyIdCounter = 0;
-    public string Id { get; set; } = Interlocked.Increment(ref _enemyIdCounter).ToString();
+    public string Id { get; set; } = "e_" + Interlocked.Increment(ref _enemyIdCounter).ToString();
     public string ConfigId { get; set; } = string.Empty;
     public float HitRadius { get; set; }
 
@@ -483,26 +483,75 @@ public class PlayerEntity : BaseActorEntity
         foreach (var s in SynergizedSkills) previousSkills[s.ConfigId] = s; // Save cooldowns!
 
         SynergizedSkills.Clear();
-        var skillGroups = rawSkills.GroupBy(s => s);
 
-        foreach (var group in skillGroups)
+        // Convert raw skill IDs into Configs for processing
+        var currentSkills = new List<SkillConfig>();
+        foreach (var id in rawSkills)
         {
-            string currentId = group.Key;
-            int count = group.Count();
+            if (configs.Skills.TryGetValue(id, out var sCfg)) currentSkills.Add(sCfg);
+        }
 
-            // Upgrade the skill for every duplicate found
-            for (int i = 1; i < count; i++)
+        // 1. Auto-chess style merge loop for SkillFamily (2x T1 -> 1x T2)
+        bool merged = true;
+        while (merged)
+        {
+            merged = false;
+            var familyGroups = currentSkills.Where(s => !string.IsNullOrEmpty(s.SkillFamily)).GroupBy(s => s.SkillFamily);
+
+            foreach (var group in familyGroups)
             {
-                if (configs.Skills.TryGetValue(currentId, out var sCfg) && !string.IsNullOrEmpty(sCfg.NextLevelId))
-                    currentId = sCfg.NextLevelId;
-                else
-                    break; // Max level reached
-            }
+                // >>> FIX: Only allow merging if the skill has ScalesWithGearLevel set to true <<<
+                var tierGroups = group.GroupBy(s => s.Tier)
+                                      .Where(g => g.Count() >= 2 && g.First().ScalesWithGearLevel)
+                                      .ToList();
 
-            // Restore the cooldown if they already had this specific skill level actively ticking
+                if (tierGroups.Any())
+                {
+                    var targetTierGroup = tierGroups.First();
+                    int currentTier = targetTierGroup.Key;
+
+                    var nextTierSkill = configs.Skills.Values.FirstOrDefault(s => s.SkillFamily == group.Key && s.Tier == currentTier + 1);
+                    if (nextTierSkill != null)
+                    {
+                        currentSkills.Remove(targetTierGroup.ElementAt(0));
+                        currentSkills.Remove(targetTierGroup.ElementAt(1));
+
+                        currentSkills.Add(nextTierSkill);
+                        merged = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 2. HIGHEST TIER FILTER (This is the specific fix for Bug 4!)
+        // It strictly selects the best tier to use, but leaves the underlying gear untouched!
+        var finalFilteredSkills = new List<SkillConfig>();
+        var skillsByFamily = currentSkills.GroupBy(s => string.IsNullOrEmpty(s.SkillFamily) ? s.Id : s.SkillFamily);
+
+        foreach (var group in skillsByFamily)
+        {
+            if (string.IsNullOrEmpty(group.First().SkillFamily))
+            {
+                // Skills with no family, keep unique ones
+                finalFilteredSkills.AddRange(group.GroupBy(s => s.Id).Select(g => g.First()));
+            }
+            else
+            {
+                // Pick ONLY the single highest tier skill for this family
+                var highestTierSkill = group.OrderByDescending(s => s.Tier).First();
+                finalFilteredSkills.Add(highestTierSkill);
+            }
+        }
+
+        // 3. Map finalized skills back to ActiveSkill states
+        foreach (var finalizedSkill in finalFilteredSkills)
+        {
+            string currentId = finalizedSkill.Id;
             float cooldown = previousSkills.ContainsKey(currentId) ? previousSkills[currentId].CurrentCooldown : 0f;
             float castTimer = previousSkills.ContainsKey(currentId) ? previousSkills[currentId].CurrentCastTimer : 0f;
             float channelTimer = previousSkills.ContainsKey(currentId) ? previousSkills[currentId].CurrentChannelTimer : 0f;
+
             SynergizedSkills.Add(new ActiveSkill
             {
                 ConfigId = currentId,
@@ -708,7 +757,8 @@ public class PlayerEntity : BaseActorEntity
 public class ProjectileEntity
 {
     private static int _projIdCounter = 0;
-    public string Id { get; set; } = Interlocked.Increment(ref _projIdCounter).ToString(); public string ConfigId { get; set; } = string.Empty; // Tells the UI what sprite to draw!
+    public string Id { get; set; } = "proj_" + Interlocked.Increment(ref _projIdCounter).ToString();
+    public string ConfigId { get; set; } = string.Empty; // Tells the UI what sprite to draw!
     public string OwnerId { get; set; } = string.Empty;
     public float X { get; set; }
     public float Y { get; set; }
@@ -762,7 +812,7 @@ public enum PickupType
 public class PickupEntity
 {
     private static int _pickupIdCounter = 0;
-    public string Id { get; set; } = Interlocked.Increment(ref _pickupIdCounter).ToString();
+    public string Id { get; set; } = "pk_" + Interlocked.Increment(ref _pickupIdCounter).ToString();
     public float X { get; set; }
     public float Y { get; set; }
 
@@ -776,4 +826,5 @@ public class PickupEntity
 
     // Populated when Type == Item; null otherwise
     public EquippedItem? DroppedItem { get; set; }
+    public bool IsMoving { get; set; } = false;
 }

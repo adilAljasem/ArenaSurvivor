@@ -26,7 +26,7 @@ internal static class GearGeneratorHelper
                 string statToRoll = availableStats[Random.Shared.Next(availableStats.Count)];
                 var bounds = cfg.AllowedRandomStats[statToRoll];
                 float rollAmount = bounds.Min + (float)(Random.Shared.NextDouble() * (bounds.Max - bounds.Min));
-                
+
                 AddToStat(rolledStats, statToRoll, (float)Math.Round(rollAmount, 2));
             }
         }
@@ -80,6 +80,32 @@ internal static class GearGeneratorHelper
         if (dict.ContainsKey(key)) dict[key] += amount;
         else dict[key] = amount;
     }
+
+    public static void UpgradeScalingSkills(List<ActiveSkill> skills, int newLevel, ConfigManager configs)
+    {
+        // 1. FIRST, upgrade all scaling skills to the new gear level
+        foreach (var skill in skills)
+        {
+            if (configs.Skills.TryGetValue(skill.ConfigId, out var sCfg) && sCfg.ScalesWithGearLevel)
+            {
+                // Find the skill in the same family that matches the new gear level
+                var upgradedSkill = configs.Skills.Values.FirstOrDefault(s => s.SkillFamily == sCfg.SkillFamily && s.Tier == newLevel);
+                if (upgradedSkill != null && upgradedSkill.Id != skill.ConfigId)
+                {
+                    skill.ConfigId = upgradedSkill.Id;
+                    skill.CurrentCooldown = upgradedSkill.CooldownSeconds;
+                }
+            }
+        }
+
+        // 2. THEN remove duplicates! 
+        // (If a T1 and T2 merged into this gear, they both just got upgraded to identical T3 skills.
+        // Removing duplicates NOW leaves exactly one T3 skill.)
+        var distinctSkills = skills.GroupBy(s => s.ConfigId).Select(g => g.First()).ToList();
+        skills.Clear();
+        skills.AddRange(distinctSkills);
+    }
+
 }
 
 // =====================================================================================
@@ -108,12 +134,12 @@ public static class WeaponGenerator
 
         string bestConfigId = (cfg2?.Tier ?? 1) > (cfg1?.Tier ?? 1) ? w2.ConfigId : w1.ConfigId;
 
-        var newW = new EquippedWeapon { ConfigId = bestConfigId, SlotIndex = w1.SlotIndex, Level = w1.Level + w2.Level };
-        
-        GearGeneratorHelper.MergeGearData(newW.MergedConfigIds, newW.RolledStats, newW.WeaponSkills, 
-            w1.MergedConfigIds, w1.RolledStats, w1.WeaponSkills, 
-            w2.MergedConfigIds, w2.RolledStats, w2.WeaponSkills, configs);
+        var newW = new EquippedWeapon { ConfigId = bestConfigId, SlotIndex = w1.SlotIndex, Level = Math.Max(w1.Level, w2.Level) + 1 };
+        GearGeneratorHelper.MergeGearData(newW.MergedConfigIds, newW.RolledStats, newW.WeaponSkills,
+                    w1.MergedConfigIds, w1.RolledStats, w1.WeaponSkills,
+                    w2.MergedConfigIds, w2.RolledStats, w2.WeaponSkills, configs);
 
+        GearGeneratorHelper.UpgradeScalingSkills(newW.WeaponSkills, newW.Level, configs);
         CalculateTotalBaseStats(newW, configs);
         return newW;
     }
@@ -127,7 +153,7 @@ public static class WeaponGenerator
             {
                 if (cfg.MeleeDamage > 0) GearGeneratorHelper.AddToStat(weapon.TotalBaseStats, "meleeDamage", cfg.MeleeDamage);
                 if (cfg.RangedDamage > 0) GearGeneratorHelper.AddToStat(weapon.TotalBaseStats, "rangedDamage", cfg.RangedDamage);
-                
+
                 // >>> FIX CS1061: Use MagicDamage! <<<
                 if (cfg.MagicDamage > 0) GearGeneratorHelper.AddToStat(weapon.TotalBaseStats, "magicDamage", cfg.MagicDamage);
 
@@ -164,12 +190,13 @@ public static class ItemGenerator
 
         string bestConfigId = (cfg2?.Tier ?? 1) > (cfg1?.Tier ?? 1) ? i2.ConfigId : i1.ConfigId;
 
-        var newI = new EquippedItem { ConfigId = bestConfigId, SlotIndex = i1.SlotIndex, Level = i1.Level + i2.Level };
-        
-        GearGeneratorHelper.MergeGearData(newI.MergedConfigIds, newI.RolledStats, newI.ItemSkills, 
-            i1.MergedConfigIds, i1.RolledStats, i1.ItemSkills, 
-            i2.MergedConfigIds, i2.RolledStats, i2.ItemSkills, configs);
+        var newI = new EquippedItem { ConfigId = bestConfigId, SlotIndex = i1.SlotIndex, Level = Math.Max(i1.Level, i2.Level) + 1 };
 
+        GearGeneratorHelper.MergeGearData(newI.MergedConfigIds, newI.RolledStats, newI.ItemSkills,
+                    i1.MergedConfigIds, i1.RolledStats, i1.ItemSkills,
+                    i2.MergedConfigIds, i2.RolledStats, i2.ItemSkills, configs);
+
+        GearGeneratorHelper.UpgradeScalingSkills(newI.ItemSkills, newI.Level, configs);
         CalculateTotalBaseStats(newI, configs);
         return newI;
     }

@@ -847,6 +847,10 @@ export class WorldRenderer {
     // else about a pickup is immutable after spawn.
     world.pickups.forEach((pickup, safeId) => {
       activePickups.add(safeId);
+
+      // >>> NEW: Feed the live X/Y to the interpolation engine! <<<
+      targets.set(safeId, { x: pickup.x, y: pickup.y });
+
       if (!pickups.has(safeId)) {
         const pType = pickup.type;
         const gearConfigId = pickup.gearConfigId;
@@ -890,7 +894,7 @@ export class WorldRenderer {
         (sprite as any).setDepth(5);
 
         // --- SLOW MOTION HOVER ANIMATION ---
-        scene.tweens.add({
+        const hoverTween = scene.tweens.add({
           targets: sprite,
           y: pickup.y - 12,                         // Float up 12 pixels
           duration: 1500 + Math.random() * 500,     // 1.5s to 2.0s per float
@@ -900,7 +904,17 @@ export class WorldRenderer {
           delay: Math.random() * 500                // Desync so they don't all bob at the exact same time
         });
 
+        // >>> NEW: Store the tween so we can kill it if the gold starts flying! <<<
+        (sprite as any).__hoverTween = hoverTween;
+
         pickups.set(safeId, sprite as any);
+      } else {
+        // >>> NEW: Stop bobbing if the vacuum sucked it up! <<<
+        const sprite = pickups.get(safeId);
+        if (sprite && (pickup as any).isMoving && (sprite as any).__hoverTween) {
+          (sprite as any).__hoverTween.stop();
+          (sprite as any).__hoverTween = null;
+        }
       }
     });
 
