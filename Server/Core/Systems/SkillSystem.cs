@@ -239,12 +239,15 @@ public class SkillSystem : IGameSystem
             float endX = startX + (dirX * config.Range);
             float endY = startY + (dirY * config.Range);
 
+            string beamIdentityId = sourceProjectile?.Id ?? casterId;
+
             _eventBus.Publish(new BeamVisualEvent
             {
                 Dto = new BeamEventDto { StartX = startX, StartY = startY, TargetX = endX, TargetY = endY, Width = config.BeamWidth, ColorTint = config.ColorTint },
-                CasterId = casterId,
+                CasterId = beamIdentityId,
                 SkillId = config.Id
             });
+
 
             float hitThresholdSq = (config.BeamWidth / 2) * (config.BeamWidth / 2);
             foreach (var target in hostileTargets)

@@ -113,16 +113,18 @@ public abstract class BaseEquippedGear
 {
     public string ConfigId { get; set; } = string.Empty;
     public int Level { get; set; } = 1;
-
-    // Tracks which config IDs were merged to produce this gear (used for stat recalculation)
+    public int SlotIndex { get; set; } // promoted from EquippedItem/EquippedWeapon - was identical on both
     public List<string> MergedConfigIds { get; set; } = new();
-
-    // Pre-calculated sum of all base stats from every merged config
     public Dictionary<string, float> TotalBaseStats { get; set; } = new();
-
-    // Unique random stats rolled specifically for this instance
     public Dictionary<string, float> RolledStats { get; set; } = new();
+
+    // Lets shared generator/merge logic reach "this gear's skill list" generically.
+    // WeaponSkills / ItemSkills stay as the existing named properties everywhere else in the
+    // codebase (Entities.cs synergy logic, NetworkSystem.cs flattening, etc.) - this just aliases
+    // them for the DRY helper below, no renames, no other call sites need to change.
+    public abstract List<ActiveSkill> GearSkills { get; }
 }
+
 
 // ==========================================
 // Component Classes
@@ -161,20 +163,17 @@ public class ActiveSkill
 
 public class EquippedItem : BaseEquippedGear
 {
-    public int SlotIndex { get; set; }
-
-    // Tracks the cooldowns for the random skills attached to this item
     public List<ActiveSkill> ItemSkills { get; set; } = new();
+    public override List<ActiveSkill> GearSkills => ItemSkills;
 }
 
 public class EquippedWeapon : BaseEquippedGear
 {
-    public int SlotIndex { get; set; }
     public float CurrentCooldown { get; set; }
-
-    // Tracks the cooldowns for the random skills attached to this weapon
     public List<ActiveSkill> WeaponSkills { get; set; } = new();
+    public override List<ActiveSkill> GearSkills => WeaponSkills;
 }
+
 
 // ==========================================
 // Entity Classes

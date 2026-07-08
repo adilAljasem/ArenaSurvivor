@@ -11,6 +11,48 @@ namespace Server.Core.Systems;
 // =====================================================================================
 internal static class GearGeneratorHelper
 {
+    // Shared "generate a fresh piece of gear" orchestration - identical between weapons and items
+    // except which config dictionary is read and how CalculateTotalBaseStats is computed (passed
+    // in as a delegate since that part is genuinely type-specific).
+    public static TGear GenerateGear<TGear, TConfig>(
+        string configId, float luck, ConfigManager configs, int startingLevel,
+        TConfig cfg, Action<TGear, ConfigManager> calculateTotalBaseStats)
+        where TGear : BaseEquippedGear, new()
+        where TConfig : BaseGearConfig
+    {
+        var newGear = new TGear { ConfigId = configId, Level = startingLevel };
+        for (int i = 0; i < startingLevel; i++) newGear.MergedConfigIds.Add(configId);
+
+        RollRandomStatsAndSkills(newGear.RolledStats, newGear.GearSkills, cfg, luck, configs, cfg.GrantedSkills);
+        calculateTotalBaseStats(newGear, configs);
+        return newGear;
+    }
+
+    // Shared "merge two pieces of gear into a leveled-up one" orchestration - same relationship
+    // to MergeWeapons/MergeItems as GenerateGear has to GenerateWeapon/GenerateItem above.
+    public static TGear MergeGear<TGear, TConfig>(
+        TGear g1, TGear g2, ConfigManager configs,
+        IReadOnlyDictionary<string, TConfig> configLookup, Action<TGear, ConfigManager> calculateTotalBaseStats)
+        where TGear : BaseEquippedGear, new()
+        where TConfig : BaseGearConfig
+    {
+        configLookup.TryGetValue(g1.ConfigId, out var cfg1);
+        configLookup.TryGetValue(g2.ConfigId, out var cfg2);
+
+        string bestConfigId = (cfg2?.Tier ?? 1) > (cfg1?.Tier ?? 1) ? g2.ConfigId : g1.ConfigId;
+
+        var newGear = new TGear { ConfigId = bestConfigId, SlotIndex = g1.SlotIndex, Level = Math.Max(g1.Level, g2.Level) + 1 };
+
+        MergeGearData(newGear.MergedConfigIds, newGear.RolledStats, newGear.GearSkills,
+                    g1.MergedConfigIds, g1.RolledStats, g1.GearSkills,
+                    g2.MergedConfigIds, g2.RolledStats, g2.GearSkills, configs);
+
+        UpgradeScalingSkills(newGear.GearSkills, newGear.Level, configs);
+        calculateTotalBaseStats(newGear, configs);
+        return newGear;
+    }
+
+
     public static void RollRandomStatsAndSkills(Dictionary<string, float> rolledStats, List<ActiveSkill> targetSkills, BaseGearConfig cfg, float luck, ConfigManager configs, List<string> baseGrantedSkills = null)
     {
         float luckMult = 1f + Math.Max(0, luck / 100f);
@@ -117,33 +159,13 @@ public static class WeaponGenerator
         => GenerateWeapon(configId, player.GetTotalStat("luck", configs), configs, startingLevel);
 
     public static EquippedWeapon GenerateWeapon(string configId, float luck, ConfigManager configs, int startingLevel = 1)
-    {
-        var cfg = configs.Weapons[configId];
-        var newWeapon = new EquippedWeapon { ConfigId = configId, Level = startingLevel };
-        for (int i = 0; i < startingLevel; i++) newWeapon.MergedConfigIds.Add(configId);
-
-        GearGeneratorHelper.RollRandomStatsAndSkills(newWeapon.RolledStats, newWeapon.WeaponSkills, cfg, luck, configs, cfg.GrantedSkills);
-        CalculateTotalBaseStats(newWeapon, configs);
-        return newWeapon;
-    }
+        => GearGeneratorHelper.GenerateGear<EquippedWeapon, WeaponConfig>(configId, luck, configs, startingLevel, configs.Weapons[configId], CalculateTotalBaseStats);
 
     public static EquippedWeapon MergeWeapons(EquippedWeapon w1, EquippedWeapon w2, ConfigManager configs)
-    {
-        configs.Weapons.TryGetValue(w1.ConfigId, out var cfg1);
-        configs.Weapons.TryGetValue(w2.ConfigId, out var cfg2);
+        => GearGeneratorHelper.MergeGear(w1, w2, configs, configs.Weapons, CalculateTotalBaseStats);
 
-        string bestConfigId = (cfg2?.Tier ?? 1) > (cfg1?.Tier ?? 1) ? w2.ConfigId : w1.ConfigId;
-
-        var newW = new EquippedWeapon { ConfigId = bestConfigId, SlotIndex = w1.SlotIndex, Level = Math.Max(w1.Level, w2.Level) + 1 };
-        GearGeneratorHelper.MergeGearData(newW.MergedConfigIds, newW.RolledStats, newW.WeaponSkills,
-                    w1.MergedConfigIds, w1.RolledStats, w1.WeaponSkills,
-                    w2.MergedConfigIds, w2.RolledStats, w2.WeaponSkills, configs);
-
-        GearGeneratorHelper.UpgradeScalingSkills(newW.WeaponSkills, newW.Level, configs);
-        CalculateTotalBaseStats(newW, configs);
-        return newW;
-    }
-
+    // CalculateTotalBaseStats(EquippedWeapon, ConfigManager) - unchanged, stays weapon-specific
+    // (reads MeleeDamage/RangedDamage/MagicDamage directly off WeaponConfig).
     public static void CalculateTotalBaseStats(EquippedWeapon weapon, ConfigManager configs)
     {
         weapon.TotalBaseStats.Clear();
@@ -153,22 +175,13 @@ public static class WeaponGenerator
             {
                 if (cfg.MeleeDamage > 0) GearGeneratorHelper.AddToStat(weapon.TotalBaseStats, "meleeDamage", cfg.MeleeDamage);
                 if (cfg.RangedDamage > 0) GearGeneratorHelper.AddToStat(weapon.TotalBaseStats, "rangedDamage", cfg.RangedDamage);
-
-                // >>> FIX CS1061: Use MagicDamage! <<<
                 if (cfg.MagicDamage > 0) GearGeneratorHelper.AddToStat(weapon.TotalBaseStats, "magicDamage", cfg.MagicDamage);
-
-                // >>> REMOVED: cfg.StatBonuses used to be folded in here too, which meant a
-                // weapon's own core damage (e.g. rangedDamage: 50) and its statBonuses (e.g.
-                // rangedDamage: 200) got summed into ONE TotalBaseStats value (250) via
-                // AddToStat's +=. That's wrong: TotalBaseStats is read directly by
-                // CombatSystem as "this weapon's own damage" and should stay scoped to the
-                // weapon. StatBonuses are read separately, straight from the weapon's config,
-                // in StatSystem.cs - that's what makes them apply to the player's own stats
-                // instead of inflating the weapon's damage number.
             }
         }
     }
 }
+
+
 
 // =====================================================================================
 // ITEM GENERATOR
@@ -179,34 +192,13 @@ public static class ItemGenerator
         => GenerateItem(configId, player.GetTotalStat("luck", configs), configs, startingLevel);
 
     public static EquippedItem GenerateItem(string configId, float luck, ConfigManager configs, int startingLevel = 1)
-    {
-        var cfg = configs.Items[configId];
-        var newItem = new EquippedItem { ConfigId = configId, Level = startingLevel };
-        for (int i = 0; i < startingLevel; i++) newItem.MergedConfigIds.Add(configId);
-
-        GearGeneratorHelper.RollRandomStatsAndSkills(newItem.RolledStats, newItem.ItemSkills, cfg, luck, configs, cfg.GrantedSkills);
-        CalculateTotalBaseStats(newItem, configs);
-        return newItem;
-    }
+        => GearGeneratorHelper.GenerateGear<EquippedItem, ItemConfig>(configId, luck, configs, startingLevel, configs.Items[configId], CalculateTotalBaseStats);
 
     public static EquippedItem MergeItems(EquippedItem i1, EquippedItem i2, ConfigManager configs)
-    {
-        configs.Items.TryGetValue(i1.ConfigId, out var cfg1);
-        configs.Items.TryGetValue(i2.ConfigId, out var cfg2);
+        => GearGeneratorHelper.MergeGear(i1, i2, configs, configs.Items, CalculateTotalBaseStats);
 
-        string bestConfigId = (cfg2?.Tier ?? 1) > (cfg1?.Tier ?? 1) ? i2.ConfigId : i1.ConfigId;
-
-        var newI = new EquippedItem { ConfigId = bestConfigId, SlotIndex = i1.SlotIndex, Level = Math.Max(i1.Level, i2.Level) + 1 };
-
-        GearGeneratorHelper.MergeGearData(newI.MergedConfigIds, newI.RolledStats, newI.ItemSkills,
-                    i1.MergedConfigIds, i1.RolledStats, i1.ItemSkills,
-                    i2.MergedConfigIds, i2.RolledStats, i2.ItemSkills, configs);
-
-        GearGeneratorHelper.UpgradeScalingSkills(newI.ItemSkills, newI.Level, configs);
-        CalculateTotalBaseStats(newI, configs);
-        return newI;
-    }
-
+    // CalculateTotalBaseStats(EquippedItem, ConfigManager) - unchanged, stays item-specific
+    // (iterates the arbitrary StatBonuses dictionary off ItemConfig).
     public static void CalculateTotalBaseStats(EquippedItem item, ConfigManager configs)
     {
         item.TotalBaseStats.Clear();

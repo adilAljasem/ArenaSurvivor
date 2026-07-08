@@ -1,32 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace Server.Configs;
-
-public class EmailSettings
-{
-    public string From { get; set; } = string.Empty;
-    public string SmtpServer { get; set; } = string.Empty;
-    public int Port { get; set; } = 587;
-    public string Username { get; set; } = string.Empty;
-    public string Password { get; set; } = string.Empty;
-    public bool UseSsl { get; set; } = true;
-}
-
-public class JwtSettings
-{
-    public string SecretKey { get; set; } = string.Empty;
-    public string Issuer { get; set; } = "ArenaSurvivor";
-    public string Audience { get; set; } = "ArenaSurvivorPlayers";
-    public int ExpirationDays { get; set; } = 30;
-}
-
-public class RoomSettings
-{
-    public int PauseTimeoutMinutes { get; set; } = 10;
-    public int GracePeriodSeconds { get; set; } = 180;
-    public bool AllowSpectators { get; set; } = true;
-}
-
+namespace Server.Data;
 
 public class User
 {

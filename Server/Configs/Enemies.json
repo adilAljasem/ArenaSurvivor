@@ -40,7 +40,7 @@
       "magicDefense": 5,
       "armor": 2
     },
-    "startingWeapons": [],
+    "startingWeapons": ["pistol"],
     "startingItems": [
       "ugly_tooth"
     ],

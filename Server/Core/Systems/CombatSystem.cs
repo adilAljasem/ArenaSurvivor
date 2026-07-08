@@ -148,14 +148,10 @@ public class CombatSystem : IGameSystem
         {
             if (enemy.Weapons.Count == 0) return;
 
-            float bestDistSq = float.MaxValue, targetX = 0, targetY = 0;
 
             var opposingPlayers = enemy.Team == "Enemy" ? activePlayers : new List<PlayerEntity>();
             var opposingTeam = enemy.Team == "Enemy" ? nonEnemyTeam : enemyTeam;
 
-            // Original had `if (summon.Id == enemy.Id) continue;` here, but it was unreachable:
-            // opposingTeam is only ever the OPPOSITE team from the acting enemy, so it could never
-            // contain the acting enemy itself. Dropped - no behavior change, just dead code removed.
             var target = TargetingHelper.FindClosestTarget(enemy.X, enemy.Y, float.MaxValue, opposingPlayers, opposingTeam);
             if (target == null) return;
             enemy.AimX = target.X; enemy.AimY = target.Y;
@@ -186,6 +182,9 @@ public class CombatSystem : IGameSystem
                 }
             }
 
+            // FIX: bestDistSq has to be computed against the resolved `target` now - it used to fall
+            // out of the manual distance-tracking loop that TargetingHelper.FindClosestTarget replaced.
+            float bestDistSq = (target.X - enemy.X) * (target.X - enemy.X) + (target.Y - enemy.Y) * (target.Y - enemy.Y);
             if (bestDistSq > attackRadius * attackRadius) return;
             if (enemy.IsIncapacitated(_configs)) return;
 
@@ -202,9 +201,9 @@ public class CombatSystem : IGameSystem
                 float offset = enemyCfg?.WeaponOffset.HasValue == true ? (enemyCfg.WeaponOffset.Value * entityScale) : ((40f * entityScale) + 30f);
                 var (spawnX, spawnY) = ApplySlotOffset(enemy.X, enemy.Y, weapon.SlotIndex, offset);
 
-
-                float summonDirX = targetX - spawnX;
-                float summonDirY = targetY - spawnY;
+                // FIX: use target.X/target.Y directly - targetX/targetY no longer exist.
+                float summonDirX = target.X - spawnX;
+                float summonDirY = target.Y - spawnY;
                 if (summonDirX * summonDirX + summonDirY * summonDirY <= 0) continue;
 
                 // --- COMMANDED STATE: ATTACKING ---
@@ -230,6 +229,17 @@ public class CombatSystem : IGameSystem
             }
         });
     }
+
+    private void HandleProjectileDeath(ProjectileEntity p, GameState state)
+    {
+        if (!string.IsNullOrEmpty(p.TickSkillId) && _configs.Skills.TryGetValue(p.TickSkillId, out var tickSkillCfg) && tickSkillCfg.ActionType == SkillActionType.Beam)
+            _eventBus.Publish(new BeamEndedEvent { CasterId = p.Id, SkillId = p.TickSkillId });
+
+        if (!string.IsNullOrEmpty(p.OnDeathSkillId) && _configs.Skills.TryGetValue(p.OnDeathSkillId, out var deathSkill))
+            _eventBus.Publish(new RequestSkillCastEvent { Skill = deathSkill, CasterId = p.OwnerId, StartX = p.X, StartY = p.Y, Team = p.Team, State = state });
+    }
+
+
 
     private void ProcessCollisions(float dt, GameState state)
     {
@@ -284,10 +294,10 @@ public class CombatSystem : IGameSystem
             if (proj.Lifespan <= 0 || (!isOrbital && proj.HitEnemies.Count > proj.PierceCount))
             {
                 projectilesToRemove.Add(proj.Id);
-                if (!string.IsNullOrEmpty(proj.OnDeathSkillId) && _configs.Skills.TryGetValue(proj.OnDeathSkillId, out var deathSkill))
-                    _eventBus.Publish(new RequestSkillCastEvent { Skill = deathSkill, CasterId = proj.OwnerId, StartX = proj.X, StartY = proj.Y, Team = proj.Team, State = state });
+                HandleProjectileDeath(proj, state);
                 return;
             }
+
 
             bool isPlayerProj = state.Players.ContainsKey(proj.OwnerId) || (state.Enemies.TryGetValue(proj.OwnerId, out var o) && o.Team != "Enemy");
             var targets = proj.IsFriendlyProjectile ? (isPlayerProj ? playerTeam : hostileEnemies) : (isPlayerProj ? hostileEnemies : playerTeam);
@@ -373,10 +383,10 @@ public class CombatSystem : IGameSystem
                         if (isBlock || (!isOrbital && proj.HitEnemies.Count > proj.PierceCount))
                         {
                             projectilesToRemove.Add(proj.Id);
-                            if (!string.IsNullOrEmpty(proj.OnDeathSkillId) && _configs.Skills.TryGetValue(proj.OnDeathSkillId, out var deathSkill))
-                                _eventBus.Publish(new RequestSkillCastEvent { Skill = deathSkill, CasterId = proj.OwnerId, StartX = proj.X, StartY = proj.Y, Team = proj.Team, State = state });
+                            HandleProjectileDeath(proj,state);
                             break;
                         }
+
                     }
                 }
             }

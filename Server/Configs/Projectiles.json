@@ -137,7 +137,7 @@
         "lifespan": 15.0,
         "movementBehavior": "Linear",
         "tickRate": 0.1,
-        "tickSkillId": "laser_sweep"
+        "tickSkillId": "skill_laser_sweep_t1"
     },
     "fire_zone_entity": {
         "id": "fire_zone_entity",
