@@ -61,6 +61,8 @@ public abstract class BaseActorEntity
     public float CurrentCastTimer { get; set; }
     public float MaxCastTimer { get; set; }
     public Dictionary<string, float> DynamicSkillTimers { get; set; } = new();
+    public int CurrentSkillIndex { get; set; } = 0;
+
 
     // >>> THE NEW ECS STAT CACHE <<<
     [JsonIgnore]
@@ -200,7 +202,6 @@ public class EnemyEntity : BaseActorEntity
 
     // Tracks which weapon slots fired this tick (cleared at end of network tick)
     public List<int> FiredWeaponsThisTick { get; set; } = new();
-    public int CurrentSkillIndex { get; set; } = 0;
 
     // Initializes the enemy with the Master Stat List so it never crashes
     public void Initialize(Configs.EnemyConfig config, float spawnX, float spawnY, ConfigManager configManager)
@@ -384,7 +385,6 @@ public class PlayerEntity : BaseActorEntity
 
     public List<string> SynergizedTraits { get; private set; } = new();
     public List<ActiveSkill> SynergizedSkills { get; private set; } = new();
-    public int CurrentSkillIndex { get; set; } = 0;
 
     // Initializes the player with the Master Stat List so it never crashes
     public void Initialize(CharacterConfig config, ConfigManager configManager)

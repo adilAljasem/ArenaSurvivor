@@ -62,58 +62,42 @@ public class ConfigManager
             }
         };
     }
+
+
+    private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+    // Required config - throws (caught by LoadConfigs' try/catch) if the file is missing/invalid.
+    private static T LoadRequiredJsonConfig<T>(string path) where T : new()
+        => JsonSerializer.Deserialize<T>(File.ReadAllText(path), _jsonOptions) ?? new();
+
+    // Optional config - defaults to empty if the file doesn't exist.
+    private static T LoadOptionalJsonConfig<T>(string path) where T : new()
+        => File.Exists(path) ? (JsonSerializer.Deserialize<T>(File.ReadAllText(path), _jsonOptions) ?? new()) : new();
+
+
+
     public void LoadConfigs()
     {
         try
         {
-            // 1. Load EVERYTHING into TEMPORARY variables first
-            var newEnemies = JsonSerializer.Deserialize<Dictionary<string, EnemyConfig>>(
-                File.ReadAllText("Configs/Enemies.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
+            var newEnemies = LoadRequiredJsonConfig<Dictionary<string, EnemyConfig>>("Configs/Enemies.json");
+            var newWeapons = LoadRequiredJsonConfig<Dictionary<string, WeaponConfig>>("Configs/Weapons.json");
+            var newItems = LoadOptionalJsonConfig<Dictionary<string, ItemConfig>>("Configs/Items.json");
+            var newCharacters = LoadOptionalJsonConfig<Dictionary<string, CharacterConfig>>("Configs/Characters.json");
+            var newEffects = LoadOptionalJsonConfig<Dictionary<string, EffectConfig>>("Configs/Effects.json");
+            var newSkills = LoadOptionalJsonConfig<Dictionary<string, SkillConfig>>("Configs/Skills.json");
+            var newMaps = LoadOptionalJsonConfig<Dictionary<string, MapConfig>>("Configs/Maps.json");
+            var newProjectiles = LoadOptionalJsonConfig<Dictionary<string, ProjectileConfig>>("Configs/Projectiles.json");
+            var newLevelUpCards = LoadOptionalJsonConfig<Dictionary<string, LevelUpCardConfig>>("Configs/LevelUpCards.json");
+            var newStats = LoadOptionalJsonConfig<List<string>>("Configs/Stats.json");
+            var newTraits = LoadOptionalJsonConfig<Dictionary<string, TraitConfig>>("Configs/Traits.json");
+            var newDifficulties = LoadOptionalJsonConfig<Dictionary<string, DifficultyConfig>>("Configs/Difficulties.json");
+            var newAchievements = LoadOptionalJsonConfig<Dictionary<string, AchievementConfig>>("Configs/Achievements.json");
 
-            var newWeapons = JsonSerializer.Deserialize<Dictionary<string, WeaponConfig>>(
-                File.ReadAllText("Configs/Weapons.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
-
-            var newItems = File.Exists("Configs/Items.json") ? JsonSerializer.Deserialize<Dictionary<string, ItemConfig>>(
-                File.ReadAllText("Configs/Items.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
-
-            var newCharacters = File.Exists("Configs/Characters.json") ? JsonSerializer.Deserialize<Dictionary<string, CharacterConfig>>(
-                File.ReadAllText("Configs/Characters.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
-
-            var newEffects = File.Exists("Configs/Effects.json") ? JsonSerializer.Deserialize<Dictionary<string, EffectConfig>>(
-                File.ReadAllText("Configs/Effects.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
-
-            var newSkills = File.Exists("Configs/Skills.json") ? JsonSerializer.Deserialize<Dictionary<string, SkillConfig>>(
-                File.ReadAllText("Configs/Skills.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
-
-            var newMaps = File.Exists("Configs/Maps.json") ? JsonSerializer.Deserialize<Dictionary<string, MapConfig>>(
-                File.ReadAllText("Configs/Maps.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
-
-            var newProjectiles = File.Exists("Configs/Projectiles.json") ? JsonSerializer.Deserialize<Dictionary<string, ProjectileConfig>>(
-                File.ReadAllText("Configs/Projectiles.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
-
-            var newLevelUpCards = File.Exists("Configs/LevelUpCards.json") ? JsonSerializer.Deserialize<Dictionary<string, LevelUpCardConfig>>(
-                File.ReadAllText("Configs/LevelUpCards.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
-
-            var newStats = File.Exists("Configs/Stats.json") ? JsonSerializer.Deserialize<List<string>>(
-                File.ReadAllText("Configs/Stats.json")) ?? new() : new();
-
-            var newTraits = File.Exists("Configs/Traits.json") ? JsonSerializer.Deserialize<Dictionary<string, TraitConfig>>(
-                File.ReadAllText("Configs/Traits.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
-
-            var newDifficulties = File.Exists("Configs/Difficulties.json") ? JsonSerializer.Deserialize<Dictionary<string, DifficultyConfig>>(
-            File.ReadAllText("Configs/Difficulties.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
-
-            var newAchievements = File.Exists("Configs/Achievements.json") ? JsonSerializer.Deserialize<Dictionary<string, AchievementConfig>>(
-            File.ReadAllText("Configs/Achievements.json"), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new() : new();
-
-            // The dictionary KEY is the single source of truth for an achievement's identity —
-            // force Id to match it regardless of what's typed in the JSON "Id" field. This is
-            // what RequiredAchievements on gear, UserAchievement rows, and the client's name/icon
-            // lookups all key off of, so a stray typo in "Id" can never silently break matching.
             foreach (var kvp in newAchievements)
                 kvp.Value.Id = kvp.Key;
 
-            // 2. ATOMIC SWAP: Reassign everything at the exact same time!
+            // 2. ATOMIC SWAP (unchanged from here down)
             Enemies = newEnemies;
             Weapons = newWeapons;
             Items = newItems;
@@ -135,4 +119,5 @@ public class ConfigManager
             Console.WriteLine($"[CONFIG ERROR] Failed to parse JSON. Game will continue using old configs. Error: {ex.Message}");
         }
     }
+
 }

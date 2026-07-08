@@ -261,6 +261,8 @@ public class NetworkSystem : IGameSystem
         };
     }
 
+
+
     // AFTER — constants match GameScene.FAIR_WIDTH/FAIR_HEIGHT in main.ts EXACTLY.
     // If you tune the client zoom again, these two numbers must move with it.
     private const float FairWidth = 1728f;
@@ -286,6 +288,22 @@ public class NetworkSystem : IGameSystem
         );
     }
 
+    private static (HashSet<string> NewIds, HashSet<string> ExistingIds, List<string> DestroyedIds) DiffKnownIds(
+    ConcurrentDictionary<string, HashSet<string>> knownByConnection, string connectionId, List<object[]> visible, Func<object[], string> getId)
+    {
+        var known = knownByConnection.GetOrAdd(connectionId, _ => new HashSet<string>());
+        var visibleIds = visible.Select(getId).ToHashSet();
+
+        var newIds = visibleIds.Except(known).ToHashSet();
+        var destroyedIds = known.Except(visibleIds).ToList();
+        var existingIds = visibleIds.Intersect(known).ToHashSet();
+
+        knownByConnection[connectionId] = visibleIds;
+
+        return (newIds, existingIds, destroyedIds);
+    }
+
+
     private static FlatState CullForViewport(PlayerEntity player, float mapW, float mapH, FlatState globalState)
     {
         var (minX, maxX, minY, maxY) = GetViewBounds(player, mapW, mapH);
@@ -305,60 +323,39 @@ public class NetworkSystem : IGameSystem
 
     private (List<object[]> Full, List<object[]> Mini, List<string> Destroyed) ProcessEnemyDeltas(string connectionId, List<object[]> visibleEnemies)
     {
-        var knownEnemies = _clientKnownEnemies.GetOrAdd(connectionId, _ => new HashSet<string>());
-        var visibleEnemyIds = visibleEnemies.Select(e => (string)e[EnemyIdx.Id]).ToHashSet();
+        var (newIds, existingIds, destroyedIds) = DiffKnownIds(_clientKnownEnemies, connectionId, visibleEnemies, e => (string)e[EnemyIdx.Id]);
 
-        var newEnemyIds = visibleEnemyIds.Except(knownEnemies).ToHashSet();
-        var destroyedEnemyIds = knownEnemies.Except(visibleEnemyIds).ToList();
-        var existingEnemyIds = visibleEnemyIds.Intersect(knownEnemies).ToHashSet();
-
-        _clientKnownEnemies[connectionId] = visibleEnemyIds;
-
-        var fullEnemies = visibleEnemies.Where(e => newEnemyIds.Contains((string)e[EnemyIdx.Id])).ToList();
+        var fullEnemies = visibleEnemies.Where(e => newIds.Contains((string)e[EnemyIdx.Id])).ToList();
         var miniEnemies = visibleEnemies
-                          .Where(e => existingEnemyIds.Contains((string)e[EnemyIdx.Id]))
+                          .Where(e => existingIds.Contains((string)e[EnemyIdx.Id]))
                           .Select(e => new object[] {
-                        e[EnemyIdx.Id], e[EnemyIdx.X], e[EnemyIdx.Y], e[EnemyIdx.CurrentHp],e[EnemyIdx.MaxHp], e[EnemyIdx.AimX], e[EnemyIdx.AimY], e[EnemyIdx.StateId],
-                        e[EnemyIdx.CastingSkillId], e[EnemyIdx.CastTimer], e[EnemyIdx.MaxCastTimer], e[EnemyIdx.ActiveEffects], e[EnemyIdx.FiredWeapons],
-                        e[16]
+                    e[EnemyIdx.Id], e[EnemyIdx.X], e[EnemyIdx.Y], e[EnemyIdx.CurrentHp], e[EnemyIdx.MaxHp], e[EnemyIdx.AimX], e[EnemyIdx.AimY], e[EnemyIdx.StateId],
+                    e[EnemyIdx.CastingSkillId], e[EnemyIdx.CastTimer], e[EnemyIdx.MaxCastTimer], e[EnemyIdx.ActiveEffects], e[EnemyIdx.FiredWeapons],
+                    e[16]
                           }).ToList();
 
-        return (fullEnemies, miniEnemies, destroyedEnemyIds);
+        return (fullEnemies, miniEnemies, destroyedIds);
     }
+
 
     private (List<object[]> Full, List<object[]> Mini, List<string> Destroyed) ProcessPickupDeltas(string connectionId, List<object[]> visiblePickups)
     {
-        var knownPickups = _clientKnownPickups.GetOrAdd(connectionId, _ => new HashSet<string>());
-        var visiblePickupIds = visiblePickups.Select(pk => (string)pk[0]).ToHashSet();
+        var (newIds, existingIds, destroyedIds) = DiffKnownIds(_clientKnownPickups, connectionId, visiblePickups, pk => (string)pk[0]);
 
-        var newPickupIds = visiblePickupIds.Except(knownPickups).ToHashSet();
-        var destroyedPickupIds = knownPickups.Except(visiblePickupIds).ToList();
-        var existingPickupIds = visiblePickupIds.Intersect(knownPickups).ToHashSet();
-
-        _clientKnownPickups[connectionId] = visiblePickupIds;
-        var fullPickups = visiblePickups.Where(pk => newPickupIds.Contains((string)pk[0])).ToList();
-
-        // >>> OPTIMIZATION: Only send X/Y updates if the gold is actively flying! <<<
+        var fullPickups = visiblePickups.Where(pk => newIds.Contains((string)pk[0])).ToList();
         var miniPickups = visiblePickups
-                            .Where(pk => existingPickupIds.Contains((string)pk[0]) && pk.Length > 10 && (bool)pk[10])
+                            .Where(pk => existingIds.Contains((string)pk[0]) && pk.Length > 10 && (bool)pk[10])
                             .Select(pk => new object[] { pk[0], pk[1], pk[2] })
                             .ToList();
 
-        return (fullPickups, miniPickups, destroyedPickupIds);
+        return (fullPickups, miniPickups, destroyedIds);
     }
 
     private (List<object[]> Full, List<string> Destroyed) ProcessProjectileDeltas(string connectionId, List<object[]> visibleProjectiles)
     {
-        var knownProjectiles = _clientKnownProjectiles.GetOrAdd(connectionId, _ => new HashSet<string>());
-        var visibleProjectileIds = visibleProjectiles.Select(p => (string)p[0]).ToHashSet();
-
-        var newProjectileIds = visibleProjectileIds.Except(knownProjectiles).ToHashSet();
-        var destroyedProjectileIds = knownProjectiles.Except(visibleProjectileIds).ToList();
-
-        _clientKnownProjectiles[connectionId] = visibleProjectileIds;
-        var fullProjectiles = visibleProjectiles.Where(p => newProjectileIds.Contains((string)p[0])).ToList();
-
-        return (fullProjectiles, destroyedProjectileIds);
+        var (newIds, _, destroyedIds) = DiffKnownIds(_clientKnownProjectiles, connectionId, visibleProjectiles, p => (string)p[0]);
+        var fullProjectiles = visibleProjectiles.Where(p => newIds.Contains((string)p[0])).ToList();
+        return (fullProjectiles, destroyedIds);
     }
 
     private static readonly JsonSerializerOptions _serializerOptions = new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };

@@ -32,6 +32,19 @@ public class CombatSystem : IGameSystem
         }
     }
 
+    // Shared: both players and enemies place a weapon muzzle the same way - offset applied
+    // along one axis based on slot index (0=right, 1=left, 2=up, 3=down).
+    private static (float spawnX, float spawnY) ApplySlotOffset(float originX, float originY, int slotIndex, float offset)
+    {
+        float spawnX = originX, spawnY = originY;
+        if (slotIndex == 0) spawnX += offset;
+        else if (slotIndex == 1) spawnX -= offset;
+        else if (slotIndex == 2) spawnY -= offset;
+        else if (slotIndex == 3) spawnY += offset;
+        return (spawnX, spawnY);
+    }
+
+
     private void ProcessShooting(float dt, GameState state)
     {
         var activePlayers = state.Players.Values.Where(p => p.ActionState != "Dead").ToList();
@@ -136,24 +149,16 @@ public class CombatSystem : IGameSystem
             if (enemy.Weapons.Count == 0) return;
 
             float bestDistSq = float.MaxValue, targetX = 0, targetY = 0;
-            bool foundTarget = false;
 
             var opposingPlayers = enemy.Team == "Enemy" ? activePlayers : new List<PlayerEntity>();
-            foreach (var player in opposingPlayers)
-            {
-                float distSq = (player.X - enemy.X) * (player.X - enemy.X) + (player.Y - enemy.Y) * (player.Y - enemy.Y);
-                if (distSq < bestDistSq) { bestDistSq = distSq; targetX = player.X; targetY = player.Y; foundTarget = true; }
-            }
-
             var opposingTeam = enemy.Team == "Enemy" ? nonEnemyTeam : enemyTeam;
-            foreach (var summon in opposingTeam)
-            {
-                if (summon.Id == enemy.Id) continue;
-                float distSq = (summon.X - enemy.X) * (summon.X - enemy.X) + (summon.Y - enemy.Y) * (summon.Y - enemy.Y);
-                if (distSq < bestDistSq) { bestDistSq = distSq; targetX = summon.X; targetY = summon.Y; foundTarget = true; }
-            }
-            if (!foundTarget) return;
-            enemy.AimX = targetX; enemy.AimY = targetY;
+
+            // Original had `if (summon.Id == enemy.Id) continue;` here, but it was unreachable:
+            // opposingTeam is only ever the OPPOSITE team from the acting enemy, so it could never
+            // contain the acting enemy itself. Dropped - no behavior change, just dead code removed.
+            var target = TargetingHelper.FindClosestTarget(enemy.X, enemy.Y, float.MaxValue, opposingPlayers, opposingTeam);
+            if (target == null) return;
+            enemy.AimX = target.X; enemy.AimY = target.Y;
 
             // --- DYNAMIC ATTACK RADIUS CALCULATION ---
             float attackRadius = _configs.Enemies.TryGetValue(enemy.ConfigId, out var enemyCfg) ? enemyCfg.AttackRadius : 300f;
@@ -195,12 +200,8 @@ public class CombatSystem : IGameSystem
 
                 float entityScale = enemyCfg?.Scale ?? 1.0f;
                 float offset = enemyCfg?.WeaponOffset.HasValue == true ? (enemyCfg.WeaponOffset.Value * entityScale) : ((40f * entityScale) + 30f);
-                float spawnX = enemy.X, spawnY = enemy.Y;
+                var (spawnX, spawnY) = ApplySlotOffset(enemy.X, enemy.Y, weapon.SlotIndex, offset);
 
-                if (weapon.SlotIndex == 0) spawnX += offset;
-                else if (weapon.SlotIndex == 1) spawnX -= offset;
-                else if (weapon.SlotIndex == 2) spawnY -= offset;
-                else if (weapon.SlotIndex == 3) spawnY += offset;
 
                 float summonDirX = targetX - spawnX;
                 float summonDirY = targetY - spawnY;
