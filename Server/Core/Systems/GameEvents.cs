@@ -15,11 +15,9 @@ public interface IGameSystem
 public class EventBus
 {
     private readonly Dictionary<Type, List<Delegate>> _subscribers = new();
+    private readonly System.Collections.Concurrent.ConcurrentQueue<Action<GameState>> _eventQueue = new();
 
-    // FIX: Upgraded to ConcurrentQueue to handle simultaneous cross-thread publishing
-    private readonly System.Collections.Concurrent.ConcurrentQueue<Action> _eventQueue = new();
-
-    public void Subscribe<TEvent>(Action<TEvent> handler)
+    public void Subscribe<TEvent>(Action<TEvent, GameState> handler)
     {
         if (!_subscribers.ContainsKey(typeof(TEvent)))
             _subscribers[typeof(TEvent)] = new List<Delegate>();
@@ -32,21 +30,25 @@ public class EventBus
         {
             foreach (var handler in handlers)
             {
-                var action = handler as Action<TEvent>;
-                _eventQueue.Enqueue(() => action!(ev)); // Thread-safe insertion
+                var action = handler as Action<TEvent, GameState>;
+                // The event itself carries no GameState/entity references - only IDs and
+                // immutable values. GameState is supplied fresh by ProcessQueue below, at the
+                // moment each queued handler actually runs, not at Publish time - that's what
+                // stops a handler from ever acting on state that went stale between publish
+                // and processing (e.g. a target that disconnected mid-tick).
+                _eventQueue.Enqueue((state) => action!(ev, state));
             }
         }
     }
 
-    public void ProcessQueue()
+    public void ProcessQueue(GameState state)
     {
         int maxIterations = 10000;
         int iterations = 0;
 
-        // FIX: TryDequeue is the thread-safe way to pull from the queue
         while (_eventQueue.TryDequeue(out var action) && iterations < maxIterations)
         {
-            action.Invoke();
+            action.Invoke(state);
             iterations++;
         }
 
@@ -57,106 +59,109 @@ public class EventBus
         }
     }
 }
+
+// =====================================================================================
+// SAFETY + DRY HELPER: resolve an actor / its ID at the moment a queued handler actually
+// runs, instead of an event holding a direct (and potentially stale) entity reference.
+// This also replaces the `target is PlayerEntity p ? p.ConnectionId : ((EnemyEntity)target).Id`
+// pattern that was hand-rolled in several places (HealthSystem, CombatSystem).
+// =====================================================================================
+internal static class EntityResolver
+{
+    public static BaseActorEntity? ResolveActor(GameState state, string id)
+    {
+        if (string.IsNullOrEmpty(id)) return null;
+        if (state.Players.TryGetValue(id, out var player)) return player;
+        if (state.Enemies.TryGetValue(id, out var enemy)) return enemy;
+        return null;
+    }
+
+    public static string GetId(BaseActorEntity actor)
+        => actor is PlayerEntity player ? player.ConnectionId : ((EnemyEntity)actor).Id;
+}
+
 public class DamageAppliedEvent
 {
-    public BaseActorEntity Target { get; set; } = null!;
-    public string AttackerId { get; set; } = string.Empty;
-    public GameState State { get; set; } = null!;
-    public float Amount { get; set; }
-    public bool IsCritical { get; set; }
-    public bool IsDodge { get; set; }
-    public bool IsBlock { get; set; }
+    public string TargetId { get; init; } = string.Empty;
+    public string AttackerId { get; init; } = string.Empty;
+    public float Amount { get; init; }
+    public bool IsCritical { get; init; }
+    public bool IsDodge { get; init; }
+    public bool IsBlock { get; init; }
 }
 
 public class EntityDeathEvent
 {
-    public string EntityId { get; set; } = string.Empty;
-    public string KillerId { get; set; } = string.Empty;
-    public float X { get; set; }
-    public float Y { get; set; }
-    public string Team { get; set; } = string.Empty;
-    public string ConfigId { get; set; } = string.Empty;
-    public bool IsPlayer { get; set; }
-    public GameState State { get; set; } = null!;
+    public string EntityId { get; init; } = string.Empty;
+    public string KillerId { get; init; } = string.Empty;
+    public float X { get; init; }
+    public float Y { get; init; }
+    public string Team { get; init; } = string.Empty;
+    public string ConfigId { get; init; } = string.Empty;
+    public bool IsPlayer { get; init; }
 }
 
 public class RequestSkillCastEvent
 {
-    public SkillConfig Skill { get; set; } = null!;
-    public string CasterId { get; set; } = string.Empty;
-    public float StartX { get; set; }
-    public float StartY { get; set; }
-    public string Team { get; set; } = string.Empty;
-    public GameState State { get; set; } = null!;
-    public ProjectileEntity? SourceProjectile { get; set; }
+    // SkillConfig stays a direct reference deliberately - see note above the file list.
+    public SkillConfig Skill { get; init; } = null!;
+    public string CasterId { get; init; } = string.Empty;
+    public float StartX { get; init; }
+    public float StartY { get; init; }
+    public string Team { get; init; } = string.Empty;
+    public string? SourceProjectileId { get; init; }
 }
 
 public class TriggerDeathSkillsEvent
 {
-    public string EntityId { get; set; } = string.Empty;
-    public float X { get; set; }
-    public float Y { get; set; }
-    public string Team { get; set; } = string.Empty;
-    public List<string> Skills { get; set; } = new();
-    public GameState State { get; set; } = null!;
+    public string EntityId { get; init; } = string.Empty;
+    public float X { get; init; }
+    public float Y { get; init; }
+    public string Team { get; init; } = string.Empty;
+    public IReadOnlyList<string> Skills { get; init; } = Array.Empty<string>();
 }
 
 public class ResetPlayerSkillsEvent
 {
-    public GameState State { get; set; } = null!;
+    // No properties - this is purely a "reset everyone in the current room" signal.
+    // GameState is supplied to the handler via EventBus.ProcessQueue, not carried here.
 }
 
 public class ApplyEffectEvent
 {
-    public BaseActorEntity Target { get; set; } = null!;
-    public string EffectConfigId { get; set; } = string.Empty;
-
-    // >>> NEW: Who cast the effect? Used by EffectSystem to scale GrantedShield by the caster's
-    // shieldPower stat. Null when the effect is self-applied with no identifiable caster.
-    public BaseActorEntity? Caster { get; set; }
-    public int StackAmount { get; set; } = 1;
-
+    public string TargetId { get; init; } = string.Empty;
+    public string EffectConfigId { get; init; } = string.Empty;
+    public string? CasterId { get; init; }
+    public int StackAmount { get; init; } = 1;
 }
 
 public class SpawnProjectileEvent
 {
-    public List<ProjectileEntity> Projectiles { get; set; } = new();
-    public GameState State { get; set; } = null!;
+    public IReadOnlyList<ProjectileEntity> Projectiles { get; init; } = Array.Empty<ProjectileEntity>();
 }
 
-// Visual routing events
 public class AoeVisualEvent
 {
-    public AoeEventDto Dto { get; set; } = null!;
-
-    // >>> NEW: Identity for a looping AoE instance, mirrors BeamVisualEvent, so the client can
-    // track ONE persistent sprite per (caster, skill) for isRepeated AoEs instead of spawning
-    // a new burst every tick.
-    public string CasterId { get; set; } = string.Empty;
-    public string SkillId { get; set; } = string.Empty;
+    public AoeEventDto Dto { get; init; } = null!;
+    public string CasterId { get; init; } = string.Empty;
+    public string SkillId { get; init; } = string.Empty;
 }
+
 public class BeamVisualEvent
 {
-    public BeamEventDto Dto { get; set; } = null!;
-
-    // Identity for this beam instance, used by the client to track one persistent beam
-    // object per (caster, skill) pair across ticks instead of spawning a new flash each tick.
-    public string CasterId { get; set; } = string.Empty;
-    public string SkillId { get; set; } = string.Empty;
+    public BeamEventDto Dto { get; init; } = null!;
+    public string CasterId { get; init; } = string.Empty;
+    public string SkillId { get; init; } = string.Empty;
 }
 
-// Fired the instant a channeled beam's CurrentChannelTimer expires (or the caster dies/is
-// interrupted), so the client can destroy its persistent beam object precisely instead of
-// guessing from a gap between BeamVisualEvent ticks (which would always be either too early,
-// cutting the tail off, or leave a stale beam on screen if a packet ever drops).
 public class BeamEndedEvent
 {
-    public string CasterId { get; set; } = string.Empty;
-    public string SkillId { get; set; } = string.Empty;
+    public string CasterId { get; init; } = string.Empty;
+    public string SkillId { get; init; } = string.Empty;
 }
 
 public class ChatMessageEvent
 {
-    public string Sender { get; set; } = "System";
-    public string Message { get; set; } = string.Empty;
+    public string Sender { get; init; } = "System";
+    public string Message { get; init; } = string.Empty;
 }

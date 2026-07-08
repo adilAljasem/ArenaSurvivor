@@ -44,30 +44,35 @@ public class NetworkSystem : IGameSystem
     {
         _eventBus = eventBus;
 
-        _eventBus.Subscribe<DamageAppliedEvent>(ev =>
-        {
-            _damageEvents.Add(new DamageEventDto
-            {
-                X = ev.Target.X,
-                Y = ev.Target.Y,
-                Amount = ev.Amount,
-                IsCritical = ev.IsCritical,
-                IsDodge = ev.IsDodge,
-                IsBlock = ev.IsBlock
-            });
-        });
+        _eventBus.Subscribe<DamageAppliedEvent>((ev, state) =>
+ {
+     // Same staleness protection as HealthSystem: if the target's gone by the time this
+     // runs, just skip the damage-number visual instead of throwing.
+     var target = EntityResolver.ResolveActor(state, ev.TargetId);
+     if (target == null) return;
 
-        _eventBus.Subscribe<AoeVisualEvent>(ev => _aoeEvents.Add(ev));
-        _eventBus.Subscribe<BeamVisualEvent>(ev => _beamEvents.Add(ev));
-        _eventBus.Subscribe<BeamEndedEvent>(ev => _beamEndedEvents.Add(ev));
-        _eventBus.Subscribe<ChatMessageEvent>(ev =>
+     _damageEvents.Add(new DamageEventDto
+     {
+         X = target.X,
+         Y = target.Y,
+         Amount = ev.Amount,
+         IsCritical = ev.IsCritical,
+         IsDodge = ev.IsDodge,
+         IsBlock = ev.IsBlock
+     });
+ });
+
+        _eventBus.Subscribe<AoeVisualEvent>((ev, state) => _aoeEvents.Add(ev));
+        _eventBus.Subscribe<BeamVisualEvent>((ev, state) => _beamEvents.Add(ev));
+        _eventBus.Subscribe<BeamEndedEvent>((ev, state) => _beamEndedEvents.Add(ev));
+        _eventBus.Subscribe<ChatMessageEvent>((ev, state) =>
         {
-            // We use _clientKnownEnemies.Keys because it holds a thread-safe list of all active ConnectionIds in this specific room!
             if (!_clientKnownEnemies.IsEmpty)
             {
                 _hubContext.Clients.Clients(_clientKnownEnemies.Keys).SendAsync("ReceiveChatMessage", ev.Sender, ev.Message);
             }
         });
+
     }
 
     public void Update(float dt, GameState state)

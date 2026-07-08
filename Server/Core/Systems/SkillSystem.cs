@@ -22,18 +22,17 @@ public class SkillSystem : IGameSystem
         _eventBus.Subscribe<ResetPlayerSkillsEvent>(OnResetPlayerSkills);
     }
 
-    private void OnRequestSkillCast(RequestSkillCastEvent ev)
+    private void OnRequestSkillCast(RequestSkillCastEvent ev, GameState state)
     {
         var config = ev.Skill;
         string casterId = ev.CasterId;
         float startX = ev.StartX;
         float startY = ev.StartY;
         string team = ev.Team;
-        var state = ev.State;
-        var sourceProjectile = ev.SourceProjectile;
+        ProjectileEntity? sourceProjectile = !string.IsNullOrEmpty(ev.SourceProjectileId) && state.Projectiles.TryGetValue(ev.SourceProjectileId, out var sp) ? sp : null;
 
-        BaseActorEntity? caster = state.Players.ContainsKey(casterId) ? state.Players[casterId] :
-                                 (state.Enemies.ContainsKey(casterId) ? state.Enemies[casterId] : null);
+        BaseActorEntity? caster = EntityResolver.ResolveActor(state, casterId);
+
 
         float finalSpellDamage = config.BaseDamage;
         if (caster != null && Math.Abs(finalSpellDamage) > 0)
@@ -64,7 +63,7 @@ public class SkillSystem : IGameSystem
             {
                 foreach (var effectId in config.ApplyEffects)
                 {
-                    _eventBus.Publish(new ApplyEffectEvent { Target = caster, EffectConfigId = effectId, Caster = caster });
+                    _eventBus.Publish(new ApplyEffectEvent { TargetId = casterId, EffectConfigId = effectId, CasterId = casterId });
                 }
             }
             return;
@@ -203,7 +202,7 @@ public class SkillSystem : IGameSystem
                         newBullets[i].OrbitAngleOffset = i * angleStep;
                     }
                 }
-                _eventBus.Publish(new SpawnProjectileEvent { Projectiles = newBullets, State = state });
+                _eventBus.Publish(new SpawnProjectileEvent { Projectiles = newBullets });
             }
         }
 
@@ -265,7 +264,7 @@ public class SkillSystem : IGameSystem
                 if (distSqToSegment <= (effectiveRadius * effectiveRadius))
                 {
                     float mitigatedDamage = CombatSystem.CalculateMitigatedDamage(0f, finalSpellDamage, target, _configs);
-                    _eventBus.Publish(new DamageAppliedEvent { Target = target, AttackerId = casterId, State = state, Amount = mitigatedDamage, IsCritical = false, IsDodge = false, IsBlock = false });
+                    _eventBus.Publish(new DamageAppliedEvent { TargetId = EntityResolver.GetId(target), AttackerId = casterId, Amount = mitigatedDamage, IsCritical = false, IsDodge = false, IsBlock = false });
                 }
             }
         }
@@ -312,7 +311,7 @@ public class SkillSystem : IGameSystem
                 if (config.ApplyEffects != null)
                 {
                     foreach (var effectId in config.ApplyEffects)
-                        _eventBus.Publish(new ApplyEffectEvent { Target = target, EffectConfigId = effectId, Caster = caster });
+                        _eventBus.Publish(new ApplyEffectEvent { TargetId = EntityResolver.GetId(target), EffectConfigId = effectId, CasterId = casterId });
                 }
             }
 
@@ -326,7 +325,7 @@ public class SkillSystem : IGameSystem
                     if (distSq > radiusSq) continue;
 
                     float appliedAmount = mitigate ? CombatSystem.CalculateMitigatedDamage(0f, actualDamage, target, _configs) : actualDamage;
-                    _eventBus.Publish(new DamageAppliedEvent { Target = target, AttackerId = casterId, State = state, Amount = appliedAmount, IsCritical = false, IsDodge = false, IsBlock = false });
+                    _eventBus.Publish(new DamageAppliedEvent { TargetId = EntityResolver.GetId(target), AttackerId = casterId, Amount = appliedAmount, IsCritical = false, IsDodge = false, IsBlock = false });
                     ApplyAoeEffects(target);
                 }
             }
@@ -355,21 +354,20 @@ public class SkillSystem : IGameSystem
 
     }
 
-    private void OnTriggerDeathSkills(TriggerDeathSkillsEvent ev)
+    private void OnTriggerDeathSkills(TriggerDeathSkillsEvent ev, GameState state)
     {
-        if (ev.Skills == null) return;
         foreach (var skillId in ev.Skills)
         {
             if (_configs.Skills.TryGetValue(skillId, out var skillConfig))
             {
-                _eventBus.Publish(new RequestSkillCastEvent { Skill = skillConfig, CasterId = ev.EntityId, StartX = ev.X, StartY = ev.Y, Team = ev.Team, State = ev.State });
+                _eventBus.Publish(new RequestSkillCastEvent { Skill = skillConfig, CasterId = ev.EntityId, StartX = ev.X, StartY = ev.Y, Team = ev.Team });
             }
         }
     }
 
-    private void OnResetPlayerSkills(ResetPlayerSkillsEvent ev)
+    private void OnResetPlayerSkills(ResetPlayerSkillsEvent ev, GameState state)
     {
-        foreach (var player in ev.State.Players.Values)
+        foreach (var player in state.Players.Values)
         {
             player.ActionState = "Idle";
             player.CurrentCastingSkillId = string.Empty;
@@ -420,8 +418,8 @@ public class SkillSystem : IGameSystem
                     busySkill.CurrentCastTimer -= dt;
                     if (busySkill.CurrentCastTimer <= 0)
                     {
-                        if (busyConfig.ChannelDurationSeconds > 0) { busySkill.CurrentChannelTimer = busyConfig.ChannelDurationSeconds; if (!busyConfig.IsRepeated) SkillStateHelper.RequestSkillCast(_eventBus, busyConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team, state); }
-                        else { SkillStateHelper.RequestSkillCast(_eventBus, busyConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team, state); busySkill.CurrentCooldown = busyConfig.CooldownSeconds / hasteMult; }
+                        if (busyConfig.ChannelDurationSeconds > 0) { busySkill.CurrentChannelTimer = busyConfig.ChannelDurationSeconds; if (!busyConfig.IsRepeated) SkillStateHelper.RequestSkillCast(_eventBus, busyConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team); }
+                        else { SkillStateHelper.RequestSkillCast(_eventBus, busyConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team); busySkill.CurrentCooldown = busyConfig.CooldownSeconds / hasteMult; }
                     }
                 }
                 else
@@ -479,8 +477,8 @@ public class SkillSystem : IGameSystem
                     busySkill.CurrentCastTimer -= dt;
                     if (busySkill.CurrentCastTimer <= 0)
                     {
-                        if (busyConfig.ChannelDurationSeconds > 0) { busySkill.CurrentChannelTimer = busyConfig.ChannelDurationSeconds; if (!busyConfig.IsRepeated) SkillStateHelper.RequestSkillCast(_eventBus, busyConfig, player.ConnectionId, player.X, player.Y, player.Team, state); }
-                        else { SkillStateHelper.RequestSkillCast(_eventBus, busyConfig, player.ConnectionId, player.X, player.Y, player.Team, state); busySkill.CurrentCooldown = busyConfig.CooldownSeconds / hasteMult; }
+                        if (busyConfig.ChannelDurationSeconds > 0) { busySkill.CurrentChannelTimer = busyConfig.ChannelDurationSeconds; if (!busyConfig.IsRepeated) SkillStateHelper.RequestSkillCast(_eventBus, busyConfig, player.ConnectionId, player.X, player.Y, player.Team); }
+                        else { SkillStateHelper.RequestSkillCast(_eventBus, busyConfig, player.ConnectionId, player.X, player.Y, player.Team); busySkill.CurrentCooldown = busyConfig.CooldownSeconds / hasteMult; }
                     }
                 }
                 else
@@ -522,7 +520,7 @@ public class SkillSystem : IGameSystem
 
 
     private void ExecuteSkill(SkillConfig config, string casterId, float startX, float startY, string team, GameState state, ConfigManager configs, EventBus eventBus, ProjectileEntity? sourceProjectile = null)
-        => SkillStateHelper.RequestSkillCast(eventBus, config, casterId, startX, startY, team, state, sourceProjectile);
+        => SkillStateHelper.RequestSkillCast(eventBus, config, casterId, startX, startY, team, sourceProjectile);
 
 
 
@@ -565,9 +563,9 @@ internal static class TargetingHelper
 // =====================================================================================
 internal static class SkillStateHelper
 {
-    public static void RequestSkillCast(EventBus eventBus, SkillConfig config, string casterId, float startX, float startY, string team, GameState state, ProjectileEntity? sourceProjectile = null)
+    public static void RequestSkillCast(EventBus eventBus, SkillConfig config, string casterId, float startX, float startY, string team, ProjectileEntity? sourceProjectile = null)
     {
-        eventBus.Publish(new RequestSkillCastEvent { Skill = config, CasterId = casterId, StartX = startX, StartY = startY, Team = team, State = state, SourceProjectile = sourceProjectile });
+        eventBus.Publish(new RequestSkillCastEvent { Skill = config, CasterId = casterId, StartX = startX, StartY = startY, Team = team, SourceProjectileId = sourceProjectile?.Id });
     }
 
     public static void TickSkillTimers(
@@ -588,12 +586,12 @@ internal static class SkillStateHelper
                     if (skill.TimeSinceLastTick >= skillConfig.TickRate)
                     {
                         skill.TimeSinceLastTick -= skillConfig.TickRate;
-                        RequestSkillCast(eventBus, skillConfig, casterId, x, y, team, state);
+                        RequestSkillCast(eventBus, skillConfig, casterId, x, y, team);
                     }
                 }
                 else
                 {
-                    RequestSkillCast(eventBus, skillConfig, casterId, x, y, team, state);
+                    RequestSkillCast(eventBus, skillConfig, casterId, x, y, team);
                 }
             }
 
@@ -610,8 +608,8 @@ internal static class SkillStateHelper
             skill.CurrentCastTimer -= dt;
             if (skill.CurrentCastTimer <= 0)
             {
-                if (skillConfig.ChannelDurationSeconds > 0) { skill.CurrentChannelTimer = skillConfig.ChannelDurationSeconds; if (!skillConfig.IsRepeated) RequestSkillCast(eventBus, skillConfig, casterId, x, y, team, state); }
-                else { RequestSkillCast(eventBus, skillConfig, casterId, x, y, team, state); skill.CurrentCooldown = skillConfig.CooldownSeconds / hasteMult; }
+                if (skillConfig.ChannelDurationSeconds > 0) { skill.CurrentChannelTimer = skillConfig.ChannelDurationSeconds; if (!skillConfig.IsRepeated) RequestSkillCast(eventBus, skillConfig, casterId, x, y, team); }
+                else { RequestSkillCast(eventBus, skillConfig, casterId, x, y, team); skill.CurrentCooldown = skillConfig.CooldownSeconds / hasteMult; }
             }
         }
     }
@@ -646,8 +644,8 @@ internal static class SkillStateHelper
             }
             else
             {
-                if (config.ChannelDurationSeconds > 0) { skill.CurrentChannelTimer = config.ChannelDurationSeconds; if (!config.IsRepeated) RequestSkillCast(eventBus, config, casterId, x, y, team, state); }
-                else { RequestSkillCast(eventBus, config, casterId, x, y, team, state); skill.CurrentCooldown = config.CooldownSeconds / hasteMult; }
+                if (config.ChannelDurationSeconds > 0) { skill.CurrentChannelTimer = config.ChannelDurationSeconds; if (!config.IsRepeated) RequestSkillCast(eventBus, config, casterId, x, y, team); }
+                else { RequestSkillCast(eventBus, config, casterId, x, y, team); skill.CurrentCooldown = config.CooldownSeconds / hasteMult; }
                 if (!config.IsIndependent) return skillIndex;
             }
         }
@@ -680,8 +678,8 @@ internal static class SkillStateHelper
 
             if (castTime <= 0)
             {
-                if (skillConfig.ChannelDurationSeconds > 0) { activeSkill.CurrentChannelTimer = skillConfig.ChannelDurationSeconds; if (!skillConfig.IsRepeated) RequestSkillCast(eventBus, skillConfig, casterId, x, y, team, state); }
-                else { RequestSkillCast(eventBus, skillConfig, casterId, x, y, team, state); activeSkill.CurrentCooldown = skillConfig.CooldownSeconds / hasteMult; }
+                if (skillConfig.ChannelDurationSeconds > 0) { activeSkill.CurrentChannelTimer = skillConfig.ChannelDurationSeconds; if (!skillConfig.IsRepeated) RequestSkillCast(eventBus, skillConfig, casterId, x, y, team); }
+                else { RequestSkillCast(eventBus, skillConfig, casterId, x, y, team); activeSkill.CurrentCooldown = skillConfig.CooldownSeconds / hasteMult; }
             }
             else activeSkill.CurrentCastTimer = castTime / hasteMult;
         }

@@ -23,13 +23,15 @@ public class LootSystem : IGameSystem
     // totally different scale (fractions of 1) than gold (whole numbers).
     private const float HarvestingDropBonusFactor = 1.0f;
 
-    private void OnEntityDeath(EntityDeathEvent ev)
+    // NOTE: signature now takes GameState directly - ev.State no longer exists, EventBus
+    // supplies the current state to every handler at execution time instead.
+    private void OnEntityDeath(EntityDeathEvent ev, GameState state)
     {
         if (ev.IsPlayer) return;
 
         float harvesting = 0f;
         int bonusGold = 0;
-        if (!string.IsNullOrEmpty(ev.KillerId) && ev.State.Players.TryGetValue(ev.KillerId, out var killer))
+        if (!string.IsNullOrEmpty(ev.KillerId) && state.Players.TryGetValue(ev.KillerId, out var killer))
         {
             harvesting = killer.GetTotalStat("harvesting", _configs);
             bonusGold = (int)Math.Floor(harvesting / 100f);
@@ -37,21 +39,23 @@ public class LootSystem : IGameSystem
         }
 
         var gold = new PickupEntity { X = ev.X, Y = ev.Y, Value = 1 + bonusGold };
-        ev.State.Pickups.TryAdd(gold.Id, gold);
+        state.Pickups.TryAdd(gold.Id, gold);
 
-        if (ev.State.Enemies.TryGetValue(ev.EntityId, out var enemy) && _configs.Enemies.TryGetValue(ev.ConfigId, out var eCfg))
+        if (state.Enemies.TryGetValue(ev.EntityId, out var enemy) && _configs.Enemies.TryGetValue(ev.ConfigId, out var eCfg))
         {
-            SpawnGearDrops(enemy, eCfg, ev.State, harvesting);
+            SpawnGearDrops(enemy, eCfg, state, harvesting);
 
-            // >>> THE FIX: Publish to EventBus instead of calling SkillSystem directly! <<<
             _eventBus.Publish(new TriggerDeathSkillsEvent
             {
                 EntityId = ev.EntityId,
                 X = ev.X,
                 Y = ev.Y,
                 Team = ev.Team,
-                Skills = eCfg.OnDeathSkills,
-                State = ev.State
+                // NOTE: TriggerDeathSkillsEvent.Skills defaults to Array.Empty<string>() now
+                // instead of the old `if (ev.Skills == null) return;` null-guard in SkillSystem's
+                // handler - so it's null-coalesced here at the source instead, in case
+                // eCfg.OnDeathSkills is ever null in a config that doesn't define it.
+                Skills = eCfg.OnDeathSkills ?? new List<string>()
             });
         }
     }

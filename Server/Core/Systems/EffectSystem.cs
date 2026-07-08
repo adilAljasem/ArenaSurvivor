@@ -1,5 +1,7 @@
 using Server.Configs;
 using Server.Entities;
+using System;
+using System.Linq;
 
 namespace Server.Core.Systems;
 
@@ -21,26 +23,30 @@ public class EffectSystem : IGameSystem
         foreach (var enemy in state.Enemies.Values) ProcessEffectsForEntity(dt, enemy, state);
     }
 
-    private void OnApplyEffect(ApplyEffectEvent ev)
+    private void OnApplyEffect(ApplyEffectEvent ev, GameState state)
     {
+        // NEW: resolve Target/Caster by ID at execution time instead of holding direct
+        // references on the event. If the target vanished between publish and processing
+        // (e.g. it died and got cleaned up earlier in the same queue flush), this just no-ops.
+        var target = EntityResolver.ResolveActor(state, ev.TargetId);
+        if (target == null) return;
+
         if (_configs.Effects.TryGetValue(ev.EffectConfigId, out var effectConfig))
         {
-            string casterId = string.Empty;
-            if (ev.Caster != null)
-                casterId = ev.Caster is PlayerEntity cp ? cp.ConnectionId : ((EnemyEntity)ev.Caster).Id;
+            var casterEntity = !string.IsNullOrEmpty(ev.CasterId) ? EntityResolver.ResolveActor(state, ev.CasterId) : null;
+            string casterId = ev.CasterId ?? string.Empty;
 
             float shieldToGrant = effectConfig.GrantedShield;
-            if (shieldToGrant > 0 && ev.Caster != null)
+            if (shieldToGrant > 0 && casterEntity != null)
             {
-                float shieldPower = ev.Caster.GetTotalStat("shieldPower", _configs);
+                float shieldPower = casterEntity.GetTotalStat("shieldPower", _configs);
                 shieldToGrant = Math.Max(0f, shieldToGrant * (1f + shieldPower / 100f)); // same "100 = 1 unit" convention as healPower
             }
-
 
             // Matching on ConfigId + SourceId (caster) instead of just ConfigId: player A and
             // player B applying the same debuff to the same target get two separate instances,
             // each with its own timer and stack count, instead of overwriting each other.
-            var existing = ev.Target.ActiveEffects.FirstOrDefault(e => e.ConfigId == ev.EffectConfigId && e.SourceId == casterId);
+            var existing = target.ActiveEffects.FirstOrDefault(e => e.ConfigId == ev.EffectConfigId && e.SourceId == casterId);
             int maxStack = Math.Max(1, effectConfig.MaxStack);
 
             if (existing != null)
@@ -51,9 +57,9 @@ public class EffectSystem : IGameSystem
                 if (shieldToGrant > 0)
                 {
                     float newShield = shieldToGrant * existing.StackCount;
-                    ev.Target.CurrentShield -= existing.GrantedShieldAmount;
+                    target.CurrentShield -= existing.GrantedShieldAmount;
                     existing.GrantedShieldAmount = newShield;
-                    ev.Target.CurrentShield += newShield;
+                    target.CurrentShield += newShield;
                 }
             }
             else
@@ -61,20 +67,23 @@ public class EffectSystem : IGameSystem
                 int startingStacks = Math.Min(maxStack, ev.StackAmount);
                 float initialShield = shieldToGrant * startingStacks;
 
-                ev.Target.ActiveEffects.Add(new ActiveEffect
+                target.ActiveEffects.Add(new ActiveEffect
                 {
                     ConfigId = ev.EffectConfigId,
                     TimeRemaining = effectConfig.Duration,
                     GrantedShieldAmount = initialShield,
                     StackCount = startingStacks,
                     SourceId = casterId,
-                    Caster = ev.Caster
+                    // ActiveEffect.Caster is a persistent per-entity component (long-lived state,
+                    // not an event), so holding a resolved reference here is fine - it's the same
+                    // kind of reference HealthSystem already reads back via effect.Caster.
+                    Caster = casterEntity
                 });
-                ev.Target.CurrentShield += initialShield;
+                target.CurrentShield += initialShield;
             }
 
             // A stack change can shift a buff's magnitude — force StatSystem to pick it up.
-            ev.Target.StatsNeedRecalculation = true;
+            target.StatsNeedRecalculation = true;
         }
     }
 
@@ -102,13 +111,12 @@ public class EffectSystem : IGameSystem
             {
                 effect.TimeSinceLastTick -= config.TickRate;
 
-                // >>> NEW: AttackerId = SourceId links the tick back to the original applier,
-                // so HealthSystem.GetHealerHealPower looks up their healPower for tick heals (TickDamage < 0).
+                // AttackerId = SourceId links the tick back to the original applier, so
+                // HealthSystem.GetHealerHealPower looks up their healPower for tick heals.
                 _eventBus.Publish(new DamageAppliedEvent
                 {
-                    Target = entity,
+                    TargetId = EntityResolver.GetId(entity),
                     AttackerId = effect.SourceId,
-                    State = state,
                     Amount = config.TickDamage * effect.StackCount,
                     IsCritical = false,
                     IsBlock = false,
@@ -117,15 +125,13 @@ public class EffectSystem : IGameSystem
 
                 if (!string.IsNullOrEmpty(config.TickSkillId) && _configs.Skills.TryGetValue(config.TickSkillId, out var tickSkill))
                 {
-                    string skillCasterId = entity is PlayerEntity p ? p.ConnectionId : ((EnemyEntity)entity).Id;
                     _eventBus.Publish(new RequestSkillCastEvent
                     {
                         Skill = tickSkill,
-                        CasterId = skillCasterId,
+                        CasterId = EntityResolver.GetId(entity),
                         StartX = entity.X,
                         StartY = entity.Y,
-                        Team = entity.Team,
-                        State = state
+                        Team = entity.Team
                     });
                 }
             }

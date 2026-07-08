@@ -15,7 +15,6 @@ public class HealthSystem : IGameSystem
         _eventBus = eventBus;
         _configs = configs;
         _eventBus.Subscribe<DamageAppliedEvent>(OnDamageApplied);
-        // Subscribe to death events to track Kills and Deaths
         _eventBus.Subscribe<EntityDeathEvent>(OnEntityDeath);
     }
 
@@ -43,38 +42,36 @@ public class HealthSystem : IGameSystem
         }
     }
 
-    private void OnEntityDeath(EntityDeathEvent ev)
+    private void OnEntityDeath(EntityDeathEvent ev, GameState state)
     {
-        // 1. Track Deaths
-        if (ev.IsPlayer && ev.State.Players.TryGetValue(ev.EntityId, out var deadPlayer))
+        if (ev.IsPlayer && state.Players.TryGetValue(ev.EntityId, out var deadPlayer))
             deadPlayer.Deaths++;
 
-        // 2. Track Kills
-        if (ev.State.Players.TryGetValue(ev.KillerId, out var killer))
+        if (state.Players.TryGetValue(ev.KillerId, out var killer))
             killer.Kills++;
     }
 
-    private void OnDamageApplied(DamageAppliedEvent ev)
+    private void OnDamageApplied(DamageAppliedEvent ev, GameState state)
     {
-        if (ev.Target.ActionState == "Dead" || ev.IsDodge || ev.IsBlock) return;
+        // NEW: the target is resolved by ID at execution time instead of held as a direct
+        // reference on the event. If it's gone (e.g. the player disconnected between publish
+        // and processing), this just no-ops instead of operating on stale/removed state.
+        var target = EntityResolver.ResolveActor(state, ev.TargetId);
+        if (target == null || target.ActionState == "Dead" || ev.IsDodge || ev.IsBlock) return;
 
-        var attackerPlayer = ev.State.Players.GetValueOrDefault(ev.AttackerId);
-        var targetPlayer = ev.Target as PlayerEntity;
+        var attackerPlayer = state.Players.GetValueOrDefault(ev.AttackerId);
+        var targetPlayer = target as PlayerEntity;
 
         // --- HEALING ---
         if (ev.Amount < 0)
         {
-            float maxHp = ev.Target.GetTotalStat("maxHp", _configs);
+            float maxHp = target.GetTotalStat("maxHp", _configs);
             float rawHeal = -ev.Amount;
-            float healPower = GetHealerHealPower(ev);
+            float healPower = GetHealerHealPower(ev.AttackerId, target, state);
 
-            // Same "100 = 1 unit" convention as harvesting and your other support stats:
-            // 50 healPower = +50% healing, not +5000%.
-            float actualHeal = Math.Min(maxHp - ev.Target.CurrentHp, Math.Max(0f, rawHeal * (1f + healPower / 100f)));
-            ev.Target.CurrentHp += actualHeal;
+            float actualHeal = Math.Min(maxHp - target.CurrentHp, Math.Max(0f, rawHeal * (1f + healPower / 100f)));
+            target.CurrentHp += actualHeal;
 
-            // FIX: Only the person who CAST the heal (AttackerId) gets the credit.
-            // If they healed themselves, they get credit. If they healed an ally, they get credit.
             if (attackerPlayer != null)
             {
                 attackerPlayer.TotalHealingDone += actualHeal;
@@ -83,18 +80,22 @@ public class HealthSystem : IGameSystem
         }
 
         // --- SHIELD MITIGATION ---
-        if (ev.Amount > 0 && ev.Target.CurrentShield > 0)
+        // NOTE: the original mutated `ev.Amount` directly here (`ev.Amount = remainingDamage`) -
+        // that's now illegal since Amount is init-only, and it's exactly the post-publish event
+        // mutation Rule 3 forbids. Using a local variable instead fixes the same bug the rule
+        // was written to prevent: a second subscriber to DamageAppliedEvent would previously have
+        // seen whatever the first subscriber left in ev.Amount, in enqueue order, silently.
+        float remainingDamage = ev.Amount;
+        if (remainingDamage > 0 && target.CurrentShield > 0)
         {
-            float remainingDamage = ev.Amount;
-            foreach (var effect in ev.Target.ActiveEffects.Where(e => e.GrantedShieldAmount > 0))
+            foreach (var effect in target.ActiveEffects.Where(e => e.GrantedShieldAmount > 0))
             {
                 if (remainingDamage <= 0) break;
                 float absorb = Math.Min(effect.GrantedShieldAmount, remainingDamage);
                 effect.GrantedShieldAmount -= absorb;
-                ev.Target.CurrentShield -= absorb;
+                target.CurrentShield -= absorb;
                 remainingDamage -= absorb;
 
-                // >>> FIX: Award to Shielding instead of Healing <<<
                 if (effect.Caster is PlayerEntity shieldCaster)
                 {
                     shieldCaster.TotalShieldingDone += absorb;
@@ -104,50 +105,43 @@ public class HealthSystem : IGameSystem
                     targetPlayer.TotalShieldingDone += absorb;
                 }
             }
-            ev.Target.CurrentShield = Math.Max(0, ev.Target.CurrentShield);
-            ev.Amount = remainingDamage;
+            target.CurrentShield = Math.Max(0, target.CurrentShield);
         }
 
         // --- DAMAGE TRACKING ---
-        if (ev.Amount > 0)
+        if (remainingDamage > 0)
         {
-            if (attackerPlayer != null) attackerPlayer.TotalDamageDealt += ev.Amount;
-            // We no longer care about tracking Damage Taken for the UI, but we can leave the math here
-            if (targetPlayer != null) targetPlayer.TotalDamageTaken += ev.Amount;
+            if (attackerPlayer != null) attackerPlayer.TotalDamageDealt += remainingDamage;
+            if (targetPlayer != null) targetPlayer.TotalDamageTaken += remainingDamage;
 
-            ev.Target.CurrentHp -= ev.Amount;
+            target.CurrentHp -= remainingDamage;
         }
 
         // --- DEATH TRIGGER ---
-        if (ev.Target.CurrentHp <= 0 && ev.Target.ActionState != "Dead")
+        if (target.CurrentHp <= 0 && target.ActionState != "Dead")
         {
-            ev.Target.ActionState = "Dead";
-            bool isPlayer = ev.Target is PlayerEntity;
-            string entityId = isPlayer ? ((PlayerEntity)ev.Target).ConnectionId : ((EnemyEntity)ev.Target).Id;
-            string configId = isPlayer ? ((PlayerEntity)ev.Target).ConfigId : ((EnemyEntity)ev.Target).ConfigId;
+            target.ActionState = "Dead";
+            bool isPlayer = target is PlayerEntity;
+            string entityId = EntityResolver.GetId(target);
+            string configId = isPlayer ? ((PlayerEntity)target).ConfigId : ((EnemyEntity)target).ConfigId;
 
             _eventBus.Publish(new EntityDeathEvent
             {
                 EntityId = entityId,
                 KillerId = ev.AttackerId,
-                X = ev.Target.X,
-                Y = ev.Target.Y,
-                Team = ev.Target.Team,
+                X = target.X,
+                Y = target.Y,
+                Team = target.Team,
                 ConfigId = configId,
-                IsPlayer = isPlayer,
-                State = ev.State
+                IsPlayer = isPlayer
             });
         }
     }
 
-    private float GetHealerHealPower(DamageAppliedEvent ev)
+    private float GetHealerHealPower(string attackerId, BaseActorEntity target, GameState state)
     {
-        if (!string.IsNullOrEmpty(ev.AttackerId) && ev.State != null)
-        {
-            BaseActorEntity? healer = ev.State.Players.GetValueOrDefault(ev.AttackerId) as BaseActorEntity
-                ?? ev.State.Enemies.GetValueOrDefault(ev.AttackerId);
-            if (healer != null) return healer.CachedStats.GetValueOrDefault("healPower", 0f);
-        }
-        return ev.Target.CachedStats.GetValueOrDefault("healPower", 0f);
+        var healer = EntityResolver.ResolveActor(state, attackerId);
+        if (healer != null) return healer.CachedStats.GetValueOrDefault("healPower", 0f);
+        return target.CachedStats.GetValueOrDefault("healPower", 0f);
     }
 }

@@ -166,18 +166,20 @@ public class GameRoom
             {
                 var sysTimer = System.Diagnostics.Stopwatch.StartNew();
                 system.Update(dt, State);
-                EventBus.ProcessQueue();
+                EventBus.ProcessQueue(State);
                 sysTimer.Stop();
 
                 if (sysTimer.ElapsedMilliseconds > 15)
                     Console.WriteLine($"[LAG SPIKE] {system.GetType().Name} took {sysTimer.ElapsedMilliseconds}ms!");
             }
+
         }
         else
         {
             // Process chat/events even when paused
-            EventBus.ProcessQueue();
+            EventBus.ProcessQueue(State);
         }
+
 
         // ─── NETWORK (always broadcast so players see frozen state) ───────────
         var currProjectiles = State.Projectiles.Keys.ToHashSet();
@@ -328,7 +330,7 @@ public class GameRoom
 
     public int GetMaxPlayers() =>
         _configManager.Maps.TryGetValue(CurrentMapId, out var mapCfg) ? mapCfg.MaxPlayers : 4;
-        
+
 
     public void StartMatch()
     {
@@ -369,7 +371,7 @@ public class GameRoom
         State.Enemies.Clear();
         State.Projectiles.Clear();
 
-        EventBus.Publish(new ResetPlayerSkillsEvent { State = State });
+        EventBus.Publish(new ResetPlayerSkillsEvent());
 
         int totalGold = State.Pickups.Values.Where(p => p.Type == PickupType.Gold).Sum(p => p.Value);
         foreach (var id in State.Pickups.Values.Where(p => p.Type == PickupType.Gold).Select(p => p.Id).ToList())

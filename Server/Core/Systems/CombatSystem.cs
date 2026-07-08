@@ -24,13 +24,14 @@ public class CombatSystem : IGameSystem
         ProcessCollisions(dt, state);
     }
 
-    private void OnSpawnProjectile(SpawnProjectileEvent ev)
+    private void OnSpawnProjectile(SpawnProjectileEvent ev, GameState state)
     {
         foreach (var proj in ev.Projectiles)
         {
-            ev.State.Projectiles.TryAdd(proj.Id, proj);
+            state.Projectiles.TryAdd(proj.Id, proj);
         }
     }
+
 
     // Shared: both players and enemies place a weapon muzzle the same way - offset applied
     // along one axis based on slot index (0=right, 1=left, 2=up, 3=down).
@@ -136,7 +137,7 @@ public class CombatSystem : IGameSystem
                                 ));
                             }
 
-                            _eventBus.Publish(new SpawnProjectileEvent { Projectiles = allNewBullets, State = state });
+                            _eventBus.Publish(new SpawnProjectileEvent { Projectiles = allNewBullets });
                         }
                     }
                 }
@@ -225,7 +226,7 @@ public class CombatSystem : IGameSystem
                 if (pCfg2.MovementBehavior == "Cleave" || pCfg2.MovementBehavior == "Whirlwind") { spawnX = enemy.X; spawnY = enemy.Y; }
 
                 var newBullets = ProjectileFactory.Create(pCfg2, enemy.Id, enemy.Team, spawnX, spawnY, summonDirX, summonDirY, physDmg, magicDmg, pCfg2.BaseSpeed, 0f, combined2, 1, computedLifespan, isCrit);
-                _eventBus.Publish(new SpawnProjectileEvent { Projectiles = newBullets, State = state });
+                _eventBus.Publish(new SpawnProjectileEvent { Projectiles = newBullets });
             }
         });
     }
@@ -236,7 +237,7 @@ public class CombatSystem : IGameSystem
             _eventBus.Publish(new BeamEndedEvent { CasterId = p.Id, SkillId = p.TickSkillId });
 
         if (!string.IsNullOrEmpty(p.OnDeathSkillId) && _configs.Skills.TryGetValue(p.OnDeathSkillId, out var deathSkill))
-            _eventBus.Publish(new RequestSkillCastEvent { Skill = deathSkill, CasterId = p.OwnerId, StartX = p.X, StartY = p.Y, Team = p.Team, State = state });
+            _eventBus.Publish(new RequestSkillCastEvent { Skill = deathSkill, CasterId = p.OwnerId, StartX = p.X, StartY = p.Y, Team = p.Team });
     }
 
 
@@ -286,7 +287,7 @@ public class CombatSystem : IGameSystem
                     proj.TimeSinceLastTick %= safeTickRate;
                     proj.HitEnemies.Clear();
                     if (hasTickSkill && tickSkill != null)
-                        _eventBus.Publish(new RequestSkillCastEvent { Skill = tickSkill, CasterId = proj.OwnerId, StartX = proj.X, StartY = proj.Y, Team = proj.Team, State = state, SourceProjectile = proj });
+                        _eventBus.Publish(new RequestSkillCastEvent { Skill = tickSkill, CasterId = proj.OwnerId, StartX = proj.X, StartY = proj.Y, Team = proj.Team, SourceProjectileId = proj.Id });
                 }
             }
 
@@ -341,14 +342,16 @@ public class CombatSystem : IGameSystem
                         else proj.HitEnemies.Add(tId);
 
                         if (proj.MagicDamage < 0)
-                            _eventBus.Publish(new DamageAppliedEvent { Target = target, AttackerId = proj.OwnerId, State = state, Amount = proj.MagicDamage, IsCritical = false, IsDodge = false, IsBlock = false });
+                            _eventBus.Publish(new DamageAppliedEvent { TargetId = tId, AttackerId = proj.OwnerId, Amount = proj.MagicDamage, IsCritical = false, IsDodge = false, IsBlock = false });
 
                         if (proj.ApplyEffectsOnHit != null && proj.ApplyEffectsOnHit.Count > 0)
                         {
-                            BaseActorEntity? casterEntity = state.Players.GetValueOrDefault(proj.OwnerId) ?? (BaseActorEntity?)state.Enemies.GetValueOrDefault(proj.OwnerId);
+                            // proj.OwnerId IS the caster's ID already - no need to resolve the entity just to read
+                            // its ID back out again, the way the original did via casterEntity.
                             foreach (var effectId in proj.ApplyEffectsOnHit)
-                                _eventBus.Publish(new ApplyEffectEvent { Target = target, EffectConfigId = effectId, Caster = casterEntity });
+                                _eventBus.Publish(new ApplyEffectEvent { TargetId = tId, EffectConfigId = effectId, CasterId = proj.OwnerId });
                         }
+
 
                         if (!isOrbital && proj.HitEnemies.Count > proj.PierceCount) { projectilesToRemove.Add(proj.Id); break; }
                     }
@@ -361,7 +364,7 @@ public class CombatSystem : IGameSystem
                         bool isBlock = !isDodge && blockChance > 0 && Random.Shared.NextDouble() <= blockChance;
                         float finalDamage = isDodge || isBlock ? 0 : CalculateMitigatedDamage(proj.PhysicalDamage, proj.MagicDamage, target, _configs);
 
-                        _eventBus.Publish(new DamageAppliedEvent { Target = target, AttackerId = proj.OwnerId, State = state, Amount = finalDamage, IsCritical = proj.IsCritical, IsDodge = isDodge, IsBlock = isBlock });
+                        _eventBus.Publish(new DamageAppliedEvent { TargetId = tId, AttackerId = proj.OwnerId, Amount = finalDamage, IsCritical = proj.IsCritical, IsDodge = isDodge, IsBlock = isBlock });
 
                         if (isOrbital) proj.OrbitHitCooldowns[tId] = proj.OrbitHitInterval;
                         else proj.HitEnemies.Add(tId);
@@ -370,9 +373,8 @@ public class CombatSystem : IGameSystem
                         {
                             if (proj.ApplyEffectsOnHit != null)
                             {
-                                BaseActorEntity? casterEntity = state.Players.GetValueOrDefault(proj.OwnerId) ?? (BaseActorEntity?)state.Enemies.GetValueOrDefault(proj.OwnerId);
                                 foreach (var effectId in proj.ApplyEffectsOnHit)
-                                    _eventBus.Publish(new ApplyEffectEvent { Target = target, EffectConfigId = effectId, Caster = casterEntity });
+                                    _eventBus.Publish(new ApplyEffectEvent { TargetId = tId, EffectConfigId = effectId, CasterId = proj.OwnerId });
                             }
                             if (Random.Shared.NextDouble() < proj.LifeStealChance && state.Players.TryGetValue(proj.OwnerId, out var pHeal))
                             {
@@ -383,7 +385,7 @@ public class CombatSystem : IGameSystem
                         if (isBlock || (!isOrbital && proj.HitEnemies.Count > proj.PierceCount))
                         {
                             projectilesToRemove.Add(proj.Id);
-                            HandleProjectileDeath(proj,state);
+                            HandleProjectileDeath(proj, state);
                             break;
                         }
 
@@ -463,7 +465,7 @@ public class CombatSystem : IGameSystem
                         float dodgeChance = Math.Clamp(target.GetTotalStat("dodge", _configs), 0f, 0.9f);
                         bool isDodge = dodgeChance > 0 && Random.Shared.NextDouble() <= dodgeChance;
                         float finalDamage = isDodge ? 0 : CalculateMitigatedDamage(meleeDmg, 0f, target, _configs);
-                        _eventBus.Publish(new DamageAppliedEvent { Target = target, AttackerId = enemy.Id, State = state, Amount = finalDamage, IsCritical = false, IsDodge = isDodge, IsBlock = false });
+                        _eventBus.Publish(new DamageAppliedEvent { TargetId = EntityResolver.GetId(target), AttackerId = enemy.Id, Amount = finalDamage, IsCritical = false, IsDodge = isDodge, IsBlock = false });
                     }
                 }
                 enemy.AttackCooldown = scaledDuration - (dt * 3f);
