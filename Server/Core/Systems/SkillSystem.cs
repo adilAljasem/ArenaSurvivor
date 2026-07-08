@@ -79,29 +79,9 @@ public class SkillSystem : IGameSystem
 
             if (config.TargetType == SkillTargetType.ClosestEnemy)
             {
-                float closestDistSq = float.MaxValue;
-
-                foreach (var player in state.Players.Values)
-                {
-                    if (player.ActionState == "Dead" || player.Team == team) continue;
-                    float distSq = (player.X - startX) * (player.X - startX) + (player.Y - startY) * (player.Y - startY);
-                    if (distSq < closestDistSq)
-                    {
-                        closestDistSq = distSq; targetX = player.X; targetY = player.Y;
-                    }
-                }
-
-                foreach (var enemy in state.Enemies.Values)
-                {
-                    if (enemy.ActionState == "Dead" || enemy.Team == team) continue;
-                    float distSq = (enemy.X - startX) * (enemy.X - startX) + (enemy.Y - startY) * (enemy.Y - startY);
-                    if (distSq < closestDistSq)
-                    {
-                        closestDistSq = distSq; targetX = enemy.X; targetY = enemy.Y;
-                    }
-                }
-
-                if (closestDistSq == float.MaxValue) return;
+                var closest = TargetingHelper.FindClosestTarget(startX, startY, TargetingHelper.GetHostileTargets(state, team));
+                if (closest == null) return;
+                targetX = closest.X; targetY = closest.Y;
             }
             else if (config.TargetType == SkillTargetType.AimDirection && team == "Player")
             {
@@ -231,23 +211,15 @@ public class SkillSystem : IGameSystem
         {
             float baseAngle = 0f;
             bool hasValidTarget = true;
-            IEnumerable<BaseActorEntity> hostileTargets;
-            if (team == "Player") hostileTargets = state.Enemies.Values.Where(e => e.Team != "Player").Cast<BaseActorEntity>();
-            else hostileTargets = state.Players.Values.Cast<BaseActorEntity>().Concat(state.Enemies.Values.Where(e => e.Team != "Enemy").Cast<BaseActorEntity>());
+            var hostileTargets = TargetingHelper.GetHostileTargets(state, team);
 
             if (config.TargetType == SkillTargetType.ClosestEnemy)
             {
-                BaseActorEntity? closest = null;
-                float closestDistSq = float.MaxValue;
-                foreach (var t in hostileTargets)
-                {
-                    if (t.ActionState == "Dead") continue;
-                    float dSq = (t.X - startX) * (t.X - startX) + (t.Y - startY) * (t.Y - startY);
-                    if (dSq < closestDistSq) { closestDistSq = dSq; closest = t; }
-                }
+                var closest = TargetingHelper.FindClosestTarget(startX, startY, hostileTargets);
                 if (closest != null) baseAngle = (float)Math.Atan2(closest.Y - startY, closest.X - startX);
                 else hasValidTarget = false;
             }
+
             else if (config.TargetType == SkillTargetType.AimDirection)
             {
                 if (caster is PlayerEntity p && (p.AimX != 0 || p.AimY != 0)) baseAngle = (float)Math.Atan2(p.AimY - startY, p.AimX - startX);
@@ -321,12 +293,15 @@ public class SkillSystem : IGameSystem
         {
             bool isHeal = config.BaseDamage < 0;
             float actualDamage = isHeal ? -Math.Abs(finalSpellDamage) : finalSpellDamage;
+            bool isPlayerTeam = string.IsNullOrEmpty(team) || team == "Player";
+
             _eventBus.Publish(new AoeVisualEvent
             {
-                Dto = new AoeEventDto { X = startX, Y = startY, Radius = config.Radius, IsFriendly = string.IsNullOrEmpty(team) || team == "Player", ConfigId = config.Id },
+                Dto = new AoeEventDto { X = startX, Y = startY, Radius = config.Radius, IsFriendly = isPlayerTeam, ConfigId = config.Id },
                 CasterId = casterId,
                 SkillId = config.Id
             });
+
             float radiusSq = config.Radius * config.Radius;
 
             void ApplyAoeEffects(BaseActorEntity target)
@@ -338,87 +313,43 @@ public class SkillSystem : IGameSystem
                 }
             }
 
-            bool isPlayerTeam = string.IsNullOrEmpty(team) || team == "Player";
+            // Same "hit everyone within radius" shape regardless of team/heal - only the candidate
+            // set and whether damage is mitigated differ (heals are never mitigated).
+            void ApplyAoeToCandidates(IEnumerable<BaseActorEntity> candidates, bool mitigate)
+            {
+                foreach (var target in candidates)
+                {
+                    float distSq = (target.X - startX) * (target.X - startX) + (target.Y - startY) * (target.Y - startY);
+                    if (distSq > radiusSq) continue;
+
+                    float appliedAmount = mitigate ? CombatSystem.CalculateMitigatedDamage(0f, actualDamage, target, _configs) : actualDamage;
+                    _eventBus.Publish(new DamageAppliedEvent { Target = target, AttackerId = casterId, State = state, Amount = appliedAmount, IsCritical = false, IsDodge = false, IsBlock = false });
+                    ApplyAoeEffects(target);
+                }
+            }
+
             if (isPlayerTeam)
             {
                 if (!isHeal)
-                {
-                    foreach (var enemy in state.Enemies.Values)
-                    {
-                        if (enemy.ActionState == "Dead" || enemy.Team == "Player") continue;
-                        float distSq = (enemy.X - startX) * (enemy.X - startX) + (enemy.Y - startY) * (enemy.Y - startY);
-                        if (distSq <= radiusSq)
-                        {
-                            float mitigatedAoeDmg = CombatSystem.CalculateMitigatedDamage(0f, actualDamage, enemy, _configs);
-                            _eventBus.Publish(new DamageAppliedEvent { Target = enemy, AttackerId = casterId, State = state, Amount = mitigatedAoeDmg, IsCritical = false, IsDodge = false, IsBlock = false });
-                            ApplyAoeEffects(enemy);
-                        }
-                    }
-                }
+                    ApplyAoeToCandidates(state.Enemies.Values.Where(e => e.ActionState != "Dead" && e.Team != "Player"), mitigate: true);
                 else
                 {
-                    foreach (var ally in state.Players.Values)
-                    {
-                        float distSq = (ally.X - startX) * (ally.X - startX) + (ally.Y - startY) * (ally.Y - startY);
-                        if (distSq <= radiusSq)
-                        {
-                            _eventBus.Publish(new DamageAppliedEvent { Target = ally, AttackerId = casterId, State = state, Amount = actualDamage, IsCritical = false, IsDodge = false, IsBlock = false });
-                            ApplyAoeEffects(ally);
-                        }
-                    }
-                    foreach (var summon in state.Enemies.Values)
-                    {
-                        if (summon.ActionState == "Dead" || summon.Team != "Player") continue;
-                        float distSq = (summon.X - startX) * (summon.X - startX) + (summon.Y - startY) * (summon.Y - startY);
-                        if (distSq <= radiusSq)
-                        {
-                            _eventBus.Publish(new DamageAppliedEvent { Target = summon, AttackerId = casterId, State = state, Amount = actualDamage, IsCritical = false, IsDodge = false, IsBlock = false });
-                            ApplyAoeEffects(summon);
-                        }
-                    }
+                    ApplyAoeToCandidates(state.Players.Values, mitigate: false);
+                    ApplyAoeToCandidates(state.Enemies.Values.Where(e => e.ActionState != "Dead" && e.Team == "Player"), mitigate: false);
                 }
             }
             else
             {
                 if (!isHeal)
                 {
-                    foreach (var player in state.Players.Values)
-                    {
-                        float distSq = (player.X - startX) * (player.X - startX) + (player.Y - startY) * (player.Y - startY);
-                        if (distSq <= radiusSq)
-                        {
-                            float mitigatedAoeDmg = CombatSystem.CalculateMitigatedDamage(0f, actualDamage, player, _configs);
-                            _eventBus.Publish(new DamageAppliedEvent { Target = player, AttackerId = casterId, State = state, Amount = mitigatedAoeDmg, IsCritical = false, IsDodge = false, IsBlock = false });
-                            ApplyAoeEffects(player);
-                        }
-                    }
-                    foreach (var summon in state.Enemies.Values)
-                    {
-                        if (summon.ActionState == "Dead" || summon.Team == "Enemy") continue;
-                        float distSq = (summon.X - startX) * (summon.X - startX) + (summon.Y - startY) * (summon.Y - startY);
-                        if (distSq <= radiusSq)
-                        {
-                            float mitigatedAoeDmg = CombatSystem.CalculateMitigatedDamage(0f, actualDamage, summon, _configs);
-                            _eventBus.Publish(new DamageAppliedEvent { Target = summon, AttackerId = casterId, State = state, Amount = mitigatedAoeDmg, IsCritical = false, IsDodge = false, IsBlock = false });
-                            ApplyAoeEffects(summon);
-                        }
-                    }
+                    ApplyAoeToCandidates(state.Players.Values, mitigate: true);
+                    ApplyAoeToCandidates(state.Enemies.Values.Where(e => e.ActionState != "Dead" && e.Team != "Enemy"), mitigate: true);
                 }
                 else
-                {
-                    foreach (var ally in state.Enemies.Values)
-                    {
-                        if (ally.ActionState == "Dead" || ally.Team != "Enemy") continue;
-                        float distSq = (ally.X - startX) * (ally.X - startX) + (ally.Y - startY) * (ally.Y - startY);
-                        if (distSq <= radiusSq)
-                        {
-                            _eventBus.Publish(new DamageAppliedEvent { Target = ally, AttackerId = casterId, State = state, Amount = actualDamage, IsCritical = false, IsDodge = false, IsBlock = false });
-                            ApplyAoeEffects(ally);
-                        }
-                    }
-                }
+                    ApplyAoeToCandidates(state.Enemies.Values.Where(e => e.ActionState != "Dead" && e.Team == "Enemy"), mitigate: false);
             }
         }
+
     }
 
     private void OnTriggerDeathSkills(TriggerDeathSkillsEvent ev)
@@ -771,4 +702,28 @@ public class SkillSystem : IGameSystem
     }
 
 
+}
+
+internal static class TargetingHelper
+{
+    public static IEnumerable<BaseActorEntity> GetHostileTargets(GameState state, string casterTeam)
+    {
+        return casterTeam == "Player"
+            ? state.Enemies.Values.Where(e => e.Team != "Player").Cast<BaseActorEntity>()
+            : state.Players.Values.Cast<BaseActorEntity>().Concat(state.Enemies.Values.Where(e => e.Team != "Enemy").Cast<BaseActorEntity>());
+    }
+
+    public static BaseActorEntity? FindClosestTarget(float originX, float originY, IEnumerable<BaseActorEntity> candidates)
+    {
+        BaseActorEntity? closest = null;
+        float closestDistSq = float.MaxValue;
+
+        foreach (var candidate in candidates)
+        {
+            if (candidate.ActionState == "Dead") continue;
+            float distSq = (candidate.X - originX) * (candidate.X - originX) + (candidate.Y - originY) * (candidate.Y - originY);
+            if (distSq < closestDistSq) { closestDistSq = distSq; closest = candidate; }
+        }
+        return closest;
+    }
 }
