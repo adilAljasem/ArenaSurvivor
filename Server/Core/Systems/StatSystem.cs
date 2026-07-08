@@ -66,11 +66,26 @@ public class StatSystem : IGameSystem
             // 2. Weapons
             foreach (var weapon in player.Weapons)
             {
-                if (weapon.TotalBaseStats != null && weapon.TotalBaseStats.TryGetValue(statName, out float wBase)) flatBonus += wBase;
-                if (weapon.RolledStats != null && weapon.RolledStats.TryGetValue(statName, out var wRoll)) flatBonus += wRoll;
+                // meleeDamage/rangedDamage/magicDamage are the weapon's OWN identity stat (its
+                // "x base ranged damage") - CombatSystem.CalculateWeaponDamageSplit reads this
+                // same TotalBaseStats/RolledStats data directly for weapon damage, so it's
+                // excluded here: equipping/switching weapons shouldn't move the player's own
+                // meleeDamage/rangedDamage/magicDamage stat.
+                bool isWeaponDamageStat = statName == "meleeDamage" || statName == "rangedDamage" || statName == "magicDamage";
+                if (!isWeaponDamageStat)
+                {
+                    if (weapon.TotalBaseStats != null && weapon.TotalBaseStats.TryGetValue(statName, out float wBase)) flatBonus += wBase;
+                    if (weapon.RolledStats != null && weapon.RolledStats.TryGetValue(statName, out var wRoll)) flatBonus += wRoll;
+                }
 
                 if (_configs.Weapons.TryGetValue(weapon.ConfigId, out var weaponConfig))
                 {
+                    // >>> NEW: StatBonuses are separate, deterministic bonuses granted just for
+                    // wielding this weapon (e.g. this pistol's +5 movementSpeed) - these DO fold
+                    // into the player's own stats, for any stat, including meleeDamage/
+                    // rangedDamage/magicDamage if a weapon ever wants to grant one of those as a
+                    // genuine stat bonus distinct from its own damage number above.
+                    if (weaponConfig.StatBonuses != null && weaponConfig.StatBonuses.TryGetValue(statName, out float wStatBonus)) flatBonus += wStatBonus;
                     if (weaponConfig.StatMultipliers != null && weaponConfig.StatMultipliers.TryGetValue(statName, out float wMult)) percentBonus += wMult;
                 }
             }
@@ -104,8 +119,17 @@ public class StatSystem : IGameSystem
                 }
             }
 
-            // >>> FINAL CALCULATION (Brotato Math) <<<
-            float finalValue = (baseStat + flatBonus) * (1f + percentBonus);
+            // >>> FINAL CALCULATION <<<
+            // Positive percentBonus scales up normally (e.g. +100% = x2, so a stat of 20 becomes 40).
+            // Negative percentBonus scales DOWN as a divisor instead of a subtractive multiplier
+            // (e.g. -100% = /2, not x0). This means a malus can never fully zero out or flip the
+            // sign of a stat on its own - it just permanently taxes it - and the player can still
+            // build the underlying stat up through items/base value, it'll just always land at a
+            // proportionally reduced value versus someone without the malus.
+            float statValue = baseStat + flatBonus;
+            float finalValue = percentBonus >= 0f
+                ? statValue * (1f + percentBonus)
+                : statValue / (1f + Math.Abs(percentBonus));
 
             // Clamp specific stats
             if (statName == "critChance" || statName == "projectileBlockChance" || statName == "dodge")
@@ -116,6 +140,10 @@ public class StatSystem : IGameSystem
                 player.PendingStatDiff[statName] = finalValue;
 
             player.CachedStats[statName] = finalValue;
+            // >>> NEW: expose the raw percent multiplier too, so systems like CombatSystem can
+            // apply it directly to values that live outside CachedStats (e.g. a weapon's own
+            // meleeDamage/rangedDamage/magicDamage), not just to this character-level stat.
+            player.CachedStatMultipliers[statName] = percentBonus;
 
             // Achievement tracking: remember the highest value this stat ever reached this match.
             if (!player.PeakStats.TryGetValue(statName, out float peakVal) || finalValue > peakVal)
@@ -179,9 +207,18 @@ public class StatSystem : IGameSystem
 
             foreach (var weapon in enemy.Weapons)
             {
-                if (weapon.TotalBaseStats != null && weapon.TotalBaseStats.TryGetValue(statName, out float wBase)) flatBonus += wBase;
-                if (weapon.RolledStats != null && weapon.RolledStats.TryGetValue(statName, out float wRoll)) flatBonus += wRoll;
-                if (_configs.Weapons.TryGetValue(weapon.ConfigId, out var wConfig) && wConfig.StatMultipliers != null && wConfig.StatMultipliers.TryGetValue(statName, out float wMult)) percentBonus += wMult;
+                // Same rule as RecalculatePlayer - weapon's own damage stays weapon-scoped.
+                bool isWeaponDamageStat = statName == "meleeDamage" || statName == "rangedDamage" || statName == "magicDamage";
+                if (!isWeaponDamageStat)
+                {
+                    if (weapon.TotalBaseStats != null && weapon.TotalBaseStats.TryGetValue(statName, out float wBase)) flatBonus += wBase;
+                    if (weapon.RolledStats != null && weapon.RolledStats.TryGetValue(statName, out float wRoll)) flatBonus += wRoll;
+                }
+                if (_configs.Weapons.TryGetValue(weapon.ConfigId, out var wConfig))
+                {
+                    if (wConfig.StatBonuses != null && wConfig.StatBonuses.TryGetValue(statName, out float wStatBonus)) flatBonus += wStatBonus;
+                    if (wConfig.StatMultipliers != null && wConfig.StatMultipliers.TryGetValue(statName, out float wMult)) percentBonus += wMult;
+                }
             }
 
             foreach (var item in enemy.OwnedItems)
@@ -191,11 +228,17 @@ public class StatSystem : IGameSystem
                 if (_configs.Items.TryGetValue(item.ConfigId, out var iConfig) && iConfig.StatMultipliers != null && iConfig.StatMultipliers.TryGetValue(statName, out float iMult)) percentBonus += iMult;
             }
 
-            float finalValue = (baseStat + flatBonus) * (1f + percentBonus);
+            // Same asymmetric rule as the player path: positive percentBonus multiplies up,
+            // negative percentBonus divides down instead of subtracting (see RecalculatePlayer).
+            float statValue = baseStat + flatBonus;
+            float finalValue = percentBonus >= 0f
+                ? statValue * (1f + percentBonus)
+                : statValue / (1f + Math.Abs(percentBonus));
             if (statName == "critChance" || statName == "projectileBlockChance" || statName == "dodge")
                 finalValue = Math.Clamp(finalValue, 0f, 1f);
 
             enemy.CachedStats[statName] = finalValue;
+            enemy.CachedStatMultipliers[statName] = percentBonus;
         }
 
         enemy.CurrentMaxHp = Math.Max(1f, enemy.CachedStats.GetValueOrDefault("maxHp", 10f));

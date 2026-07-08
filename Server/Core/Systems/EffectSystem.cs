@@ -32,9 +32,10 @@ public class EffectSystem : IGameSystem
             float shieldToGrant = effectConfig.GrantedShield;
             if (shieldToGrant > 0 && ev.Caster != null)
             {
-                float shieldPower = Math.Max(0f, ev.Caster.GetTotalStat("shieldPower", _configs));
-                shieldToGrant *= (1f + shieldPower);
+                float shieldPower = ev.Caster.GetTotalStat("shieldPower", _configs);
+                shieldToGrant = Math.Max(0f, shieldToGrant * (1f + shieldPower / 100f)); // same "100 = 1 unit" convention as healPower
             }
+
 
             // Matching on ConfigId + SourceId (caster) instead of just ConfigId: player A and
             // player B applying the same debuff to the same target get two separate instances,

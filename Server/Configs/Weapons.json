@@ -24,7 +24,8 @@
       "movementSpeed": 5,
       "critChance": 0.5,
       "haste": 100,
-      "dodge": 0.1
+      "dodge": 0.1,
+      "rangedDamage": 200
     },
     "damageScaling": {
       "rangedDamage": 0.5
@@ -368,10 +369,10 @@
   "sword": {
     "id": "sword",
     "name": "Iron Sword",
-    "tier": 2,
+    "tier": 1,
     "price": 50,
     "cooldownSeconds": 0.8,
-    "meleeDamage": 18,
+    "meleeDamage": 20,
     "projectileSpeed": 0,
     "projectileId": "sword_swing",
     "range": 150,
@@ -382,7 +383,8 @@
     "attackAnimType": "swing",
     "soundFire": "sword-shoot",
     "statBonuses": {
-      "movementSpeed": 2
+      "movementSpeed": 2,
+      "meleeDamage": 50
     },
     "damageScaling": {
       "meleeDamage": 0.8
@@ -465,10 +467,10 @@
   "wand": {
     "id": "wand",
     "name": "Magic Wand",
-    "tier": 2,
+    "tier": 1,
     "price": 60,
     "cooldownSeconds": 0.7,
-    "magicDamage": 12,
+    "magicDamage": 10,
     "projectileSpeed": 350,
     "projectileId": "fireball",
     "range": 600,

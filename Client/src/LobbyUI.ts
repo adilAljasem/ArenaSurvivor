@@ -33,6 +33,42 @@ export function getTierColor(tier: number): string {
     return TIER_COLORS[tier] || TIER_COLORS[1];
 }
 
+// ==========================================
+// CHARACTER BASE STAT REFERENCE VALUES
+// ==========================================
+// "Normal"/expected value for each base stat, used only by the character picker UI to show
+// how a character's stat compares to the norm. Example: if movementSpeed here is 180 and a
+// character has 160, the UI shows "160 (-20)" in red next to it; a character with 200 shows
+// "200 (+20)" in green. A stat with no entry here (or an exact match) shows with no diff tag.
+// EDIT THESE NUMBERS to rebalance what "normal" means for each stat — nothing else reads
+// from this table, so changing it only changes what players see, not actual gameplay.
+export const CHARACTER_BASE_STAT_REFERENCE: Record<string, number> = {
+    maxHp: 100,
+    hpRegen: 0,
+    lifeSteal: 0,
+    damagePercent: 0,
+    meleeDamage: 10,
+    rangedDamage: 10,
+    magicDamage: 10,
+    movementSpeed: 180,
+    range: 0,
+    haste: 0,
+    engineering: 0,
+    armor: 0,
+    magicDefense: 0,
+    defensePercent: 0,
+    dodge: 0,
+    luck: 0,
+    harvesting: 0,
+    attackSpeedPercent: 0,
+    xpGainPercent: 0,
+    projectileSpeedPercent: 0,
+    critChance: 0,
+    healPower: 0,
+    shieldPower: 0,
+    pickupRange: 0,
+};
+
 // Difficulty id -> color. Falls back to a neutral gray for any custom difficulty id not
 // listed here, so new difficulties added server-side (Configs/Difficulties.json) never break.
 const DIFFICULTY_COLORS: Record<string, string> = {
@@ -1067,6 +1103,20 @@ export class LobbyUI {
         return n.toFixed(2).replace(/\.?0+$/, '');
     }
 
+    // Compares a character's actual base stat value against the CHARACTER_BASE_STAT_REFERENCE
+    // table (top of file) and returns a small colored "(+X)" / "(-X)" tag to append after the
+    // stat value — green if above the reference, red if below, nothing if it matches exactly
+    // or the stat has no reference entry configured.
+    private buildStatDiffSuffix(key: string, value: number): string {
+        const reference = CHARACTER_BASE_STAT_REFERENCE[key];
+        if (reference === undefined) return '';
+        const diff = value - reference;
+        if (diff === 0) return '';
+        const color = diff > 0 ? '#4caf50' : '#f44336';
+        const sign = diff > 0 ? '+' : '';
+        return ` <span class="stat-diff-tag" style="color:${color};">(${sign}${this.formatNumber(diff)})</span>`;
+    }
+
     // Sign-colored stat badge: green for positive, red for negative, neutral gray for zero.
     // isPercent controls whether the value is shown as "+12" or "+12%".
     private buildStatBadge(label: string, value: number, isPercent: boolean, suffix: string = ''): string {
@@ -1388,6 +1438,7 @@ export class LobbyUI {
         const color = LOBBY_ASSETS.colorPrimary;
 
         const name = this.pick(c, 'name') || this.pick(c, 'id');
+        const description = this.pick(c, 'description') || '';
         const hitRadius = this.pick(c, 'hitRadius') ?? 0;
         const baseStats = this.pick(c, 'baseStats') || {};
         const statMultipliers = this.pick(c, 'statMultipliers') || {};
@@ -1403,7 +1454,7 @@ export class LobbyUI {
 
         const statBadges = Object.entries(baseStats)
             .filter(([, v]) => (v as number) !== 0)
-            .map(([k, v]) => `<div class="coll-stat"><span class="coll-stat-label">${this.formatStatName(k)}</span><span class="coll-stat-value">${this.formatNumber(v as number)}</span></div>`)
+            .map(([k, v]) => `<div class="coll-stat"><span class="coll-stat-label">${this.formatStatName(k)}</span><span class="coll-stat-value">${this.formatNumber(v as number)}${this.buildStatDiffSuffix(k, v as number)}</span></div>`)
             .join('');
         const multBadges = Object.entries(statMultipliers)
             .filter(([, v]) => (v as number) !== 0)
@@ -1417,6 +1468,7 @@ export class LobbyUI {
                 <div class="coll-title-block">
                     <div class="coll-name">${name}</div>
                     <div class="coll-subtitle">Hit Radius ${hitRadius}</div>
+                    ${description ? `<div class="char-description">${description}</div>` : ''}
                 </div>
             </div>
             <div class="coll-section-label">📈 Base Stats</div>
@@ -1724,6 +1776,8 @@ export class LobbyUI {
         .coll-stat { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 8px; background: rgba(255,255,255,0.04); border-radius: 4px; }
         .coll-stat-label { color: ${LOBBY_ASSETS.colorMuted}; }
         .coll-stat-value { color: #fff; font-weight: bold; }
+        .stat-diff-tag { font-weight: bold; font-size: 11px; }
+        .char-description { color: ${LOBBY_ASSETS.colorMuted}; font-size: 12px; line-height: 1.4; margin-top: 6px; max-width: 320px; }
         .coll-section-label { font-size: 10px; color: ${LOBBY_ASSETS.colorMuted}; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
         .coll-badge-row { display: flex; gap: 6px; flex-wrap: wrap; }
         .coll-badge { font-size: 11px; padding: 4px 9px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid #333; color: #ddd; }

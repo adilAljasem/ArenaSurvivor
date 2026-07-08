@@ -20,9 +20,12 @@ public class StatDictionary
     public float GetFinalStat(string statName)
     {
         if (!Stats.TryGetValue(statName, out var stat)) return 0f;
-        // The core scaling formula: (Base + Flat) * (1 + Percent)
-        return (stat.BaseValue + stat.FlatModifier) * (1f + stat.PercentModifier);
+        float statValue = stat.BaseValue + stat.FlatModifier;
+        return stat.PercentModifier >= 0f
+            ? statValue * (1f + stat.PercentModifier)
+            : statValue / (1f + Math.Abs(stat.PercentModifier));
     }
+
 
     // Used when equipping weapons or leveling up
     public void AddModifier(string statName, float flatAmount, float percentAmount)
@@ -32,7 +35,7 @@ public class StatDictionary
         {
             InitializeStat(statName, 0f);
         }
-        
+
         Stats[statName].FlatModifier += flatAmount;
         Stats[statName].PercentModifier += percentAmount;
     }

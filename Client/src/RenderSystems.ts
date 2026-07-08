@@ -402,11 +402,24 @@ export class ActorRenderer {
         const wConfig = configs.weapons ? (configs.weapons[wConfigId] || configs.Weapons?.[wConfigId]) : null;
         let sprite = refs.weaponSprites.get(slotIndex);
 
+        // >>> FIX: if this slot now holds a different weapon than before (e.g. a weapon in a
+        // higher slot got renumbered down into this slot after another weapon was recycled),
+        // the cached sprite is stale - wrong texture, wrong scale, wrong VFX. Tear it down so
+        // the block below rebuilds it fresh for whatever weapon is actually in this slot now.
+        if (sprite && (sprite as any).__configId !== wConfigId) {
+          if ((sprite as any).__emitter) (sprite as any).__emitter.destroy();
+          if ((sprite as any).__aura) (sprite as any).__aura.destroy();
+          sprite.destroy();
+          refs.weaponSprites.delete(slotIndex);
+          sprite = undefined;
+        }
+
         if (!sprite && wConfig && wConfig.textureKey && scene.textures.exists(wConfig.textureKey)) {
           sprite = scene.add.sprite(wx, wy, wConfig.textureKey);
           if (wConfig.iconFrame !== undefined) sprite.setFrame(wConfig.iconFrame);
           sprite.setScale(wConfig.scale || 1.0);
           if (wConfig.defaultFacingRight === false) sprite.setFlipX(true);
+          (sprite as any).__configId = wConfigId;
           weaponsContainer.add(sprite);
           refs.weaponSprites.set(slotIndex, sprite);
         }

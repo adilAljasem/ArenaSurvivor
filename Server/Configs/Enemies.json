@@ -36,7 +36,7 @@
     "baseStats": {
       "maxHp": 50,
       "movementSpeed": 130,
-      "meleeDamage": 5,
+      "meleeDamage": 1,
       "magicDefense": 5,
       "armor": 2
     },

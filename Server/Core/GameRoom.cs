@@ -326,6 +326,9 @@ public class GameRoom
 
     public double ConsumeNetworkBandwidthMbps(double sinceLastSampleSeconds) => _networkSystem.ConsumeBandwidthMbps(sinceLastSampleSeconds);
 
+    public int GetMaxPlayers() =>
+        _configManager.Maps.TryGetValue(CurrentMapId, out var mapCfg) ? mapCfg.MaxPlayers : 4;
+        
 
     public void StartMatch()
     {

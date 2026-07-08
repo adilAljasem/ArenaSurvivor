@@ -40,6 +40,7 @@ public class RoomManager
                 roomName = r.RoomName,
                 hasPassword = !string.IsNullOrEmpty(r.Password),
                 playerCount = r.State.Players.Count,
+                maxPlayers = r.GetMaxPlayers(),
                 phase = r.State.Phase.ToString(),
                 wave = r.State.CurrentWave,
                 mapId = r.CurrentMapId
@@ -69,7 +70,7 @@ public class RoomManager
         return null;
     }
 
-    
+
 
     // Call when a player joins or creates a room (lobby + match stitch).
     public void RegisterPlayerInRoom(string playerId, string roomId) =>

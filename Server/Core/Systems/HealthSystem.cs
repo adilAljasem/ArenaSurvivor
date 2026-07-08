@@ -68,7 +68,9 @@ public class HealthSystem : IGameSystem
             float rawHeal = -ev.Amount;
             float healPower = GetHealerHealPower(ev);
 
-            float actualHeal = Math.Min(maxHp - ev.Target.CurrentHp, rawHeal * (1f + healPower));
+            // Same "100 = 1 unit" convention as harvesting and your other support stats:
+            // 50 healPower = +50% healing, not +5000%.
+            float actualHeal = Math.Min(maxHp - ev.Target.CurrentHp, Math.Max(0f, rawHeal * (1f + healPower / 100f)));
             ev.Target.CurrentHp += actualHeal;
 
             // FIX: Only the person who CAST the heal (AttackerId) gets the credit.

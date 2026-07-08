@@ -157,8 +157,14 @@ public static class WeaponGenerator
                 // >>> FIX CS1061: Use MagicDamage! <<<
                 if (cfg.MagicDamage > 0) GearGeneratorHelper.AddToStat(weapon.TotalBaseStats, "magicDamage", cfg.MagicDamage);
 
-                if (cfg.StatBonuses != null)
-                    foreach (var kv in cfg.StatBonuses) GearGeneratorHelper.AddToStat(weapon.TotalBaseStats, kv.Key, kv.Value);
+                // >>> REMOVED: cfg.StatBonuses used to be folded in here too, which meant a
+                // weapon's own core damage (e.g. rangedDamage: 50) and its statBonuses (e.g.
+                // rangedDamage: 200) got summed into ONE TotalBaseStats value (250) via
+                // AddToStat's +=. That's wrong: TotalBaseStats is read directly by
+                // CombatSystem as "this weapon's own damage" and should stay scoped to the
+                // weapon. StatBonuses are read separately, straight from the weapon's config,
+                // in StatSystem.cs - that's what makes them apply to the player's own stats
+                // instead of inflating the weapon's damage number.
             }
         }
     }

@@ -292,14 +292,26 @@ export const UIHelpers = {
                 });
             }
 
-            const statSource = (totalBaseStats && Object.keys(totalBaseStats).length > 0)
-                ? totalBaseStats
-                : (config.statBonuses ?? config.StatBonuses);
+            const damageStatKeys = ["meleeDamage", "MeleeDamage", "rangedDamage", "RangedDamage", "magicDamage", "MagicDamage"];
+            // >>> FIX: totalBaseStats being non-empty used to be treated as "this has the bonus
+            // stats we need to show" - but for weapons, totalBaseStats now only ever holds
+            // meleeDamage/rangedDamage/magicDamage (their own damage identity), never the
+            // weapon's statBonuses (movementSpeed, critChance, etc - those come from
+            // config.statBonuses directly). So check whether totalBaseStats actually has
+            // anything BEYOND the damage keys before trusting it as the bonus-stat source;
+            // otherwise fall back to the config's own statBonuses, same as items already do.
+            const totalBaseStatsHasBonuses = totalBaseStats && Object.keys(totalBaseStats).some(k => !damageStatKeys.includes(k));
+            const statSource = totalBaseStatsHasBonuses ? totalBaseStats : (config.statBonuses ?? config.StatBonuses);
 
             if (statSource) {
                 Object.entries(statSource).forEach(([k, v]) => {
-                    if (["meleeDamage", "MeleeDamage", "rangedDamage", "RangedDamage", "magicDamage", "MagicDamage"].includes(k)) return;
-                    const num = totalBaseStats ? (v as number) : (v as number) * stackCount;
+                    // Only skip damage keys when the source is totalBaseStats (already shown
+                    // above via meleeDmg/rangedDmg/magicDmg). When falling back to
+                    // config.statBonuses, a rangedDamage/meleeDamage/magicDamage entry there is
+                    // a genuinely separate bonus - distinct from the weapon's own damage number
+                    // - so it must still be shown, not filtered out.
+                    if (totalBaseStatsHasBonuses && damageStatKeys.includes(k)) return;
+                    const num = totalBaseStatsHasBonuses ? (v as number) : (v as number) * stackCount;
                     const info = UIHelpers.getStatInfo(k);
 
                     if (num > 0) posLines.push(`${info.e} ${info.n}: +${UIHelpers.formatVal(k, num)}`);

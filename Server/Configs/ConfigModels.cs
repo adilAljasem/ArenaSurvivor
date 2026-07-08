@@ -92,6 +92,7 @@ public class CharacterConfig
     // --- Identity ---
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
     public float HitRadius { get; set; } = 15f;
 
     // --- Visuals & Animations ---
@@ -442,7 +443,9 @@ public class MapConfig
     public float Height { get; set; } = 4000f;
     public string TextureKey { get; set; } = string.Empty;
     public float TextureScale { get; set; } = 1.0f;
+    public int MaxPlayers { get; set; } = 4; 
 }
+
 
 public class StatRollConfig
 {

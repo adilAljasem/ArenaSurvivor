@@ -5,7 +5,8 @@
     "Width": 2500,
     "Height": 2500,
     "TextureKey": "tex_grass",
-    "TextureScale": 1.0
+    "TextureScale": 1.0,
+    "MaxPlayers": 4
   },
   "map_arena": {
     "Id": "map_arena",
@@ -13,6 +14,7 @@
     "Width": 2500,
     "Height": 2500,
     "TextureKey": "tex_sand",
-    "TextureScale": 1.0
+    "TextureScale": 1.0,
+    "MaxPlayers": 3
   }
 }

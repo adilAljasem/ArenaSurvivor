@@ -477,21 +477,41 @@ public class CombatSystem : IGameSystem
 
     public static (float phys, float magic, bool isCrit) CalculateWeaponDamageSplit(BaseActorEntity actor, WeaponConfig wCfg, EquippedWeapon weapon, ConfigManager configs)
     {
-        float physDamage = weapon.TotalBaseStats.GetValueOrDefault("meleeDamage", 0f) + weapon.RolledStats.GetValueOrDefault("meleeDamage", 0f) +
-                           weapon.TotalBaseStats.GetValueOrDefault("rangedDamage", 0f) + weapon.RolledStats.GetValueOrDefault("rangedDamage", 0f);
+        float meleeDamage = weapon.TotalBaseStats.GetValueOrDefault("meleeDamage", 0f) + weapon.RolledStats.GetValueOrDefault("meleeDamage", 0f);
+        float rangedDamage = weapon.TotalBaseStats.GetValueOrDefault("rangedDamage", 0f) + weapon.RolledStats.GetValueOrDefault("rangedDamage", 0f);
         float magicDamage = weapon.TotalBaseStats.GetValueOrDefault("magicDamage", 0f) + weapon.RolledStats.GetValueOrDefault("magicDamage", 0f);
+        float otherPhysBonus = 0f;
+
         if (wCfg.DamageScaling != null)
         {
             foreach (var scale in wCfg.DamageScaling)
             {
                 float bonus = actor.GetTotalStat(scale.Key, configs) * scale.Value;
                 if (scale.Key == "magicDamage" || scale.Key == "elementalDamage") magicDamage += bonus;
-                else physDamage += bonus;
+                else if (scale.Key == "rangedDamage") rangedDamage += bonus;
+                else if (scale.Key == "meleeDamage") meleeDamage += bonus;
+                else otherPhysBonus += bonus;
             }
         }
+
+        // >>> Order matters here: weapon's own damage + damageScaling bonus first, then the
+        // global damagePercent stat, and ONLY THEN the per-type statMultiplier - so the
+        // multiplier scales the fully-formed damage number, not an intermediate one.
         float damagePercent = actor.GetTotalStat("damagePercent", configs);
-        physDamage *= (1f + damagePercent);
+        meleeDamage *= (1f + damagePercent);
+        rangedDamage *= (1f + damagePercent);
         magicDamage *= (1f + damagePercent);
+        otherPhysBonus *= (1f + damagePercent);
+
+        // The actor's meleeDamage/rangedDamage/magicDamage statMultiplier scales the weapon's
+        // own final damage directly, not just the character's personal item/trait bonus pool
+        // (which used to be the only place a -100%/+100% multiplier had any real effect).
+        // Same asymmetric rule as everywhere else: +100% doubles, -100% halves (never fully zeroes).
+        meleeDamage = ApplyStatMultiplier(meleeDamage, actor.GetStatMultiplier("meleeDamage"));
+        rangedDamage = ApplyStatMultiplier(rangedDamage, actor.GetStatMultiplier("rangedDamage"));
+        magicDamage = ApplyStatMultiplier(magicDamage, actor.GetStatMultiplier("magicDamage"));
+
+        float physDamage = meleeDamage + rangedDamage + otherPhysBonus;
         physDamage = Math.Max(0f, physDamage);
         magicDamage = Math.Max(0f, magicDamage);
         bool isCrit = false;
@@ -501,5 +521,16 @@ public class CombatSystem : IGameSystem
             physDamage *= Math.Max(1.5f, actor.GetTotalStat("critMultiplier", configs));
         }
         return (physDamage, magicDamage, isCrit);
+    }
+
+    // Shared asymmetric multiplier rule (see StatSystem.cs): positive percentBonus multiplies
+    // the value up, negative percentBonus divides it down instead of subtracting, so a malus
+    // can reduce a damage value toward zero without ever flipping its sign or fully erasing it
+    // in one step (a build with enough flat damage behind it can still out-scale the malus).
+    private static float ApplyStatMultiplier(float value, float percentBonus)
+    {
+        return percentBonus >= 0f
+            ? value * (1f + percentBonus)
+            : value / (1f + Math.Abs(percentBonus));
     }
 }

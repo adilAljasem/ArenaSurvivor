@@ -220,8 +220,10 @@ public class NetworkSystem : IGameSystem
                 p.ActiveEffects.Select(e => new object[] { e.ConfigId, e.StackCount }).ToList(),
                 p.SynergizedSkills.Select(s => new object[] { s.ConfigId, Math.Round(Math.Max(0, s.CurrentCooldown), 1) }).ToList(),
                 p.PendingStatDiff.Count > 0 ? (object)p.PendingStatDiff : null,
-                (int)p.CurrentShield
+                (int)p.CurrentShield,
+                p.ConfigId
             }).ToList(),
+
 
             Enemies = gameState.Enemies.Values.Where(e => InBounds(e.X, e.Y)).Select(e => new object[] {
                 e.Id, e.ConfigId, (int)e.X, (int)e.Y, (int)e.CurrentHp, (int)e.CurrentMaxHp,

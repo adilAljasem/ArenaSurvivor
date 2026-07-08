@@ -50,9 +50,10 @@ public class SkillSystem : IGameSystem
             }
             else
             {
-                float healPower = Math.Max(0f, caster.GetTotalStat("healPower", _configs));
-                rawAbsoluteDamage *= (1f + healPower);
+                float healPower = caster.GetTotalStat("healPower", _configs);
+                rawAbsoluteDamage = Math.Max(0f, rawAbsoluteDamage * (1f + healPower / 100f));
             }
+
             finalSpellDamage = isHeal ? -rawAbsoluteDamage : rawAbsoluteDamage;
         }
 

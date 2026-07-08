@@ -218,9 +218,19 @@ public class LobbyHub : Hub
         if (room.State.Phase != GamePhase.WaitingForPlayers) { await Clients.Caller.SendAsync("LobbyError", "Match already in progress."); return; }
         if (!string.IsNullOrEmpty(room.Password) && room.Password != password) { await Clients.Caller.SendAsync("LobbyError", "Incorrect password."); return; }
 
+        // A reconnecting player already occupies a slot — only block genuinely NEW joins
+        // once the map's cap is reached.
+        bool isReconnect = room.State.Players.Values.Any(p => p.PlayerId == playerId);
+        if (!isReconnect && room.State.Players.Count >= room.GetMaxPlayers())
+        {
+            await Clients.Caller.SendAsync("LobbyError", "This room is full.");
+            return;
+        }
+
         _roomManager.RegisterPlayerInRoom(playerId, roomId);
         await InnerJoinRoom(room, playerId, playerName);
     }
+
 
     private async Task InnerJoinRoom(GameRoom room, string playerId, string playerName)
     {
@@ -304,6 +314,14 @@ public class LobbyHub : Hub
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
         if (room == null || room.HostConnectionId != Context.ConnectionId || room.State.Phase != GamePhase.WaitingForPlayers) return;
 
+        if (!string.IsNullOrWhiteSpace(mapId) && _configManager.Maps.TryGetValue(mapId, out var newMapCfg)
+            && room.State.Players.Count > newMapCfg.MaxPlayers)
+        {
+            await Clients.Caller.SendAsync("LobbyError",
+                $"Can't switch to {newMapCfg.Name} — it only supports {newMapCfg.MaxPlayers} players and this room has {room.State.Players.Count}.");
+            return;
+        }
+
         room.RoomName = string.IsNullOrWhiteSpace(roomName) ? "Arena" : roomName;
         room.Password = password ?? string.Empty;
         room.State.CurrentDifficulty = difficulty;
@@ -317,6 +335,7 @@ public class LobbyHub : Hub
             mapId = room.CurrentMapId
         });
     }
+
 
     public async Task SelectCharacter(string characterId)
     {

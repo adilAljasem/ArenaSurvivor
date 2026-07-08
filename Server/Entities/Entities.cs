@@ -65,6 +65,12 @@ public abstract class BaseActorEntity
     // >>> THE NEW ECS STAT CACHE <<<
     [JsonIgnore]
     public Dictionary<string, float> CachedStats { get; set; } = new();
+    // >>> NEW: aggregate percent statMultiplier per stat, cached alongside CachedStats. Lets
+    // systems apply the same malus/bonus directly to values that live outside CachedStats
+    // (e.g. a weapon's own meleeDamage/rangedDamage/magicDamage in CombatSystem) instead of
+    // only affecting this character's own stat pool.
+    [JsonIgnore]
+    public Dictionary<string, float> CachedStatMultipliers { get; set; } = new();
     [JsonIgnore]
     public bool StatsNeedRecalculation { get; set; } = true;
     public float CurrentMaxHp { get; set; }
@@ -74,6 +80,15 @@ public abstract class BaseActorEntity
     {
         return CachedStats.GetValueOrDefault(statName, 0f);
     }
+
+    // Same asymmetric rule as StatSystem's final calculation: positive multiplies up, negative
+    // divides down instead of subtracting. Use this to apply a stat's percent multiplier to a
+    // value that isn't itself part of CachedStats (e.g. a weapon's own damage number).
+    public float GetStatMultiplier(string statName)
+    {
+        return CachedStatMultipliers.GetValueOrDefault(statName, 0f);
+    }
+
 
     public bool IsIncapacitated(Configs.ConfigManager configs)
     {

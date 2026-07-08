@@ -206,6 +206,9 @@ class GameScene extends Phaser.Scene {
         this.load.spritesheet('tree', 'assets/obstacles/Tree Lights 02-Sheet.png', { frameWidth: 32, frameHeight: 64 });
         this.load.spritesheet('effects1', 'assets/Effects/effects1.png', { frameWidth: 64, frameHeight: 64 });
         this.load.spritesheet('characters_sheet1', 'assets/Characters/char1.png', { frameWidth: 32, frameHeight: 32 });
+        this.load.spritesheet('shaman', 'assets/Characters/shaman.png', { frameWidth: 61, frameHeight: 61 });
+        this.load.spritesheet('rock', 'assets/Characters/Rock.png', { frameWidth: 61, frameHeight: 61 });
+
         this.load.spritesheet('ammo_sheet2', '/assets/Weapons/ammo2.png', { frameWidth: 60, frameHeight: 54 });
         this.load.spritesheet('goblinCavebat_sheet', '/assets/Enemies/goblin-cavbat.png', { frameWidth: 83, frameHeight: 55.8 });
         this.load.spritesheet('spike_enemy', '/assets/Enemies/spike enemy.png', { frameWidth: 47, frameHeight: 38 });
@@ -986,8 +989,10 @@ class GameScene extends Phaser.Scene {
                     })) || [],
                     statDiff: p[16],
                     currentShield: p[17] || 0,
+                    configId: p[18],
                     currentShop: [], stats: {}, ownedItems: {}
                 })) || [],
+
 
                 enemies: this.activeEnemiesArray, // <--- Using the fast cached array!
                 projectiles: [],

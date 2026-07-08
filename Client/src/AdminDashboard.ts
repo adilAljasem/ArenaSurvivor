@@ -471,9 +471,10 @@ export class AdminDashboard {
                 <div class="admin-page-header">
                     <div>
                         <h1 class="admin-page-title">Players</h1>
-                        <div class="admin-page-subtitle">Search registered accounts</div>
+                        <div class="admin-page-subtitle">Search registered accounts · refreshes every 5s</div>
                     </div>
                 </div>
+
                 <div class="admin-panel">
                     <input type="search" id="player-search" placeholder="Search by username or email..." />
                 </div>
@@ -606,6 +607,7 @@ export class AdminDashboard {
             this.loadRedisKeys();
         } else if (pageId === 'players') {
             this.loadPlayers();
+            this.refreshTimers.players = setInterval(() => this.loadPlayers(), 5000);
         } else if (pageId === 'live-games') {
             this.loadLiveGames();
             this.refreshTimers['live-games'] = setInterval(() => this.loadLiveGames(), 5000);
@@ -613,6 +615,7 @@ export class AdminDashboard {
             this.loadMatches();
         }
     }
+
 
     // ─── Dashboard ──────────────────────────────────────────────────────────
     private async loadDashboard() {
