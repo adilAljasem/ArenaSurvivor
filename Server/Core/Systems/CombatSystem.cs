@@ -55,7 +55,7 @@ public class CombatSystem : IGameSystem
 
         foreach (var player in activePlayers)
         {
-            foreach (var weapon in player.Weapons)
+            foreach (var weapon in player.Weapons.ToList())
             {
                 weapon.CurrentCooldown -= dt;
                 if (weapon.CurrentCooldown > 0) continue;
@@ -99,7 +99,7 @@ public class CombatSystem : IGameSystem
                 if (shouldFire)
                 {
                     // --- COMMANDED STATE: ATTACKING ---
-                    player.ActionState = "Attacking";
+                    player.SetActionState("Attacking");
 
                     float length = (float)Math.Sqrt(dirX * dirX + dirY * dirY);
                     if (length > 0)
@@ -116,9 +116,16 @@ public class CombatSystem : IGameSystem
                         if (_configs.Projectiles.TryGetValue(projId, out var projConfig))
                         {
                             float finalSpeed = projConfig.BaseSpeed * (1f + player.GetTotalStat("projectileSpeedPercent", _configs));
-                            float computedLifespan = projConfig.BaseSpeed > 0 ? ((config.Range + player.GetTotalStat("range", _configs)) / finalSpeed) : 0.15f;
+                            float rangeBasedLifespan = projConfig.BaseSpeed > 0 ? ((config.Range + player.GetTotalStat("range", _configs)) / finalSpeed) : 0.15f;
+                            float computedLifespan = rangeBasedLifespan;
                             if (projConfig.Lifespan > 0) computedLifespan = projConfig.Lifespan;
                             if (config.Lifespan > 0) computedLifespan = config.Lifespan;
+
+                            // FLOOR: a flat Lifespan configured on the projectile or weapon should extend flight time,
+                            // never cut it short of the weapon's own stated Range - otherwise shots fired near max range
+                            // die mid-flight before they can possibly reach the target.
+                            computedLifespan = Math.Max(computedLifespan, rangeBasedLifespan);
+
 
                             var combinedEffects = new List<string>();
                             if (config.ApplyEffectsOnHit != null) combinedEffects.AddRange(config.ApplyEffectsOnHit);
@@ -202,21 +209,35 @@ public class CombatSystem : IGameSystem
                 float offset = enemyCfg?.WeaponOffset.HasValue == true ? (enemyCfg.WeaponOffset.Value * entityScale) : ((40f * entityScale) + 30f);
                 var (spawnX, spawnY) = ApplySlotOffset(enemy.X, enemy.Y, weapon.SlotIndex, offset);
 
-                // FIX: use target.X/target.Y directly - targetX/targetY no longer exist.
                 float summonDirX = target.X - spawnX;
                 float summonDirY = target.Y - spawnY;
-                if (summonDirX * summonDirX + summonDirY * summonDirY <= 0) continue;
+                float summonDistSq = summonDirX * summonDirX + summonDirY * summonDirY;
+                if (summonDistSq <= 0) continue;
 
                 // --- COMMANDED STATE: ATTACKING ---
-                enemy.ActionState = "Attacking";
+                enemy.SetActionState("Attacking");
 
                 var (physDmg, magicDmg, isCrit) = CalculateWeaponDamageSplit(enemy, wCfgS, weapon, _configs);
 
                 if (string.IsNullOrEmpty(wCfgS.ProjectileId) || !_configs.Projectiles.TryGetValue(wCfgS.ProjectileId, out var pCfg2)) continue;
 
-                float computedLifespan = pCfg2.BaseSpeed > 0 ? ((wCfgS.Range + enemy.GetTotalStat("range", _configs)) / pCfg2.BaseSpeed) : 0.15f;
+                // FIX: attackRadius/bestDistSq above are measured from the enemy's CENTER, but the bullet
+                // actually spawns from spawnX/spawnY (offset by the weapon's slot position). A weapon sitting
+                // off to one side can end up genuinely farther from the target than Range would suggest, even
+                // while the enemy itself is "in range." Floor against the REAL muzzle-to-target distance
+                // instead of the configured Range, so this can never come up short regardless of offset.
+                float actualDistance = (float)Math.Sqrt(summonDistSq);
+                float rangeBasedLifespan = pCfg2.BaseSpeed > 0
+                    ? (Math.Max(actualDistance, wCfgS.Range + enemy.GetTotalStat("range", _configs)) / pCfg2.BaseSpeed)
+                    : 0.15f;
+                float computedLifespan = rangeBasedLifespan;
                 if (pCfg2.Lifespan > 0) computedLifespan = pCfg2.Lifespan;
                 if (wCfgS.Lifespan > 0) computedLifespan = wCfgS.Lifespan;
+                computedLifespan = Math.Max(computedLifespan, rangeBasedLifespan);
+
+
+                // Same floor as the player-fire branch above.
+                computedLifespan = Math.Max(computedLifespan, rangeBasedLifespan);
 
                 var combined2 = new List<string>();
                 if (wCfgS.ApplyEffectsOnHit != null) combined2.AddRange(wCfgS.ApplyEffectsOnHit);

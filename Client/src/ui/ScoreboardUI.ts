@@ -3,6 +3,7 @@ import * as Phaser from 'phaser';
 export class ScoreboardUI {
     private wrapper: HTMLDivElement;
     private scene: Phaser.Scene;
+    private iconHtmlCache: Map<string, string> = new Map();
 
     constructor(scene: Phaser.Scene) {
         this.scene = scene;
@@ -49,6 +50,24 @@ export class ScoreboardUI {
         document.head.appendChild(style);
     }
 
+    // Icon HTML for the scoreboard rows, cached per (textureKey, frame) so the canvas draw +
+    // toDataURL cost is only ever paid once per icon, no matter how many times update() runs.
+    // (A CSS background-position crop was tried here instead, to skip the canvas work
+    // entirely, but this project's asset pipeline serves texture images as blob: URLs that
+    // get revoked after Phaser's initial load — so re-referencing img.src later 404s.
+    // getBase64 works because it draws from the already-decoded bitmap, not the URL.)
+    private getIconHtml(textureKey: string, frame: number, _size: number): string | null {
+        const cacheKey = `${textureKey}::${frame}`;
+        const cached = this.iconHtmlCache.get(cacheKey);
+        if (cached !== undefined) return cached;
+
+        const base64 = this.scene.textures.exists(textureKey) ? this.scene.textures.getBase64(textureKey, frame) : '';
+        const html = base64 ? `<img src="${base64}" style="width:100%; height:100%; object-fit:contain; image-rendering:pixelated;" />` : null;
+
+        if (html) this.iconHtmlCache.set(cacheKey, html);
+        return html;
+    }
+
     public update(players: any[], masterConfigs: any, myConnectionId: string) {
         // Sort by damage dealt descending
         const sortedPlayers = [...players].sort((a, b) => b.totalDamageDealt - a.totalDamageDealt);
@@ -62,8 +81,9 @@ export class ScoreboardUI {
             if (charCfg) {
                 const texKey = charCfg.textureKey || charCfg.TextureKey;
                 const frame = charCfg.iconFrame ?? charCfg.IconFrame ?? 0;
-                if (this.scene.textures.exists(texKey)) {
-                    iconHtml = `<img src="${this.scene.textures.getBase64(texKey, frame)}" />`;
+                const spriteHtml = this.getIconHtml(texKey, frame, 42);
+                if (spriteHtml) {
+                    iconHtml = spriteHtml;
                 }
             }
 

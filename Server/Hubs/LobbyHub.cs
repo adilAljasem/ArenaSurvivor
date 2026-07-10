@@ -262,13 +262,13 @@ public class LobbyHub : Hub
                 PlayerId = playerId,
                 ConnectionId = Context.ConnectionId,
                 Name = playerName,
-                Team = "Player",
-                X = 640,
-                Y = 360,
                 IsReady = false,
                 ConfigId = string.Empty,
                 UnlockedAchievementIds = unlockedAchievements
             };
+            newPlayer.SetTeam("Player");
+            newPlayer.SetPosition(640, 360);
+
 
             room.State.Players.TryAdd(Context.ConnectionId, newPlayer);
             MatchHub.GenerateShopForPlayer(newPlayer, _configManager, room.State.CurrentWave);

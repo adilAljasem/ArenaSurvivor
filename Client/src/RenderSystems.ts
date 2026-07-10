@@ -136,6 +136,12 @@ export class ActorRenderer {
       const scale = config?.scale || 1.0;
       const isBoss = !isPlayer && config?.isBoss;
 
+      // Actual apparent on-screen size, hoisted up here (originally computed further down,
+      // right before topY/bottomY) because the weapon-scaling block below needs it too —
+      // see the comment there for why this is used instead of raw `scale`.
+      const visualHeight = config?.visualHeight ?? config?.VisualHeight ?? 32;
+      const realHeight = visualHeight * scale;
+
       // Variables specific to actor type
       const castColor = isPlayer ? 0x00ffff : 0xffa500;
       const uiWidth = isPlayer ? 32 : (isBoss ? 80 : 32);
@@ -172,6 +178,33 @@ export class ActorRenderer {
       const weaponOffset = explicitOffset !== undefined && explicitOffset !== null
         ? (explicitOffset * scale)
         : (isPlayer ? (10 * scale) + 15 : (40 * scale) + 30);
+
+      // >>> DYNAMIC WEAPON SCALING <<<
+      // A weapon's own `scale` (WeaponConfig.Scale) is an *art* scale — tuned once so the
+      // weapon looks correct on a reference actor. The bug: `config.Scale` on its own is NOT
+      // a reliable measure of how big an actor actually looks on screen. `bodySprite.setScale(scale)`
+      // is applied on top of each texture's own native frame size, and those native sizes vary
+      // per character/enemy. A visually huge boss might be drawn on a big canvas and use a LOW
+      // Scale (e.g. 0.6) to bring it down to the intended in-world size, while a visually small
+      // character might use a HIGHER Scale (e.g. 1.4) because its source art is compact. Basing
+      // weapon size on raw Scale was exactly backwards for cases like that — a bigger-looking
+      // sprite could have a smaller Scale number and end up with a smaller weapon.
+      //
+      // `realHeight` (visualHeight * scale, just above) doesn't have that problem — it's the
+      // same value already used to correctly position health bars/cast bars above every actor,
+      // meaning VisualHeight has already been hand-tuned per config to reflect true apparent
+      // size regardless of the underlying texture's native resolution. So we drive weapon size
+      // off realHeight relative to a normal-sized reference actor (32px), not off raw scale.
+      //
+      // We still blend rather than scale 1:1 via WeaponScaleInfluence (0-1, default 0.5): at
+      // 0.5, an actor rendering at 2x the reference height holds weapons at ~1.5x their design
+      // size, not the full 2x — noticeably bigger on big actors without looking obese. Give
+      // bosses a lower influence (e.g. 0.25-0.35) if their realHeight is very large. The clamp
+      // is just a safety net against extreme/mistuned config combinations.
+      const REFERENCE_ACTOR_HEIGHT = 32; // matches default VisualHeight/uiWidth for a "normal" actor
+      const actorSizeRatio = realHeight / REFERENCE_ACTOR_HEIGHT;
+      const weaponScaleInfluence = config?.weaponScaleInfluence ?? config?.WeaponScaleInfluence ?? 0.5;
+      const weaponScaleFactor = Phaser.Math.Clamp(1 + (actorSizeRatio - 1) * weaponScaleInfluence, 0.1, 2.0);
 
 
       // 2. CREATE CONTAINER
@@ -268,9 +301,6 @@ export class ActorRenderer {
       const maxCastTimer = comp.maxCastTimer;
 
       // >>> NEW: Dynamic Visual Height Calculation <
-      const visualHeight = config?.visualHeight ?? config?.VisualHeight ?? 32;
-      let realHeight = visualHeight * scale;
-
       let topY = -(realHeight / 2) - 6;
       let bottomY = (realHeight / 2);
 
@@ -417,7 +447,7 @@ export class ActorRenderer {
         if (!sprite && wConfig && wConfig.textureKey && scene.textures.exists(wConfig.textureKey)) {
           sprite = scene.add.sprite(wx, wy, wConfig.textureKey);
           if (wConfig.iconFrame !== undefined) sprite.setFrame(wConfig.iconFrame);
-          sprite.setScale(wConfig.scale || 1.0);
+          sprite.setScale((wConfig.scale || 1.0) * weaponScaleFactor);
           if (wConfig.defaultFacingRight === false) sprite.setFlipX(true);
           (sprite as any).__configId = wConfigId;
           weaponsContainer.add(sprite);
@@ -501,7 +531,7 @@ export class ActorRenderer {
             aura.setFlipX(sprite.flipX);
 
             // Make the aura pulse slightly so it feels magical
-            const pulseScale = (wConfig.scale || 1.0) * (1.15 + Math.sin(scene.time.now / 150) * 0.08);
+            const pulseScale = (wConfig.scale || 1.0) * weaponScaleFactor * (1.15 + Math.sin(scene.time.now / 150) * 0.08);
             aura.setScale(pulseScale);
           }
           // =======================================================

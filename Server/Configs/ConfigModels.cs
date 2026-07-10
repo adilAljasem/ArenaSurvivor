@@ -103,6 +103,17 @@ public class CharacterConfig
     public float? WeaponOffset { get; set; }
     public float? VisualHeight { get; set; }
 
+    /// <summary>
+    /// How strongly this character's body Scale carries over to the visual size of any
+    /// weapon it holds. 0 = weapons always render at their own configured WeaponConfig.Scale,
+    /// completely independent of this character's size. 1 = weapons scale 1:1 with this
+    /// character's Scale (looks fine near 1.0, but oversized/undersized at extreme Scale
+    /// values). Values in between blend the two — e.g. 0.5 means a character at 2x normal
+    /// size holds weapons at ~1.5x their design size, not the full 2x. Tune this per
+    /// character rather than editing individual weapon Scale values.
+    /// </summary>
+    public float WeaponScaleInfluence { get; set; } = 0.1f;
+
     public int[]? AnimIdle { get; set; }
     public int AnimIdleFrameRate { get; set; } = 10;
     public int[]? AnimMove { get; set; }
@@ -146,6 +157,17 @@ public class EnemyConfig
     public List<int> SpawnOnWaves { get; set; } = new();
     public float? WeaponOffset { get; set; }
     public float? VisualHeight { get; set; }
+
+    /// <summary>
+    /// How strongly this enemy's body Scale carries over to the visual size of any weapon
+    /// it holds. 0 = weapons always render at their own configured WeaponConfig.Scale,
+    /// completely independent of this enemy's size. 1 = weapons scale 1:1 with this enemy's
+    /// Scale. Values in between blend the two. Bosses in particular tend to want a LOW value
+    /// here (e.g. 0.25-0.35) — a boss's Scale might be 2.5-3x a normal enemy, and at
+    /// influence 1 that would blow the same pistol a regular enemy carries up to 3x its
+    /// designed size. See CharacterConfig.WeaponScaleInfluence for the same knob on players.
+    /// </summary>
+    public float WeaponScaleInfluence { get; set; } = 0.5f;
 
     // --- Visuals & Animations ---
     public string TextureKey { get; set; } = string.Empty;

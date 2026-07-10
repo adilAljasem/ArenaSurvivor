@@ -37,7 +37,15 @@ public class StatSystem : IGameSystem
         bool isFirstCalc = player.CachedStats.Count == 0;
         if (isFirstCalc) InitializeMaxHp(player, player.Stats.GetFinalStat("maxHp"));
 
-        var activeTraits = player.GetActiveTraits(_configs);
+        // TIER 1 FIX: snapshot these ONCE per player per tick instead of touching the live lists
+        // on every stat iteration below. BuyItem/RecycleGear/TryPickupLoot can Add/Remove from
+        // these from a hub thread at any moment - iterating the live list here would throw
+        // "Collection was modified" if that lands mid-loop. Iterating a snapshot means a
+        // concurrent purchase can never corrupt this pass; worst case this tick's stats are
+        // computed against gear from a few milliseconds ago, which self-corrects next tick.
+        var ownedItemsSnapshot = player.OwnedItems.ToList();
+        var weaponsSnapshot = player.Weapons.ToList();
+        var activeTraits = player.GetActiveTraits(_configs).ToList();
 
         foreach (var statName in _configs.AllStats)
         {
@@ -45,16 +53,14 @@ public class StatSystem : IGameSystem
             float flatBonus = 0f;
             float percentBonus = 0f;
 
-            // Items + Weapons (identical logic for players and enemies)
-            StatContributionHelper.AddGearContributions(player.OwnedItems, player.Weapons, statName, _configs, ref flatBonus, ref percentBonus);
+            StatContributionHelper.AddGearContributions(ownedItemsSnapshot, weaponsSnapshot, statName, _configs, ref flatBonus, ref percentBonus);
 
-            // Item DynamicModifiers only ever ran for players (enemies never evaluated these - see
-            // RecalculateEnemy note below)
-            foreach (var item in player.OwnedItems)
+            foreach (var item in ownedItemsSnapshot)
             {
                 if (_configs.Items.TryGetValue(item.ConfigId, out var itemConfig))
                     flatBonus += EvaluateDynamicModifiers(itemConfig.DynamicModifiers, statName, player, item.Level, state);
             }
+
 
             // Status Effects (players scale by StackCount - see useStackCount note in RecalculateEnemy)
             StatContributionHelper.AddEffectContributions(player.ActiveEffects, statName, _configs, ref flatBonus, ref percentBonus, useStackCount: true);

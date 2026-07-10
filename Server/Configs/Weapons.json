@@ -10,7 +10,7 @@
     "rangedDamage": 50,
     "projectileSpeed": 600,
     "projectileId": "9mm_bullet",
-    "range": 500,
+    "range": 400,
     "textureKey": "weapons_sheet",
     "scale": 0.45,
     "iconFrame": 10,

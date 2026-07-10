@@ -33,12 +33,10 @@ public class MovementSystem : IGameSystem
             if (canMovePlayer && (player.InputX != 0 || player.InputY != 0))
             {
                 float finalSpeed = Math.Max(0f, player.GetTotalStat("movementSpeed", _configs));
-                player.X += player.InputX * finalSpeed * dt;
-                player.Y += player.InputY * finalSpeed * dt;
+                player.Translate(player.InputX * finalSpeed * dt, player.InputY * finalSpeed * dt);
             }
 
-            player.X = Math.Clamp(player.X, 35, mapW - 35);
-            player.Y = Math.Clamp(player.Y, 35, mapH - 35);
+            player.SetPosition(Math.Clamp(player.X, 35, mapW - 35), Math.Clamp(player.Y, 35, mapH - 35));
 
             if (player.ActionState != "Dead")
             {
@@ -50,7 +48,7 @@ public class MovementSystem : IGameSystem
                 if (!isCommandedState)
                 {
                     bool isActuallyMoving = canMovePlayer && (player.InputX != 0 || player.InputY != 0);
-                    player.ActionState = isActuallyMoving ? "Moving" : "Idle";
+                    player.SetActionState(isActuallyMoving ? "Moving" : "Idle");
                 }
             }
         }
@@ -97,18 +95,16 @@ public class MovementSystem : IGameSystem
                 {
                     // Priority Check for AI
                     if (enemy.ActionState != "Casting" && enemy.ActionState != "Attacking")
-                        enemy.ActionState = "Moving";
+                        enemy.SetActionState("Moving");
 
                     float finalSpeed = Math.Max(0f, enemy.GetTotalStat("movementSpeed", _configs));
-                    enemy.X += (randDx / randLength) * finalSpeed * dt;
-                    enemy.Y += (randDy / randLength) * finalSpeed * dt;
+                    enemy.Translate((randDx / randLength) * finalSpeed * dt, (randDy / randLength) * finalSpeed * dt);
                     enemy.AimX = enemy.WanderTargetX; enemy.AimY = enemy.WanderTargetY;
                 }
                 else if (enemy.ActionState != "Casting" && enemy.ActionState != "Attacking")
-                    enemy.ActionState = "Idle";
+                    enemy.SetActionState("Idle");
 
-                enemy.X = Math.Clamp(enemy.X, 0, mapW);
-                enemy.Y = Math.Clamp(enemy.Y, 0, mapH);
+                enemy.SetPosition(Math.Clamp(enemy.X, 0, mapW), Math.Clamp(enemy.Y, 0, mapH));
                 return;
             }
 
@@ -166,37 +162,35 @@ public class MovementSystem : IGameSystem
                 {
                     if (enemy.IsIncapacitated(_configs))
                     {
-                        enemy.ActionState = "Idle";
+                        enemy.SetActionState("Idle");
                     }
                     else if (enemy.AttackCooldown <= 0)
                     {
-                        enemy.ActionState = "Attacking";
+                        enemy.SetActionState("Attacking");
                         float atkSpd = enemy.GetTotalStat("attackSpeedPercent", _configs);
                         enemy.AttackCooldown = config.AttackDuration / Math.Max(0.1f, (1f + atkSpd));
                     }
-                    else if (enemy.ActionState != "Attacking" && enemy.ActionState != "Casting") enemy.ActionState = "Idle";
+                    else if (enemy.ActionState != "Attacking" && enemy.ActionState != "Casting") enemy.SetActionState("Idle");
                 }
 
                 else
                 {
                     if (enemy.AttackCooldown <= 0 && !enemy.IsIncapacitated(_configs))
                     {
-                        if (enemy.ActionState != "Casting") enemy.ActionState = "Moving";
+                        if (enemy.ActionState != "Casting") enemy.SetActionState("Moving");
                         float dx = targetX - enemy.X, dy = targetY - enemy.Y;
                         float length = (float)Math.Sqrt((dx * dx) + (dy * dy));
                         if (length > 0)
                         {
                             float finalSpeed = Math.Max(0f, enemy.GetTotalStat("movementSpeed", _configs));
-                            enemy.X += (dx / length) * finalSpeed * dt;
-                            enemy.Y += (dy / length) * finalSpeed * dt;
+                            enemy.Translate((dx / length) * finalSpeed * dt, (dy / length) * finalSpeed * dt);
                         }
                     }
                 }
             }
-            else if (enemy.ActionState != "Casting" && enemy.ActionState != "Attacking") enemy.ActionState = "Idle";
+            else if (enemy.ActionState != "Casting" && enemy.ActionState != "Attacking") enemy.SetActionState("Idle");
 
-            enemy.X = Math.Clamp(enemy.X, 0, mapW);
-            enemy.Y = Math.Clamp(enemy.Y, 0, mapH);
+            enemy.SetPosition(Math.Clamp(enemy.X, 0, mapW), Math.Clamp(enemy.Y, 0, mapH));
         });
 
         foreach (var deadEnemy in state.Enemies.Values.Where(e => e.ActionState == "Dead"))

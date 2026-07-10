@@ -189,14 +189,15 @@ public class MatchHub : Hub
                         PlayerId = dto.PlayerId,
                         ConnectionId = dto.OldConnectionId, // Temp key, replaced on stitch
                         Name = dto.Name,
-                        Team = "Player",
-                        X = 640,
-                        Y = 360,
                         ConfigId = dto.ConfigId,
                         UnlockedAchievementIds = dto.UnlockedAchievementIds != null
                             ? new HashSet<string>(dto.UnlockedAchievementIds)
                             : new HashSet<string>()
                     };
+                    // Team and X/Y are private-set now, so they can't ride along in the object initializer above.
+                    entity.SetTeam("Player");
+                    entity.SetPosition(640, 360);
+
                     if (_configManager.Characters.ContainsKey(dto.ConfigId))
                         entity.Initialize(_configManager.Characters[dto.ConfigId], _configManager);
 
@@ -848,7 +849,7 @@ public class MatchHub : Hub
                 // Unfreeze the player so they can move and shoot again
                 if (player.ActionState == "Casting" || player.ActionState == "Attacking")
                 {
-                    player.ActionState = "Idle";
+                    player.SetActionState("Idle");
                 }
             }
 

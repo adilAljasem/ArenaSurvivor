@@ -247,7 +247,7 @@ public class KillAllCommand : ICheatCommand
             if (enemy.ActionState != "Dead" && enemy.Team == "Enemy")
             {
                 enemy.CurrentHp = 0;
-                enemy.ActionState = "Dead";
+                enemy.SetActionState("Dead");
                 count++;
             }
         }

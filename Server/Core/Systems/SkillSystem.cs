@@ -155,12 +155,20 @@ public class SkillSystem : IGameSystem
                     foreach (var id in toRemove) state.Projectiles.TryRemove(id, out _);
                 }
 
-                float computedLifespan = projConfig.BaseSpeed > 0 ? (config.Range / Math.Max(1f, projConfig.BaseSpeed)) : 0.15f;
+                float rangeBasedLifespan = projConfig.BaseSpeed > 0 ? (config.Range / Math.Max(1f, projConfig.BaseSpeed)) : 0.15f;
+                float computedLifespan = rangeBasedLifespan;
                 if (config.TargetType == SkillTargetType.ClosestAlly && projConfig.BaseSpeed > 0)
                     computedLifespan = Math.Max(computedLifespan, (length * 1.2f) / projConfig.BaseSpeed);
                 if (config.ChannelDurationSeconds > 0) computedLifespan = config.ChannelDurationSeconds;
                 if (projConfig.Lifespan > 0) computedLifespan = projConfig.Lifespan;
                 if (config.Lifespan > 0) computedLifespan = config.Lifespan;
+
+                // FLOOR: same principle as CombatSystem's weapon-fire calc, but NOT applied when
+                // ChannelDurationSeconds is driving the lifespan - that's an intentional "lives exactly as
+                // long as the channel" design, not a range miscalculation, so it's allowed to be shorter.
+                if (config.ChannelDurationSeconds <= 0)
+                    computedLifespan = Math.Max(computedLifespan, rangeBasedLifespan);
+
 
                 int pCount = Math.Max(1, config.ProjectileCount);
                 var shotDirections = ProjectileFactory.CalculateSpreadDirections(dirX, dirY, pCount, config.SpreadAngle);
@@ -284,7 +292,7 @@ public class SkillSystem : IGameSystem
                     var newSummon = new EnemyEntity();
                     newSummon.Initialize(summonConfig, spawnX, spawnY, _configs);
                     newSummon.CurrentHp = newSummon.GetTotalStat("maxHp", _configs);
-                    newSummon.Team = team;
+                    newSummon.SetTeam(team);
                     state.Enemies.TryAdd(newSummon.Id, newSummon);
                 }
             }
@@ -369,7 +377,7 @@ public class SkillSystem : IGameSystem
     {
         foreach (var player in state.Players.Values)
         {
-            player.ActionState = "Idle";
+            player.SetActionState("Idle");
             player.CurrentCastingSkillId = string.Empty;
             player.CurrentCastTimer = 0f;
             player.MaxCastTimer = 0f;
@@ -433,8 +441,8 @@ public class SkillSystem : IGameSystem
             // NOTE: unlike ProcessPlayerSkills below, enemies do NOT clear ActionState from
             // "Casting" to "Idle" once wind-up ends and channeling begins - they stay "Casting"
             // for the whole channel. Real behavioral difference from players, preserved exactly.
-            if (isCasting) enemy.ActionState = "Casting";
-            else if (busySkill == null) { if (enemy.ActionState == "Casting") enemy.ActionState = "Idle"; enemy.CurrentCastingSkillId = string.Empty; enemy.CurrentCastTimer = 0f; enemy.MaxCastTimer = 0f; }
+            if (isCasting) enemy.SetActionState("Casting");
+            else if (busySkill == null) { if (enemy.ActionState == "Casting") enemy.SetActionState("Idle"); enemy.CurrentCastingSkillId = string.Empty; enemy.CurrentCastTimer = 0f; enemy.MaxCastTimer = 0f; }
 
             if (busySkill == null && enemy.Skills.Count > 0 && !enemy.IsIncapacitated(_configs))
             {
@@ -494,9 +502,10 @@ public class SkillSystem : IGameSystem
             // see the contrasting note in ProcessEnemySkills above.
             if (busySkill != null)
             {
-                if (isCasting) player.ActionState = "Casting";
-                else if (player.ActionState == "Casting") player.ActionState = "Idle";
+                if (isCasting) player.SetActionState("Casting");
+                else if (player.ActionState == "Casting") player.SetActionState("Idle");
             }
+
             else
             {
                 player.CurrentCastingSkillId = string.Empty;

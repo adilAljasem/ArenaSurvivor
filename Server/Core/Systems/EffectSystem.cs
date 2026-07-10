@@ -57,10 +57,11 @@ public class EffectSystem : IGameSystem
                 if (shieldToGrant > 0)
                 {
                     float newShield = shieldToGrant * existing.StackCount;
-                    target.CurrentShield -= existing.GrantedShieldAmount;
+                    target.ModifyShield(-existing.GrantedShieldAmount);
                     existing.GrantedShieldAmount = newShield;
-                    target.CurrentShield += newShield;
+                    target.ModifyShield(newShield);
                 }
+
             }
             else
             {
@@ -79,7 +80,7 @@ public class EffectSystem : IGameSystem
                     // kind of reference HealthSystem already reads back via effect.Caster.
                     Caster = casterEntity
                 });
-                target.CurrentShield += initialShield;
+                target.ModifyShield(initialShield);
             }
 
             // A stack change can shift a buff's magnitude — force StatSystem to pick it up.
@@ -139,7 +140,10 @@ public class EffectSystem : IGameSystem
             if (effect.TimeRemaining <= 0)
             {
                 if (effect.GrantedShieldAmount > 0)
-                    entity.CurrentShield = Math.Max(0, entity.CurrentShield - effect.GrantedShieldAmount);
+                {
+                    entity.ModifyShield(-effect.GrantedShieldAmount);
+                    entity.ClampShieldNonNegative();
+                }
 
                 entity.ActiveEffects.RemoveAt(i);
                 entity.StatsNeedRecalculation = true;

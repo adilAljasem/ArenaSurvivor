@@ -206,6 +206,8 @@ class GameScene extends Phaser.Scene {
         this.load.spritesheet('tree', 'assets/obstacles/Tree Lights 02-Sheet.png', { frameWidth: 32, frameHeight: 64 });
         this.load.spritesheet('effects1', 'assets/Effects/effects1.png', { frameWidth: 64, frameHeight: 64 });
         this.load.spritesheet('characters_sheet1', 'assets/Characters/char1.png', { frameWidth: 32, frameHeight: 32 });
+        this.load.spritesheet('characters', 'assets/Characters/charaters.png', { frameWidth: 450, frameHeight: 450 });
+
         this.load.spritesheet('shaman', 'assets/Characters/shaman.png', { frameWidth: 61, frameHeight: 61 });
         this.load.spritesheet('rock', 'assets/Characters/Rock.png', { frameWidth: 61, frameHeight: 61 });
 
@@ -685,13 +687,28 @@ class GameScene extends Phaser.Scene {
                         // Normal Production Flow (Loads the Lobby UI)
                         // ---------------------------------------------------
                         console.log("Launching Lobby UI...");
-                        const getIconBase64 = (textureKey: string, frame: number) => {
-                            if (this.textures.exists(textureKey)) return this.textures.getBase64(textureKey, frame);
-                            return null;
+
+                        // Icon HTML for the lobby DOM, cached per (textureKey, frame) so the
+                        // canvas draw + toDataURL cost is only ever paid once per icon, no
+                        // matter how many times the surrounding UI re-renders. (A CSS
+                        // background-position crop was tried here instead, to skip the canvas
+                        // work entirely, but this project's asset pipeline serves texture
+                        // images as blob: URLs that get revoked after Phaser's initial load —
+                        // so re-referencing img.src later 404s. getBase64 works because it
+                        // draws from the already-decoded bitmap, not the URL.)
+                        const iconBase64Cache = new Map<string, string>();
+                        const getIconHtml = (textureKey: string, frame: number, _size: number): string | null => {
+                            const cacheKey = `${textureKey}::${frame}`;
+                            let base64 = iconBase64Cache.get(cacheKey);
+                            if (base64 === undefined) {
+                                base64 = this.textures.exists(textureKey) ? this.textures.getBase64(textureKey, frame) : '';
+                                iconBase64Cache.set(cacheKey, base64);
+                            }
+                            return base64 ? `<img src="${base64}" style="width:100%; height:100%; object-fit:contain; image-rendering:pixelated;" />` : null;
                         };
 
                         // 1. Build the UI
-                        new LobbyUI(lobbyConnection, getIconBase64, () => {
+                        new LobbyUI(lobbyConnection, getIconHtml, () => {
                             console.log("Match joined. Entering Game mode!");
                         }, playerId);
 

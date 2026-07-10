@@ -10,8 +10,9 @@
     "maxWave": 2000,
     "spawnWeight": 100,
     "textureKey": "spring_enemy",
-    "VisualHeight": 20.0,
-    "scale": 2.5,
+    "VisualHeight": 25.0,
+    "WeaponScaleInfluence": 0.1,
+    "scale": 1.5,
     "iconFrame": 1,
     "animIdle": [
       6,

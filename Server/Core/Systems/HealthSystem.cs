@@ -93,7 +93,7 @@ public class HealthSystem : IGameSystem
                 if (remainingDamage <= 0) break;
                 float absorb = Math.Min(effect.GrantedShieldAmount, remainingDamage);
                 effect.GrantedShieldAmount -= absorb;
-                target.CurrentShield -= absorb;
+                target.ModifyShield(-absorb);
                 remainingDamage -= absorb;
 
                 if (effect.Caster is PlayerEntity shieldCaster)
@@ -105,8 +105,9 @@ public class HealthSystem : IGameSystem
                     targetPlayer.TotalShieldingDone += absorb;
                 }
             }
-            target.CurrentShield = Math.Max(0, target.CurrentShield);
+            target.ClampShieldNonNegative();
         }
+
 
         // --- DAMAGE TRACKING ---
         if (remainingDamage > 0)
@@ -120,7 +121,7 @@ public class HealthSystem : IGameSystem
         // --- DEATH TRIGGER ---
         if (target.CurrentHp <= 0 && target.ActionState != "Dead")
         {
-            target.ActionState = "Dead";
+            target.SetActionState("Dead");
             bool isPlayer = target is PlayerEntity;
             string entityId = EntityResolver.GetId(target);
             string configId = isPlayer ? ((PlayerEntity)target).ConfigId : ((EnemyEntity)target).ConfigId;

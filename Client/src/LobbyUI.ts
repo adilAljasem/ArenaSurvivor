@@ -645,7 +645,7 @@ export class LobbyUI {
     private masterConfigs: any = null;
 
     private connection: HubConnection;
-    private getIconBase64: (textureKey: string, frame: number) => string | null;
+    private getIconHtml: (textureKey: string, frame: number, size: number) => string | null;
     private onJoinMatch: () => void;
     private targetRoomIdForPassword: string = "";
 
@@ -659,10 +659,10 @@ export class LobbyUI {
 
     private adminDashboard: AdminDashboard | null = null;
 
-    constructor(connection: HubConnection, getIconBase64: (key: string, frame: number) => string | null, onJoinMatch: () => void, playerId: string) {
+    constructor(connection: HubConnection, getIconHtml: (key: string, frame: number, size: number) => string | null, onJoinMatch: () => void, playerId: string) {
         this.playerId = playerId;
         this.connection = connection;
-        this.getIconBase64 = getIconBase64;
+        this.getIconHtml = getIconHtml;
         this.onJoinMatch = onJoinMatch;
 
         this.playerName = localStorage.getItem('arena_username') ?? "Traveler";
@@ -740,9 +740,9 @@ export class LobbyUI {
     // Icon + name badges for the roomier Collection cards.
     private buildLockOverlay(missing: { id: string, name: string, textureKey: string, iconFrame: number }[]): string {
         const badges = missing.map(m => {
-            const base64Img = m.textureKey ? this.getIconBase64(m.textureKey, m.iconFrame) : null;
-            const iconHtml = base64Img
-                ? `<img src="${base64Img}" style="width:18px; height:18px; object-fit:contain; image-rendering:pixelated;" />`
+            const spriteHtml = m.textureKey ? this.getIconHtml(m.textureKey, m.iconFrame, 18) : null;
+            const iconHtml = spriteHtml
+                ? `<div style="width:18px; height:18px; display:inline-block;">${spriteHtml}</div>`
                 : `<span style="font-size:13px;">🏆</span>`;
             return `<div class="lock-req-badge">${iconHtml}<span>${m.name}</span></div>`;
         }).join('');
@@ -768,9 +768,9 @@ export class LobbyUI {
         const description = this.pick(cfg, 'description') || 'No description available.';
         const textureKey = this.pick(cfg, 'textureKey');
         const frame = this.pick(cfg, 'iconFrame') ?? 0;
-        const base64Img = textureKey ? this.getIconBase64(textureKey, frame) : null;
-        const iconHtml = base64Img
-            ? `<img src="${base64Img}" />`
+        const spriteHtml = textureKey ? this.getIconHtml(textureKey, frame, 56) : null;
+        const iconHtml = spriteHtml
+            ? spriteHtml
             : (kind === 'trait' ? '★' : name.charAt(0).toUpperCase());
 
         let detailsHtml = '';
@@ -881,7 +881,7 @@ export class LobbyUI {
             const item = document.createElement('div');
             item.className = `char-picker-item ${id === this.selectedDetailCharacterId ? 'selected' : ''} ${locked ? 'locked' : ''}`;
             item.innerHTML = `
-                <div class="char-picker-icon">${this.buildIconHtml(char, (name || 'C').charAt(0).toUpperCase())}</div>
+                <div class="char-picker-icon">${this.buildIconHtml(char, (name || 'C').charAt(0).toUpperCase(), 34)}</div>
                 <div class="char-picker-name">${name}</div>
                 ${locked ? `<span class="char-picker-lock">🔒</span>` : ''}
             `;
@@ -1052,9 +1052,9 @@ export class LobbyUI {
             return;
         }
 
-        const base64Img = a.textureKey ? this.getIconBase64(a.textureKey, a.iconFrame || 0) : null;
-        const iconHtml = base64Img
-            ? `<img src="${base64Img}" style="width:100%; height:100%; object-fit:contain; image-rendering:pixelated;" />`
+        const spriteHtml = a.textureKey ? this.getIconHtml(a.textureKey, a.iconFrame || 0, 44) : null;
+        const iconHtml = spriteHtml
+            ? spriteHtml
             : (a.name || "A").charAt(0).toUpperCase();
 
         const threshold = a.threshold || 1;
@@ -1126,11 +1126,11 @@ export class LobbyUI {
         return `<span class="coll-badge" style="color:${color}; border-color:${color}66;">${label} ${displayValue}</span>`;
     }
 
-    private buildIconHtml(entry: any, fallbackLetter: string): string {
+    private buildIconHtml(entry: any, fallbackLetter: string, size: number): string {
         const textureKey = this.pick(entry, 'textureKey');
         const frame = this.pick(entry, 'iconFrame') ?? 0;
-        const base64Img = textureKey ? this.getIconBase64(textureKey, frame) : null;
-        return base64Img ? `<img src="${base64Img}" />` : fallbackLetter;
+        const spriteHtml = textureKey ? this.getIconHtml(textureKey, frame, size) : null;
+        return spriteHtml || fallbackLetter;
     }
 
     // Renders a badge for a skill/effect id, resolving its display name + icon from the
@@ -1142,9 +1142,9 @@ export class LobbyUI {
         const name = cfg ? (this.pick(cfg, 'name') || id) : id;
         const textureKey = cfg ? this.pick(cfg, 'textureKey') : null;
         const frame = cfg ? (this.pick(cfg, 'iconFrame') ?? 0) : 0;
-        const base64Img = textureKey ? this.getIconBase64(textureKey, frame) : null;
-        const iconHtml = base64Img
-            ? `<img src="${base64Img}" style="width:16px; height:16px; object-fit:contain; image-rendering:pixelated; margin-right:5px; vertical-align:middle;" />`
+        const spriteHtml = textureKey ? this.getIconHtml(textureKey, frame, 16) : null;
+        const iconHtml = spriteHtml
+            ? `<span style="width:16px; height:16px; display:inline-block; margin-right:5px; vertical-align:middle;">${spriteHtml}</span>`
             : '';
         return `<span class="coll-badge clickable" data-kind="${kind}" data-id="${id}">${iconHtml}${name}</span>`;
     }
@@ -1263,7 +1263,7 @@ export class LobbyUI {
 
         card.innerHTML = `
             <div class="coll-card-header">
-                <div class="coll-icon" style="border: 2px solid ${color};">${this.buildIconHtml(e, (name || '?').charAt(0).toUpperCase())}</div>
+                <div class="coll-icon" style="border: 2px solid ${color};">${this.buildIconHtml(e, (name || '?').charAt(0).toUpperCase(), 52)}</div>
                 <div class="coll-title-block">
                     <div class="coll-name">${name}</div>
                     <div class="coll-subtitle">Wave ${minWave}${maxWave < 999 ? '-' + maxWave : '+'}${movesRandomly ? ' • Wanders' : ''}</div>
@@ -1343,7 +1343,7 @@ export class LobbyUI {
         card.innerHTML = `
             ${locked ? this.buildLockOverlay(missing) : ''}
             <div class="coll-card-header">
-                <div class="coll-icon" style="border: 2px solid ${color};">${this.buildIconHtml(w, (name || '?').charAt(0).toUpperCase())}</div>
+                <div class="coll-icon" style="border: 2px solid ${color};">${this.buildIconHtml(w, (name || '?').charAt(0).toUpperCase(), 52)}</div>
                 <div class="coll-title-block">
                     <div class="coll-name">${name}</div>
                     <div class="coll-subtitle">${family || 'Weapon'} • ${price}g</div>
@@ -1408,7 +1408,7 @@ export class LobbyUI {
         card.innerHTML = `
             ${locked ? this.buildLockOverlay(missing) : ''}
             <div class="coll-card-header">
-                <div class="coll-icon" style="border: 2px solid ${color};">${this.buildIconHtml(it, (name || '?').charAt(0).toUpperCase())}</div>
+                <div class="coll-icon" style="border: 2px solid ${color};">${this.buildIconHtml(it, (name || '?').charAt(0).toUpperCase(), 52)}</div>
                 <div class="coll-title-block">
                     <div class="coll-name">${name}</div>
                     <div class="coll-subtitle">${family || 'Item'} • ${price}g</div>
@@ -1464,7 +1464,7 @@ export class LobbyUI {
         card.innerHTML = `
             ${locked ? this.buildLockOverlay(missing) : ''}
             <div class="coll-card-header">
-                <div class="coll-icon" style="border: 2px solid ${color};">${this.buildIconHtml(c, (name || '?').charAt(0).toUpperCase())}</div>
+                <div class="coll-icon" style="border: 2px solid ${color};">${this.buildIconHtml(c, (name || '?').charAt(0).toUpperCase(), 52)}</div>
                 <div class="coll-title-block">
                     <div class="coll-name">${name}</div>
                     <div class="coll-subtitle">Hit Radius ${hitRadius}</div>
@@ -1599,11 +1599,11 @@ export class LobbyUI {
             const id = this.pick(m, 'id') || '';
             const name = this.pick(m, 'name') || id.replace('map_', '');
             const textureKey = this.pick(m, 'textureKey');
-            const base64Img = textureKey ? this.getIconBase64(textureKey, 0) : null;
+            const spriteHtml = textureKey ? this.getIconHtml(textureKey, 0, 60) : null;
             const card = document.createElement('div');
             card.className = `picker-card ${id === this.selectedCreateMapId ? 'selected' : ''}`;
             card.innerHTML = `
-                <div class="picker-card-icon">${base64Img ? `<img src="${base64Img}" />` : '🗺'}</div>
+                <div class="picker-card-icon">${spriteHtml || '🗺'}</div>
                 <div class="picker-card-name">${name}</div>
             `;
             card.onclick = () => { this.selectedCreateMapId = id; this.renderCreateRoomOptions(); };
@@ -2344,10 +2344,10 @@ export class LobbyUI {
                     charName = charData.name || charData.Id || p.characterId;
                     const textureKey = charData.textureKey || charData.TextureKey;
                     const frame = charData.iconFrame ?? charData.IconFrame ?? 0;
-                    const base64Img = this.getIconBase64(textureKey, frame);
+                    const spriteHtml = this.getIconHtml(textureKey, frame, 40);
 
-                    if (base64Img) {
-                        iconHtml = `<div class="char-avatar" style="padding: 0;"><img src="${base64Img}" style="width: 100%; height: 100%; image-rendering: pixelated; object-fit: contain;" /></div>`;
+                    if (spriteHtml) {
+                        iconHtml = `<div class="char-avatar" style="padding: 0;">${spriteHtml}</div>`;
                     } else {
                         iconHtml = `<div class="char-avatar">${charName.charAt(0).toUpperCase()}</div>`;
                     }

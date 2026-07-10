@@ -215,15 +215,17 @@ public class NetworkSystem : IGameSystem
                 p.ConnectionId, (int)p.X, (int)p.Y, (int)p.AimX, (int)p.AimY,
                 (int)p.CurrentHp, (int)p.CurrentMaxHp, p.Gold, GetStateId(p.ActionState),
                 p.CurrentCastingSkillId, Math.Round(p.CurrentCastTimer, 1), Math.Round(p.MaxCastTimer, 1),
-                p.Weapons.Select(w => new object[] {
+
+                p.Weapons.ToList().Select(w => new object[] {
                     w.ConfigId, w.SlotIndex, w.Level,
                     w.RolledStats ?? _emptyStats,
                     w.WeaponSkills != null ? w.WeaponSkills.Select(s => s.ConfigId).ToList() : new List<string>(),
                     w.TotalBaseStats ?? _emptyStats
                 }).ToList(),
+
                 p.FiredWeaponsThisTick.ToList(),
                 p.ActiveEffects.Select(e => new object[] { e.ConfigId, e.StackCount }).ToList(),
-                p.SynergizedSkills.Select(s => new object[] { s.ConfigId, Math.Round(Math.Max(0, s.CurrentCooldown), 1) }).ToList(),
+                p.SynergizedSkills.ToList().Select(s => new object[] { s.ConfigId, Math.Round(Math.Max(0, s.CurrentCooldown), 1) }).ToList(),
                 p.PendingStatDiff.Count > 0 ? (object)p.PendingStatDiff : null,
                 (int)p.CurrentShield,
                 p.ConfigId

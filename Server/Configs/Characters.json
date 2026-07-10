@@ -50,24 +50,27 @@
   "char_rock": {
     "id": "char_rock",
     "name": "Rock",
-    "textureKey": "rock",
-    "iconFrame": 0,
-    "VisualHeight": 35.0,
-    "scale": 1.0,
+    "description": "A rock with a heart of gold. Gains +20% Ranged Damage and +100 Armor, but cannot be healed or shielded.",
+    "textureKey": "characters",
+    "iconFrame": 72,
+    "VisualHeight": 300.0,
+    "weaponOffset": 150,
+    "scale": 0.30,
     "defaultFacingRight": true,
+    "HitRadius": 30,
     "animIdle": [
-      0,
-      1
+      72,
+      89
     ],
-    "animIdleFrameRate": 3,
+    "animIdleFrameRate": 15,
     "animMove": [
-      24,
-      31
+      90,
+      101
     ],
-    "animMoveFrameRate": 10,
+    "animMoveFrameRate": 15,
     "animDeath": [
-      17,
-      22
+      57,
+      71
     ],
     "animDeathFrameRate": 12,
     "baseStats": {

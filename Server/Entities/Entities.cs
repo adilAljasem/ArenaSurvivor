@@ -20,13 +20,41 @@ namespace Server.Entities;
 public abstract class BaseActorEntity
 {
     // --- World Position ---
-    public float X { get; set; }
-    public float Y { get; set; }
+    public float X { get; private set; }
+    public float Y { get; private set; }
 
+    // Absolute placement - spawning, respawning, teleporting, network-transfer hydration.
+    // No movement semantics, just "the entity is now here."
+    public void SetPosition(float x, float y)
+    {
+        X = x;
+        Y = y;
+    }
+
+    // Incremental movement - normal per-tick locomotion. Same underlying mutation as
+    // SetPosition; the distinct name documents intent at call sites (MovementSystem).
+    public void Translate(float deltaX, float deltaY)
+    {
+        X += deltaX;
+        Y += deltaY;
+    }
+
+    // Left public get/set - not in scope for this slice (ActionState/Team/position/shield only).
     public float CurrentSweepAngle { get; set; } = 0f;
-    public float CurrentShield { get; set; }
 
-    // >>> THE FIX: Changing HP instantly flags the entity as Dirty! <<<
+    public float CurrentShield { get; private set; }
+
+    // Adds (positive) or removes (negative) shield. Deliberately NOT auto-clamped to >= 0 here -
+    // EffectSystem's refresh sequence (subtract the old granted amount, then add the new one)
+    // can pass through a genuinely negative intermediate before landing on a non-negative final
+    // value, and clamping mid-sequence would silently change that math. Call
+    // ClampShieldNonNegative() when you need the same "never below zero" cleanup the original
+    // code did explicitly (see HealthSystem's post-mitigation line).
+    public void ModifyShield(float amount) => CurrentShield += amount;
+
+    public void ClampShieldNonNegative() => CurrentShield = Math.Max(0f, CurrentShield);
+
+    // >>> THE FIX: Changing HP instantly flags the entity as Dirty! <
     private float _currentHp;
     public float CurrentHp
     {
@@ -45,8 +73,12 @@ public abstract class BaseActorEntity
     public StatDictionary Stats { get; set; } = new();
 
     // --- Team & State ---
-    public string Team { get; set; } = string.Empty;
-    public string ActionState { get; set; } = "Idle";
+    public string Team { get; private set; } = string.Empty;
+    public void SetTeam(string team) => Team = team;
+
+    public string ActionState { get; private set; } = "Idle";
+    public void SetActionState(string newState) => ActionState = newState;
+
 
     // --- Inventory ---
     public List<EquippedWeapon> Weapons { get; set; } = new();
@@ -205,10 +237,10 @@ public class EnemyEntity : BaseActorEntity
     // Initializes the enemy with the Master Stat List so it never crashes
     public void Initialize(Configs.EnemyConfig config, float spawnX, float spawnY, ConfigManager configManager)
     {
-        Team = "Enemy";
+        SetTeam("Enemy");
         ConfigId = config.Id;
-        X = spawnX;
-        Y = spawnY;
+        SetPosition(spawnX, spawnY);
+
 
         HitRadius = config.HitRadius * config.Scale;
 
@@ -388,7 +420,7 @@ public class PlayerEntity : BaseActorEntity
     // Initializes the player with the Master Stat List so it never crashes
     public void Initialize(CharacterConfig config, ConfigManager configManager)
     {
-        Team = "Player";
+        SetTeam("Player");
 
         // 1. Initialize EVERY stat dynamically from the JSON file!
         foreach (var stat in configManager.AllStats)
