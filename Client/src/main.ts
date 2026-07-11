@@ -119,6 +119,60 @@ function hideAppLoader() {
     if (appLoaderEl) appLoaderEl.style.display = 'none';
 }
 
+// Was copy-pasted identically at 5 call sites (LobbyError, MatchError, both branches of
+// quit_to_main_menu, and the returnToLobby reconnect-failure fallback). Centralizing this
+// also means a full page navigation is the one and only way this file drops Fullscreen -
+// see the comment on returnToLobby() for why that matters.
+function redirectToCleanUrl(): void {
+    const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+    window.location.href = cleanUrl;
+}
+
+// Was copy-pasted identically in the LobbyError and MatchError handlers.
+function wipeStoredCredentials(): void {
+    localStorage.removeItem('arena_jwt');
+    localStorage.removeItem('arena_username');
+    localStorage.removeItem('arena_playerId');
+}
+
+// Belt-and-suspenders: removes every element matching this id, not just the first. IDs are
+// supposed to be unique, but if a duplicate ever slipped through (e.g. a race between two
+// overlapping "return to lobby" attempts), document.getElementById() would silently only
+// see - and only remove - one of them, leaving a stale copy with its own listeners behind.
+function removeAllLobbyWrappers(): void {
+    document.querySelectorAll('#lobby-ui-wrapper').forEach(el => el.remove());
+}
+
+// The raw scoreboard row shape the server sends is a plain array (index-based, not named
+// fields) - ReceiveScoreboard and MatchOver both map it into the same named-field object.
+function mapScoreboardRow(s: any[]) {
+    return {
+        connectionId: s[0],
+        name: s[1],
+        configId: s[2],
+        totalDamageDealt: s[3] || 0,
+        totalDamageTaken: s[4] || 0,
+        totalHealingDone: s[5] || 0,
+        totalShieldingDone: s[6] || 0,
+        kills: s[7] || 0,
+        deaths: s[8] || 0
+    };
+}
+
+// Best-effort: Chrome/Edge hard-code Escape to always exit Fullscreen, and a page's
+// keydown handler cannot preventDefault() that away - the Keyboard Lock API is the only
+// sanctioned way to override it, and even then only on Chromium desktop browsers (Firefox/
+// Safari don't implement it, so Escape will still exit fullscreen there - nothing web
+// content can do about that). Call this right after fullscreen is actually confirmed
+// active, not merely requested, since locking only works once the document is fullscreen.
+function lockEscapeKey(): void {
+    try {
+        if ((navigator as any).keyboard?.lock) {
+            (navigator as any).keyboard.lock(['Escape']).catch(() => { });
+        }
+    } catch (_) { /* not supported on this device */ }
+}
+
 // --- INTERFACES ---
 interface EquippedWeapon { configId: string; slotIndex: number; level: number; }
 interface ShopItem { configId: string; name: string; price: number; }
@@ -239,11 +293,39 @@ class GameScene extends Phaser.Scene {
     // was still catching up to the real position in full view - that's the "jump."
     private localPlayerRendered: boolean = false;
 
+    // Guards leaveRoomAndReturnToLobby() against running twice in parallel - a doubled
+    // pointerdown/click on the quit button (or any other duplicate trigger) would otherwise
+    // race two overlapping "leave room -> relaunch lobby" sequences, which is what could
+    // leave two LobbyUI instances alive at once (a doubled UI click sound, plus stale state
+    // bleeding into whatever match started next - including the ESC menu re-showing itself).
+    private isReturningToLobby: boolean = false;
+
     private tryHideMatchLoader() {
         if (!this.playersSynced || !this.isMapInitialized || !this.localPlayerRendered) return;
         // Small buffer so the camera's follow-lerp has time to actually settle near the
         // player while still hidden, instead of revealing the tail end of that slide.
         setTimeout(() => hideAppLoader(), 200);
+    }
+
+    // Icon HTML for the lobby DOM, cached per (textureKey, frame) so the canvas draw +
+    // toDataURL cost is only ever paid once per icon, no matter how many times the
+    // surrounding UI re-renders. (A CSS background-position crop was tried here instead, to
+    // skip the canvas work entirely, but this project's asset pipeline serves texture images
+    // as blob: URLs that get revoked after Phaser's initial load — so re-referencing img.src
+    // later 404s. getBase64 works because it draws from the already-decoded bitmap, not the
+    // URL.) Was duplicated identically at the initial lobby launch and in returnToLobby's
+    // relaunch — each call site still gets its own fresh cache, matching the original.
+    private createIconHtmlGetter(): (textureKey: string, frame: number, _size: number) => string | null {
+        const iconBase64Cache = new Map<string, string>();
+        return (textureKey: string, frame: number, _size: number): string | null => {
+            const cacheKey = `${textureKey}::${frame}`;
+            let base64 = iconBase64Cache.get(cacheKey);
+            if (base64 === undefined) {
+                base64 = this.textures.exists(textureKey) ? this.textures.getBase64(textureKey, frame) : '';
+                iconBase64Cache.set(cacheKey, base64);
+            }
+            return base64 ? `<img src="${base64}" style="width:100%; height:100%; object-fit:contain; image-rendering:pixelated;" />` : null;
+        };
     }
 
 
@@ -419,7 +501,7 @@ class GameScene extends Phaser.Scene {
 
             // FIX: Stop any existing worker connection before creating a new one.
             // Without this, the old connection is orphaned and leaks.
-            if (matchConnection && matchConnection.state !== 'Disconnected') {
+            if (matchConnection && matchConnection.state !== HubConnectionState.Disconnected) {
                 matchConnection.stop().catch(() => { });
             }
 
@@ -533,19 +615,7 @@ class GameScene extends Phaser.Scene {
 
         // >>> NEW: Listen for the explicit quit event to tell the server to delete the room
         this.events.on('quit_to_main_menu', () => {
-            if (matchConnection && matchConnection.state === 'Connected') {
-                // Tell the server we are quitting intentionally, then reload the page
-                matchConnection.invoke("LeaveRoom").catch(() => { }).finally(() => {
-                    localStorage.removeItem('currentRoomId');
-                    const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-                    window.location.href = cleanUrl;
-                });
-            } else {
-                // Fallback if already disconnected
-                localStorage.removeItem('currentRoomId');
-                const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-                window.location.href = cleanUrl;
-            }
+            this.leaveRoomAndReturnToLobby();
         });
 
         // =========================================================
@@ -669,15 +739,12 @@ class GameScene extends Phaser.Scene {
 
             // >>> NEW: Wipe credentials if hijacked
             if (msg.includes("location")) {
-                localStorage.removeItem('arena_jwt');
-                localStorage.removeItem('arena_username');
-                localStorage.removeItem('arena_playerId');
+                wipeStoredCredentials();
             }
 
             if (msg.includes("expired") || msg.includes("not exist") || msg.includes("location")) {
                 localStorage.removeItem('currentRoomId');
-                const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-                window.location.href = cleanUrl;
+                redirectToCleanUrl();
             }
         });
 
@@ -743,24 +810,9 @@ class GameScene extends Phaser.Scene {
                         // ---------------------------------------------------
                         console.log("Launching Lobby UI...");
 
-                        // Icon HTML for the lobby DOM, cached per (textureKey, frame) so the
-                        // canvas draw + toDataURL cost is only ever paid once per icon, no
-                        // matter how many times the surrounding UI re-renders. (A CSS
-                        // background-position crop was tried here instead, to skip the canvas
-                        // work entirely, but this project's asset pipeline serves texture
-                        // images as blob: URLs that get revoked after Phaser's initial load —
-                        // so re-referencing img.src later 404s. getBase64 works because it
-                        // draws from the already-decoded bitmap, not the URL.)
-                        const iconBase64Cache = new Map<string, string>();
-                        const getIconHtml = (textureKey: string, frame: number, _size: number): string | null => {
-                            const cacheKey = `${textureKey}::${frame}`;
-                            let base64 = iconBase64Cache.get(cacheKey);
-                            if (base64 === undefined) {
-                                base64 = this.textures.exists(textureKey) ? this.textures.getBase64(textureKey, frame) : '';
-                                iconBase64Cache.set(cacheKey, base64);
-                            }
-                            return base64 ? `<img src="${base64}" style="width:100%; height:100%; object-fit:contain; image-rendering:pixelated;" />` : null;
-                        };
+                        // Icon HTML getter for the lobby DOM - see createIconHtmlGetter for why
+                        // this is cached per (textureKey, frame).
+                        const getIconHtml = this.createIconHtmlGetter();
 
                         // 1. Build the UI
                         new LobbyUI(lobbyConnection, getIconHtml, () => {
@@ -1219,15 +1271,12 @@ class GameScene extends Phaser.Scene {
 
             // >>> NEW: Wipe credentials if hijacked mid-game
             if (msg.includes("location")) {
-                localStorage.removeItem('arena_jwt');
-                localStorage.removeItem('arena_username');
-                localStorage.removeItem('arena_playerId');
+                wipeStoredCredentials();
             }
 
             localStorage.removeItem('currentRoomId');
             hideAppLoader();
-            const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-            window.location.href = cleanUrl;
+            redirectToCleanUrl();
         });
         matchConnection.off("AllPlayersSynced");
         matchConnection.on("AllPlayersSynced", () => {
@@ -1242,15 +1291,16 @@ class GameScene extends Phaser.Scene {
             updateAppLoaderText("Loading world…");
             this.tryHideMatchLoader();
 
-            const lobbyWrapper = document.getElementById('lobby-ui-wrapper');
-            if (lobbyWrapper) lobbyWrapper.remove();
+            removeAllLobbyWrappers();
 
             lobbyConnection.stop().then(() => console.log("Safely dropped Master connection. Game On!"));
 
             // >>> NEW: AUTO-FULLSCREEN ON LAUNCH <<<
             if (!SKIP_LOBBY_IN_DEV && !document.fullscreenElement) {
                 const requestFS = () => {
-                    document.documentElement.requestFullscreen().catch(err => console.warn("Fullscreen blocked until user click.", err));
+                    document.documentElement.requestFullscreen()
+                        .then(() => lockEscapeKey())
+                        .catch(err => console.warn("Fullscreen blocked until user click.", err));
                 };
 
                 // Try immediately (works if triggered closely to the lobby button click)
@@ -1290,17 +1340,7 @@ class GameScene extends Phaser.Scene {
         matchConnection.on("ReceiveScoreboard", (rawScoreboardData: any[]) => {
 
             // 1. Map the raw C# arrays back into the objects the UI expects!
-            const mappedData = rawScoreboardData.map((s: any[]) => ({
-                connectionId: s[0],
-                name: s[1],
-                configId: s[2],
-                totalDamageDealt: s[3] || 0,
-                totalDamageTaken: s[4] || 0,
-                totalHealingDone: s[5] || 0,
-                totalShieldingDone: s[6] || 0,
-                kills: s[7] || 0,
-                deaths: s[8] || 0
-            }));
+            const mappedData = rawScoreboardData.map(mapScoreboardRow);
 
             // 2. Pass the nicely formatted mappedData to the UI
             if (this.scoreboardUI && document.getElementById('scoreboard-overlay')?.style.display === 'flex') {
@@ -1312,34 +1352,10 @@ class GameScene extends Phaser.Scene {
         // ReceiveScoreboard (server reuses that payload format), plus the wave reached.
         matchConnection.off("MatchOver");
         matchConnection.on("MatchOver", (payload: any) => {
-            const mappedData = (payload.players || []).map((s: any[]) => ({
-                connectionId: s[0],
-                name: s[1],
-                configId: s[2],
-                totalDamageDealt: s[3] || 0,
-                totalDamageTaken: s[4] || 0,
-                totalHealingDone: s[5] || 0,
-                totalShieldingDone: s[6] || 0,
-                kills: s[7] || 0,
-                deaths: s[8] || 0
-            }));
+            const mappedData = (payload.players || []).map(mapScoreboardRow);
 
             this.scoreboardUI.showMatchOver(mappedData, masterConfigs, matchConnection.connectionId, payload.reachedWave || 1, () => {
-                const leaveAndReturn = () => {
-                    // Wait for stop() to actually finish before wiping client state below -
-                    // otherwise a straggler tick can still land on the old connection right
-                    // after cleanup runs and silently re-create sprites for entities that
-                    // no longer exist, with nothing left listening to clean them up again.
-                    matchConnection.stop().catch(() => { }).finally(() => {
-                        this.returnToLobby();
-                    });
-                };
-
-                if (matchConnection && matchConnection.state === 'Connected') {
-                    matchConnection.invoke("LeaveRoom").catch(() => { }).finally(leaveAndReturn);
-                } else {
-                    leaveAndReturn();
-                }
+                this.leaveRoomAndReturnToLobby();
             });
         });
 
@@ -1465,72 +1481,10 @@ class GameScene extends Phaser.Scene {
 
         this.hpGraphics.clear();
 
-        // --- NEW: Draw all health bars and cast bars in one batched pass! ---
-        const drawHpBars = (map: Map<string, any>) => {
-            map.forEach((sprite) => {
-                if (!sprite.visible) return;
-
-                const refs = sprite.__refs;
-                if (!refs) return;
-
-                // Hide the old pulsing ellipse fallback you had
-                if (refs.castCircle) refs.castCircle.setVisible(false);
-
-                const drawX = sprite.x - (refs.baseWidth / 2);
-                const drawY = sprite.y + refs.topY;
-
-                // --- 1. HEALTH & SHIELD BARS (LoL Style) ---
-                // HP fills left→right based on currentHp/maxHp. The bar width never changes.
-                // Shield is RIGHT-ANCHORED: it starts at the far-right edge and extends LEFT by
-                // (shield/maxHp * barWidth). When HP is full the shield overlays the green;
-                // when HP is low it first fills the empty space then overlaps the remaining HP.
-                // A thin 1px dark seam at the shield's left edge marks the boundary cleanly.
-                if (refs.actionState !== "Dead" && refs.maxHp > 0 && (refs.currentHp < refs.maxHp || refs.currentShield > 0 || refs.isPlayer)) {
-                    const barW = refs.baseWidth;
-                    const hpPct = Math.max(0, Math.min(1, refs.currentHp / refs.maxHp));
-
-                    // Background
-                    this.hpGraphics.fillStyle(0x000000, 1);
-                    this.hpGraphics.fillRect(drawX - 1, drawY - 1, barW + 2, 8);
-
-                    // HP fill (left → right, always vs maxHp)
-                    this.hpGraphics.fillStyle(refs.isFriendly ? 0x2ecc71 : 0xe74c3c, 1);
-                    this.hpGraphics.fillRect(drawX, drawY, barW * hpPct, 6);
-
-                    // Shield: right-anchored, extends left, drawn ON TOP of whatever the HP fill left
-                    if (refs.currentShield > 0) {
-                        const shieldW = Math.min(refs.currentShield / refs.maxHp * barW, barW);
-                        const shieldX = drawX + barW - shieldW;   // right edge minus shield width
-
-                        this.hpGraphics.fillStyle(0xe8f0fe, 1);   // Light white shield colour
-                        this.hpGraphics.fillRect(shieldX, drawY, shieldW, 6);
-
-                        // 1px dark seam at the shield's left edge so it reads as a separate layer
-                        this.hpGraphics.fillStyle(0x1a3a5c, 1);
-                        this.hpGraphics.fillRect(shieldX, drawY, 1, 6);
-                    }
-                }
-
-                // --- 2. CAST BAR (Linear progress bar underneath) ---
-                // FIX: Do not require ActionState === "Casting". If a weapon auto-fires, 
-                // ActionState becomes "Attacking" for 1 tick, which causes the UI to flicker.
-                if (refs.currentCastTimer > 0 && refs.maxCastTimer > 0 && refs.showCastBar && refs.actionState !== "Dead") {
-                    const castY = drawY + 10;
-
-                    const castProgress = 1.0 - Math.max(0, Math.min(1, refs.currentCastTimer / refs.maxCastTimer));
-
-                    this.hpGraphics.fillStyle(0x000000, 0.8);
-                    this.hpGraphics.fillRect(drawX - 1, castY - 1, refs.baseWidth + 2, 5);
-
-                    this.hpGraphics.fillStyle(0xffa500, 1);
-                    this.hpGraphics.fillRect(drawX, castY, refs.baseWidth * castProgress, 3);
-                }
-            });
-        };
-
-        // Execute the draw commands for all actors
-        drawHpBars(this.playerSprites);
-        drawHpBars(this.enemySprites);
+        // Execute the draw commands for all actors (drawHpBars is now a real method - see
+        // below - instead of a closure that got recreated fresh on every single frame here).
+        this.drawHpBars(this.playerSprites);
+        this.drawHpBars(this.enemySprites);
 
 
         if (this.skillActionBar) {
@@ -1825,6 +1779,72 @@ class GameScene extends Phaser.Scene {
         zone.addEventListener('touchcancel', releaseJoystick, { passive: false });
     }
 
+    // Draws all health/shield/cast bars for one actor map in a single batched Graphics pass.
+    // Used to be a closure declared fresh inside update() every frame; hoisted out since it
+    // never captured anything but `this` and there's no reason to allocate a new function
+    // object 60 times a second.
+    private drawHpBars(map: Map<string, any>): void {
+        map.forEach((sprite) => {
+            if (!sprite.visible) return;
+
+            const refs = sprite.__refs;
+            if (!refs) return;
+
+            // Hide the old pulsing ellipse fallback you had
+            if (refs.castCircle) refs.castCircle.setVisible(false);
+
+            const drawX = sprite.x - (refs.baseWidth / 2);
+            const drawY = sprite.y + refs.topY;
+
+            // --- 1. HEALTH & SHIELD BARS (LoL Style) ---
+            // HP fills left→right based on currentHp/maxHp. The bar width never changes.
+            // Shield is RIGHT-ANCHORED: it starts at the far-right edge and extends LEFT by
+            // (shield/maxHp * barWidth). When HP is full the shield overlays the green;
+            // when HP is low it first fills the empty space then overlaps the remaining HP.
+            // A thin 1px dark seam at the shield's left edge marks the boundary cleanly.
+            if (refs.actionState !== "Dead" && refs.maxHp > 0 && (refs.currentHp < refs.maxHp || refs.currentShield > 0 || refs.isPlayer)) {
+                const barW = refs.baseWidth;
+                const hpPct = Math.max(0, Math.min(1, refs.currentHp / refs.maxHp));
+
+                // Background
+                this.hpGraphics.fillStyle(0x000000, 1);
+                this.hpGraphics.fillRect(drawX - 1, drawY - 1, barW + 2, 8);
+
+                // HP fill (left → right, always vs maxHp)
+                this.hpGraphics.fillStyle(refs.isFriendly ? 0x2ecc71 : 0xe74c3c, 1);
+                this.hpGraphics.fillRect(drawX, drawY, barW * hpPct, 6);
+
+                // Shield: right-anchored, extends left, drawn ON TOP of whatever the HP fill left
+                if (refs.currentShield > 0) {
+                    const shieldW = Math.min(refs.currentShield / refs.maxHp * barW, barW);
+                    const shieldX = drawX + barW - shieldW;   // right edge minus shield width
+
+                    this.hpGraphics.fillStyle(0xe8f0fe, 1);   // Light white shield colour
+                    this.hpGraphics.fillRect(shieldX, drawY, shieldW, 6);
+
+                    // 1px dark seam at the shield's left edge so it reads as a separate layer
+                    this.hpGraphics.fillStyle(0x1a3a5c, 1);
+                    this.hpGraphics.fillRect(shieldX, drawY, 1, 6);
+                }
+            }
+
+            // --- 2. CAST BAR (Linear progress bar underneath) ---
+            // FIX: Do not require ActionState === "Casting". If a weapon auto-fires, 
+            // ActionState becomes "Attacking" for 1 tick, which causes the UI to flicker.
+            if (refs.currentCastTimer > 0 && refs.maxCastTimer > 0 && refs.showCastBar && refs.actionState !== "Dead") {
+                const castY = drawY + 10;
+
+                const castProgress = 1.0 - Math.max(0, Math.min(1, refs.currentCastTimer / refs.maxCastTimer));
+
+                this.hpGraphics.fillStyle(0x000000, 0.8);
+                this.hpGraphics.fillRect(drawX - 1, castY - 1, refs.baseWidth + 2, 5);
+
+                this.hpGraphics.fillStyle(0xffa500, 1);
+                this.hpGraphics.fillRect(drawX, castY, refs.baseWidth * castProgress, 3);
+            }
+        });
+    }
+
     private smoothInterpolateSprites(map: Map<string, any>, delta: number, halfLife: number = 52) {
         const cam = this.cameras.main;
         // cam.worldView is the zoom/viewport-aware visible rect — cam.width is screen
@@ -1876,15 +1896,47 @@ class GameScene extends Phaser.Scene {
         });
     }
 
+    // Tells the server we're leaving on purpose, waits for the SignalR connection to actually
+    // stop, THEN returns to the lobby - used by both the EscMenu "Back to Main Menu" button and
+    // the post-match "Exit to Main Menu" button, which previously had two separate copies of
+    // this exact sequence (one of which used a full page reload instead - see returnToLobby's
+    // comment for why that mattered for Fullscreen).
+    private leaveRoomAndReturnToLobby(): void {
+        if (this.isReturningToLobby) return;
+        this.isReturningToLobby = true;
+
+        const leaveAndReturn = () => {
+            // Wait for stop() to actually finish before wiping client state below -
+            // otherwise a straggler tick can still land on the old connection right
+            // after cleanup runs and silently re-create sprites for entities that
+            // no longer exist, with nothing left listening to clean them up again.
+            matchConnection.stop().catch(() => { }).finally(() => {
+                this.returnToLobby();
+                // Only clear the guard once the transition has actually happened, so a
+                // rapid double-fire of the trigger can't sneak a second run in underneath it.
+                this.isReturningToLobby = false;
+            });
+        };
+
+        if (matchConnection && matchConnection.state === HubConnectionState.Connected) {
+            matchConnection.invoke("LeaveRoom").catch(() => { }).finally(leaveAndReturn);
+        } else {
+            leaveAndReturn();
+        }
+    }
+
     // Leaves the current match and relaunches the lobby WITHOUT reloading the page. A page
     // navigation (window.location.href, even to the same URL) always drops Fullscreen mode -
     // that's a browser-enforced security behavior, not something JS can override after the
-    // fact. Avoiding the reload entirely is the only way "Exit to Main Menu" can keep
-    // Fullscreen intact. Everything below is best-effort match-state cleanup so a second
-    // match in the same session starts clean; the EscMenu quit flow still reloads for now,
-    // since it wasn't part of this pass.
+    // fact. Avoiding the reload entirely is the only way "Exit to Main Menu" (and now the
+    // EscMenu's "Back to Main Menu") can keep Fullscreen intact.
     private returnToLobby(): void {
         localStorage.removeItem('currentRoomId');
+
+        // The ESC menu is a persistent instance for the whole session (like scoreboardUI),
+        // not recreated per match - if it was open when "Back to Main Menu" was clicked,
+        // it would otherwise stay open (still _visible = true) straight into the next match.
+        if (this.escMenu) this.escMenu.setVisible(false);
 
         // Release the camera's follow target before the sprite it's following gets
         // destroyed below, and reset the tracking flag so the next match's ActorRenderer
@@ -1937,18 +1989,9 @@ class GameScene extends Phaser.Scene {
             // child ids like btn-toggle-ready, character-picker-list, etc.) in the DOM at
             // once. Two copies of the same id is what caused every button to silently wire
             // itself to the stale, invisible instance instead of the one on screen.
-            document.getElementById('lobby-ui-wrapper')?.remove();
+            removeAllLobbyWrappers();
 
-            const iconBase64Cache = new Map<string, string>();
-            const getIconHtml = (textureKey: string, frame: number, _size: number): string | null => {
-                const cacheKey = `${textureKey}::${frame}`;
-                let base64 = iconBase64Cache.get(cacheKey);
-                if (base64 === undefined) {
-                    base64 = this.textures.exists(textureKey) ? this.textures.getBase64(textureKey, frame) : '';
-                    iconBase64Cache.set(cacheKey, base64);
-                }
-                return base64 ? `<img src="${base64}" style="width:100%; height:100%; object-fit:contain; image-rendering:pixelated;" />` : null;
-            };
+            const getIconHtml = this.createIconHtmlGetter();
 
             new LobbyUI(lobbyConnection, getIconHtml, () => {
                 console.log("Match joined. Entering Game mode!");
@@ -1961,8 +2004,7 @@ class GameScene extends Phaser.Scene {
             showAppLoader("Returning to menu…");
             lobbyConnection.start().then(relaunchLobby).catch(err => {
                 console.error("Failed to reconnect to lobby, falling back to a full reload:", err);
-                const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-                window.location.href = cleanUrl;
+                redirectToCleanUrl();
             });
         } else {
             relaunchLobby();

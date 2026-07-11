@@ -53,6 +53,7 @@
     "textureKey": "characters",
     "iconFrame": 15,
     "VisualHeight": 350.0,
+    "WeaponOffset":170,
     "scale": 0.25,
     "defaultFacingRight": true,
     "animIdle": [

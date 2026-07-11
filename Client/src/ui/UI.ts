@@ -23,6 +23,18 @@ export interface FocusItem {
     onSelect: () => void;
 }
 
+// Config dictionaries are usually keyed with the exact casing the id was written with, but
+// occasionally get looked up with different casing (e.g. a raw skill id vs. the dictionary's
+// own key casing). This exact-then-case-insensitive-scan lookup was repeated 5 times across
+// resolveSynergies/buildStatBlocks below with only the local variable names differing.
+function findConfigCaseInsensitive(dict: any, id: string): any {
+    if (!dict) return undefined;
+    const direct = dict[id];
+    if (direct) return direct;
+    const foundKey = Object.keys(dict).find(k => k.toLowerCase() === id.toLowerCase());
+    return foundKey ? dict[foundKey] : undefined;
+}
+
 // =========================================================================
 // SHARED UI HELPERS & TYPOGRAPHY
 // =========================================================================
@@ -120,11 +132,7 @@ export const UIHelpers = {
                 const count = counts[baseId];
 
                 for (let i = 1; i < count; i++) {
-                    let cfg = dict?.[currentId];
-                    if (!cfg && dict) {
-                        const foundKey = Object.keys(dict).find(k => k.toLowerCase() === currentId.toLowerCase());
-                        if (foundKey) cfg = dict[foundKey];
-                    }
+                    let cfg = findConfigCaseInsensitive(dict, currentId);
 
                     const nextId = cfg?.nextLevelId || cfg?.NextLevelId;
                     if (nextId) {
@@ -144,11 +152,7 @@ export const UIHelpers = {
 
                 const familyMap: Record<string, Record<number, string[]>> = {};
                 currentIds.forEach(id => {
-                    let cfg = dict?.[id];
-                    if (!cfg && dict) {
-                        const foundKey = Object.keys(dict).find(k => k.toLowerCase() === id.toLowerCase());
-                        if (foundKey) cfg = dict[foundKey];
-                    }
+                    let cfg = findConfigCaseInsensitive(dict, id);
 
                     const family = cfg?.skillFamily || cfg?.SkillFamily;
                     const tier = cfg?.tier || cfg?.Tier || 1;
@@ -169,11 +173,7 @@ export const UIHelpers = {
                         let scales = false;
                         if (idsInTier.length >= 2) {
                             const sampleId = idsInTier[0];
-                            let c = dict?.[sampleId];
-                            if (!c && dict) {
-                                const foundKey = Object.keys(dict).find(k => k.toLowerCase() === sampleId.toLowerCase());
-                                if (foundKey) c = dict[foundKey];
-                            }
+                            let c = findConfigCaseInsensitive(dict, sampleId);
                             scales = c?.scalesWithGearLevel ?? c?.ScalesWithGearLevel ?? false;
                         }
 
@@ -212,11 +212,7 @@ export const UIHelpers = {
             const noFamilyIds: string[] = [];
 
             currentIds.forEach(id => {
-                let cfg = dict?.[id];
-                if (!cfg && dict) {
-                    const foundKey = Object.keys(dict).find(k => k.toLowerCase() === id.toLowerCase());
-                    if (foundKey) cfg = dict[foundKey];
-                }
+                let cfg = findConfigCaseInsensitive(dict, id);
 
                 const family = cfg?.skillFamily || cfg?.SkillFamily;
                 const tier = cfg?.tier || cfg?.Tier || 1;
@@ -350,11 +346,7 @@ export const UIHelpers = {
                 traitBlocks.push({ text: "[ Traits ]", color: "#ffb74d", isHeader: true });
 
                 finalTraits.forEach((t: string) => {
-                    let traitCfg = traitMap?.[t];
-                    if (!traitCfg && traitMap) {
-                        const foundKey = Object.keys(traitMap).find(k => k.toLowerCase() === t.toLowerCase());
-                        if (foundKey) traitCfg = traitMap[foundKey];
-                    }
+                    let traitCfg = findConfigCaseInsensitive(traitMap, t);
 
                     if (traitCfg) {
                         const name = traitCfg.name ?? traitCfg.Name ?? t;

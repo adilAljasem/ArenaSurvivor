@@ -569,29 +569,26 @@ export class AdminDashboard {
             if ((e.target as HTMLElement).id === 'modal-overlay') this.closeModal();
         });
 
-        let redisDebounce: ReturnType<typeof setTimeout>;
-        this.$('#redis-pattern')!.addEventListener('input', () => {
-            clearTimeout(redisDebounce);
-            redisDebounce = setTimeout(() => this.loadRedisKeys(), 350);
-        });
+        this.bindDebouncedInput('#redis-pattern', 350, () => this.loadRedisKeys());
+        this.bindDebouncedInput('#player-search', 350, () => this.loadPlayers());
+        this.bindDebouncedInput('#matches-search', 350, () => { this.matchesPage = 1; this.loadMatches(); });
 
-        let playerDebounce: ReturnType<typeof setTimeout>;
-        this.$('#player-search')!.addEventListener('input', () => {
-            clearTimeout(playerDebounce);
-            playerDebounce = setTimeout(() => this.loadPlayers(), 350);
-        });
-
-        let matchesDebounce: ReturnType<typeof setTimeout>;
-        this.$('#matches-search')!.addEventListener('input', () => {
-            clearTimeout(matchesDebounce);
-            matchesDebounce = setTimeout(() => { this.matchesPage = 1; this.loadMatches(); }, 350);
-        });
         this.$('#matches-difficulty-filter')!.addEventListener('change', () => {
             this.matchesPage = 1;
             this.loadMatches();
         });
 
         this.$('#btn-cleanup-preview')!.addEventListener('click', () => this.previewCleanup());
+    }
+
+    // Was hand-rolled 3 times above (redis/player/matches search boxes), each with its own
+    // module-scoped timer variable and identical clear/reschedule logic.
+    private bindDebouncedInput(selector: string, delayMs: number, callback: () => void): void {
+        let timer: ReturnType<typeof setTimeout>;
+        this.$(selector)!.addEventListener('input', () => {
+            clearTimeout(timer);
+            timer = setTimeout(callback, delayMs);
+        });
     }
 
     private switchPage(pageId: PageId) {

@@ -81,6 +81,23 @@ export function getDifficultyColor(id: string): string {
     return DIFFICULTY_COLORS[(id || '').toLowerCase()] || '#888';
 }
 
+// Minimal inline SVG icon set for the main lobby menu buttons — stroke-based, 24x24 viewBox,
+// using currentColor so they pick up each button's text color automatically. Same technique
+// AdminDashboard.ts uses for its sidebar icons.
+const MENU_ICONS: Record<string, string> = {
+    play: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>',
+    trophy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v4a5 5 0 0 1-10 0V4Z"/><path d="M7 5H4a2 2 0 0 0 0 4h3"/><path d="M17 5h3a2 2 0 0 1 0 4h-3"/></svg>',
+    grid: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
+    chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
+    gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+    expand: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
+    shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>',
+    logout: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
+};
+function menuIcon(name: keyof typeof MENU_ICONS): string {
+    return `<span class="lobby-btn-icon">${MENU_ICONS[name]}</span>`;
+}
+
 // ==========================================
 // 1. AUTHENTICATION UI
 // ==========================================
@@ -184,6 +201,27 @@ export class AuthUI {
     private playSound(audio: HTMLAudioElement) {
         audio.currentTime = 0;
         audio.play().catch(e => console.warn("Audio play blocked by browser:", e));
+    }
+
+    // Shared by handleLogin/handleRegister/handleForgotPassword/handleResetPassword/
+    // handleResendVerification - all five previously repeated this exact fetch + JSON
+    // parse + catch-network-error block, then diverged on what to do with the result
+    // (that per-handler logic is unchanged, only the request plumbing is shared here).
+    private async postAuth(url: string, body: any): Promise<{ ok: boolean; status: number; data: any }> {
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const data = await res.json();
+            return { ok: res.ok, status: res.status, data };
+        } catch {
+            // A thrown fetch means the request never reached the server, so there's no
+            // real HTTP status - 0 is a safe sentinel that can't accidentally match a
+            // real status check (e.g. handleResendVerification's `status === 429`).
+            return { ok: false, status: 0, data: { error: 'Connection error.' } };
+        }
     }
 
     private async checkVerifyToken() {
@@ -466,42 +504,32 @@ export class AuthUI {
         if (!email || !password) { this.showNotice('Please fill in all fields.', 'error'); return; }
 
         this.setLoading('btn-login', true);
-        try {
-            const res = await fetch('/api/auth/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password })
-            });
-            const data = await res.json();
+        const { ok, data } = await this.postAuth('/api/auth/login', { email, password });
 
-            if (res.ok) {
-                // 1. Save the credentials sent by the backend to localStorage
-                localStorage.setItem('arena_jwt', data.token);
-                localStorage.setItem('arena_username', data.username);
-                localStorage.setItem('arena_playerId', data.playerId);
+        if (ok) {
+            // 1. Save the credentials sent by the backend to localStorage
+            localStorage.setItem('arena_jwt', data.token);
+            localStorage.setItem('arena_username', data.username);
+            localStorage.setItem('arena_playerId', data.playerId);
 
-                // 2. Show a proper success message
-                this.showNotice('✅ Login successful! Entering the arena...', 'success');
+            // 2. Show a proper success message
+            this.showNotice('✅ Login successful! Entering the arena...', 'success');
 
-                // 3. Trigger the onSuccess callback to close the UI and start the game
-                if (this.onSuccess) {
-                    this.onSuccess();
-                }
-            } else {
-                // Keep your existing error handling for unauthorized/unverified users
-                this.showNotice('❌ ' + data.error, 'error');
-                if (data.error?.includes('verify')) {
-                    this.pendingResendEmail = email;
-                    const c = document.getElementById('resend-container');
-                    if (c) c.style.display = 'block';
-                }
+            // 3. Trigger the onSuccess callback to close the UI and start the game
+            if (this.onSuccess) {
+                this.onSuccess();
             }
-
-        } catch {
-            this.showNotice('❌ Connection error.', 'error');
-        } finally {
-            this.setLoading('btn-login', false);
+        } else {
+            // Keep your existing error handling for unauthorized/unverified users
+            this.showNotice('❌ ' + data.error, 'error');
+            if (data.error?.includes('verify')) {
+                this.pendingResendEmail = email;
+                const c = document.getElementById('resend-container');
+                if (c) c.style.display = 'block';
+            }
         }
+
+        this.setLoading('btn-login', false);
     }
 
     private async handleRegister() {
@@ -513,29 +541,21 @@ export class AuthUI {
         if (!acceptedTerms) { this.showNotice('You must agree to the Terms of Service to create an account.', 'error'); return; }
 
         this.setLoading('btn-register', true);
-        try {
-            const res = await fetch('/api/auth/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, username, password, acceptedTerms })
-            });
-            const data = await res.json();
-            if (res.ok) {
-                this.pendingResendEmail = email;
-                const msg = data.message ?? 'Account created! Check your email to verify.';
-                this.showNotice('✅ ' + msg, 'success');
-                const c = document.getElementById('resend-container');
-                if (c) c.style.display = 'block';
-                // Redirect to login after 5 s — enough time to hit Resend if needed.
-                setTimeout(() => this.showTab('login'), 5000);
-            } else {
-                this.showNotice('❌ ' + data.error, 'error');
-            }
-        } catch {
-            this.showNotice('❌ Connection error.', 'error');
-        } finally {
-            this.setLoading('btn-register', false);
+        const { ok, data } = await this.postAuth('/api/auth/register', { email, username, password, acceptedTerms });
+
+        if (ok) {
+            this.pendingResendEmail = email;
+            const msg = data.message ?? 'Account created! Check your email to verify.';
+            this.showNotice('✅ ' + msg, 'success');
+            const c = document.getElementById('resend-container');
+            if (c) c.style.display = 'block';
+            // Redirect to login after 5 s — enough time to hit Resend if needed.
+            setTimeout(() => this.showTab('login'), 5000);
+        } else {
+            this.showNotice('❌ ' + data.error, 'error');
         }
+
+        this.setLoading('btn-register', false);
     }
 
     private async handleForgotPassword() {
@@ -543,23 +563,15 @@ export class AuthUI {
         if (!email) { this.showNotice('Please enter your email.', 'error'); return; }
 
         this.setLoading('btn-forgot', true);
-        try {
-            const res = await fetch('/api/auth/forgot-password', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email })
-            });
-            const data = await res.json();
-            if (res.ok) {
-                this.showNotice('✅ ' + data.message, 'success');
-            } else {
-                this.showNotice('❌ ' + data.error, 'error');
-            }
-        } catch {
-            this.showNotice('❌ Connection error.', 'error');
-        } finally {
-            this.setLoading('btn-forgot', false);
+        const { ok, data } = await this.postAuth('/api/auth/forgot-password', { email });
+
+        if (ok) {
+            this.showNotice('✅ ' + data.message, 'success');
+        } else {
+            this.showNotice('❌ ' + data.error, 'error');
         }
+
+        this.setLoading('btn-forgot', false);
     }
 
     private async handleResetPassword() {
@@ -570,48 +582,31 @@ export class AuthUI {
         if (!password || !token) { this.showNotice('Please enter a new password.', 'error'); return; }
 
         this.setLoading('btn-reset', true);
-        try {
-            const res = await fetch('/api/auth/reset-password', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token, newPassword: password })
-            });
-            const data = await res.json();
-            if (res.ok) {
-                this.showNotice('✅ ' + data.message, 'success');
-                window.history.replaceState({}, '', window.location.pathname);
-                setTimeout(() => this.showTab('login'), 2000);
-            } else {
-                this.showNotice('❌ ' + data.error, 'error');
-            }
-        } catch {
-            this.showNotice('❌ Connection error.', 'error');
-        } finally {
-            this.setLoading('btn-reset', false);
+        const { ok, data } = await this.postAuth('/api/auth/reset-password', { token, newPassword: password });
+
+        if (ok) {
+            this.showNotice('✅ ' + data.message, 'success');
+            window.history.replaceState({}, '', window.location.pathname);
+            setTimeout(() => this.showTab('login'), 2000);
+        } else {
+            this.showNotice('❌ ' + data.error, 'error');
         }
+
+        this.setLoading('btn-reset', false);
     }
 
     private async handleResendVerification() {
         if (!this.pendingResendEmail) return;
         const btn = document.getElementById('btn-resend') as HTMLButtonElement;
 
-        try {
-            btn.disabled = true;
-            btn.textContent = 'SENDING...';
+        btn.disabled = true;
+        btn.textContent = 'SENDING...';
 
-            const res = await fetch('/api/auth/resend-verification', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: this.pendingResendEmail })
-            });
-            const data = await res.json();
+        const { ok, status, data } = await this.postAuth('/api/auth/resend-verification', { email: this.pendingResendEmail });
 
-            if (res.status === 429) this.showNotice('⏳ ' + data.error, 'error');
-            else if (res.ok) this.showNotice('✅ ' + data.message, 'success');
-            else this.showNotice('❌ ' + data.error, 'error');
-        } catch {
-            this.showNotice('❌ Connection error.', 'error');
-        }
+        if (status === 429) this.showNotice('⏳ ' + data.error, 'error');
+        else if (ok) this.showNotice('✅ ' + data.message, 'success');
+        else this.showNotice('❌ ' + data.error, 'error');
 
         // 60-second client-side cooldown (mirrors the server rate limit)
         let seconds = 60;
@@ -1618,7 +1613,15 @@ export class LobbyUI {
     }
 
     private injectCSS() {
+        // Every quit-and-return-to-lobby cycle constructs a new LobbyUI, and this used to
+        // add another identical <style> block to <head> each time with no cleanup - harmless
+        // for a single session, but needless DOM/memory bloat over a long play session. The
+        // CSS is static (doesn't depend on any per-instance state), so it's safe to just skip
+        // re-injecting if it's already there.
+        if (document.getElementById('lobby-ui-styles')) return;
+
         const style = document.createElement('style');
+        style.id = 'lobby-ui-styles';
         style.innerHTML = `
         #lobby-ui-wrapper { 
             position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; 
@@ -1658,6 +1661,8 @@ export class LobbyUI {
         .lobby-input { background: rgba(0,0,0,0.6); border: 2px solid #444; color: white; padding: 12px 15px; border-radius: 6px; font-size: 16px; outline: none; transition: 0.2s; }
         .lobby-input:focus { border-color: ${LOBBY_ASSETS.colorPrimary}; box-shadow: 0 0 10px rgba(229, 179, 92, 0.3); }
         .lobby-btn { display: flex; justify-content: center; align-items: center; gap: 15px; width: 100%; padding: 14px; margin-bottom: 15px; background: linear-gradient(180deg, ${LOBBY_ASSETS.colorBtnBgTop} 0%, ${LOBBY_ASSETS.colorBtnBgBot} 100%); border: 2px solid ${LOBBY_ASSETS.colorPrimary}; border-radius: 8px; font-size: 18px; font-weight: bold; color: white; cursor: pointer; transition: all 0.2s; text-transform: uppercase; letter-spacing: 2px; text-shadow: 2px 2px 2px rgba(0,0,0,0.8); box-shadow: 0 6px 15px rgba(0,0,0,0.5), inset 0 0 10px rgba(0,0,0,0.3); }
+        .lobby-btn-icon { width: 20px; height: 20px; flex-shrink: 0; opacity: 0.85; }
+        .lobby-btn-icon svg { width: 100%; height: 100%; display: block; }
         .lobby-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .lobby-btn:hover:not(:disabled) { background: linear-gradient(180deg, #5c4a82 0%, #362954 100%); border-color: ${LOBBY_ASSETS.colorPrimaryHover}; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.6), inset 0 0 15px rgba(229, 179, 92, 0.2); }
         .btn-green { background: linear-gradient(180deg, #2e7d32 0%, #1b5e20 100%); border-color: #4caf50; }
@@ -1866,14 +1871,14 @@ export class LobbyUI {
                 <div class="game-logo">
                     <img src="${LOBBY_ASSETS.gameLogo}" class="logo-img" alt="Mage Arena" />
                 </div>
-                <button id="btn-play" class="lobby-btn">NEW GAME</button>
-                <button id="btn-achievements" class="lobby-btn">ACHIEVEMENTS</button>
-                <button id="btn-collection" class="lobby-btn">COLLECTION</button>
-                <button id="btn-scoreboard" class="lobby-btn">SCOREBOARD</button>
-                <button id="btn-settings" class="lobby-btn">OPTIONS</button>
-                <button id="btn-fullscreen" class="lobby-btn">TOGGLE FULLSCREEN</button>
-                <button id="btn-admin-panel" class="lobby-btn hidden" style="background: linear-gradient(180deg, #3a2a4a 0%, #241730 100%); border-color: #9b6dff;">🛡 ADMIN PANEL</button>
-                <button id="btn-tos" class="lobby-btn danger">LOGOUT</button>
+                <button id="btn-play" class="lobby-btn">${menuIcon('play')}NEW GAME</button>
+                <button id="btn-achievements" class="lobby-btn">${menuIcon('trophy')}ACHIEVEMENTS</button>
+                <button id="btn-collection" class="lobby-btn">${menuIcon('grid')}COLLECTION</button>
+                <button id="btn-scoreboard" class="lobby-btn">${menuIcon('chart')}SCOREBOARD</button>
+                <button id="btn-settings" class="lobby-btn">${menuIcon('gear')}OPTIONS</button>
+                <button id="btn-fullscreen" class="lobby-btn">${menuIcon('expand')}TOGGLE FULLSCREEN</button>
+                <button id="btn-admin-panel" class="lobby-btn hidden" style="background: linear-gradient(180deg, #3a2a4a 0%, #241730 100%); border-color: #9b6dff;">${menuIcon('shield')}ADMIN PANEL</button>
+                <button id="btn-tos" class="lobby-btn danger">${menuIcon('logout')}LOGOUT</button>
             </div>
 
             <div id="screen-scoreboard" class="full-screen-panel hidden">

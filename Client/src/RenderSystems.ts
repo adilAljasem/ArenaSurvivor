@@ -77,6 +77,33 @@ function getRefs(container: Phaser.GameObjects.Container): ActorRefs {
   return (container as any).__refs as ActorRefs;
 }
 
+// This texture only ever needs to be generated once, globally - see the hoisted
+// creation call at the top of ActorRenderer.render below.
+let fxSparkGenerated = false;
+function ensureFxSparkTexture(scene: Phaser.Scene): void {
+  if (fxSparkGenerated && scene.textures.exists('fx_spark')) return;
+
+  const g = scene.add.graphics();
+  g.fillStyle(0xffffff, 1);
+
+  // Draw a star shape (16x16 size)
+  g.beginPath();
+  g.moveTo(8, 0);   // Top point
+  g.lineTo(9.5, 6.5); // Inner Top-Right
+  g.lineTo(16, 8);  // Right point
+  g.lineTo(9.5, 9.5); // Inner Bottom-Right
+  g.lineTo(8, 16);  // Bottom point
+  g.lineTo(6.5, 9.5); // Inner Bottom-Left
+  g.lineTo(0, 8);   // Left point
+  g.lineTo(6.5, 6.5); // Inner Top-Left
+  g.closePath();
+  g.fillPath();
+
+  g.generateTexture('fx_spark', 16, 16);
+  g.destroy();
+  fxSparkGenerated = true;
+}
+
 export class ActorRenderer {
   static render(
     scene: Phaser.Scene,
@@ -92,6 +119,11 @@ export class ActorRenderer {
 
     // >>> OPTIMIZATION: Cache the current time once per frame instead of 3000+ times
     const currentTime = scene.time.now;
+
+    // Was previously checked/generated inside the per-actor forEach below (once per actor,
+    // per tick - thousands of redundant textures.exists() calls a second at scale). This
+    // texture is global and only ever needs to exist once for the whole scene.
+    ensureFxSparkTexture(scene);
 
 
 
@@ -411,27 +443,6 @@ export class ActorRenderer {
       const activeWeaponSlots = new Set<number>();
       const weaponsList = comp.weapons;
 
-      // --- NEW: Generate a 4-Pointed Magical Star Texture ---
-      if (!scene.textures.exists('fx_spark')) {
-        const g = scene.add.graphics();
-        g.fillStyle(0xffffff, 1);
-
-        // Draw a star shape (16x16 size)
-        g.beginPath();
-        g.moveTo(8, 0);   // Top point
-        g.lineTo(9.5, 6.5); // Inner Top-Right
-        g.lineTo(16, 8);  // Right point
-        g.lineTo(9.5, 9.5); // Inner Bottom-Right
-        g.lineTo(8, 16);  // Bottom point
-        g.lineTo(6.5, 9.5); // Inner Bottom-Left
-        g.lineTo(0, 8);   // Left point
-        g.lineTo(6.5, 6.5); // Inner Top-Left
-        g.closePath();
-        g.fillPath();
-
-        g.generateTexture('fx_spark', 16, 16);
-        g.destroy();
-      }
       weaponsList.forEach((w: any) => {
         const slotIndex = w.slotIndex ?? w.SlotIndex;
         const wConfigId = w.configId || w.ConfigId;
@@ -708,12 +719,8 @@ export class ActorRenderer {
 
               if (aType === 'AoE' || aType === 1) {
                 const r = skill.radius || skill.Radius || 200;
-                let color = 0xff4444;
                 const tint = skill.colorTint || skill.ColorTint;
-                if (tint) {
-                  const parsed = parseInt(tint.replace(/^#|^0x/i, ''), 16);
-                  if (!isNaN(parsed)) color = parsed;
-                }
+                const color = parseColor(tint, 0xff4444);
                 const ring = scene.add.circle(targetX, targetY, r, color, 0.7)
                   .setStrokeStyle(8, color, 1).setDepth(15).setScale(0.1);
 

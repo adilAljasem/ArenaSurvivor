@@ -1,5 +1,15 @@
 import * as Phaser from 'phaser';
 
+// Centralized so each channel's localStorage key is only ever written in one place -
+// previously the constructor and each setter hardcoded the same string independently,
+// which is an easy spot for a typo to silently desync save/load.
+const VOLUME_STORAGE_KEYS = {
+  master: 'masterVolume',
+  sfx: 'sfxVolume',
+  music: 'musicVolume',
+  ui: 'uiVolume',
+} as const;
+
 export class AudioManager {
   private static instance: AudioManager;
 
@@ -16,10 +26,10 @@ export class AudioManager {
 
   private constructor() {
     // Load saved volumes from LocalStorage so they persist across reloads
-    const savedMaster = localStorage.getItem('masterVolume');
-    const savedSfx = localStorage.getItem('sfxVolume');
-    const savedMusic = localStorage.getItem('musicVolume');
-    const savedUi = localStorage.getItem('uiVolume'); // <--- NEW
+    const savedMaster = localStorage.getItem(VOLUME_STORAGE_KEYS.master);
+    const savedSfx = localStorage.getItem(VOLUME_STORAGE_KEYS.sfx);
+    const savedMusic = localStorage.getItem(VOLUME_STORAGE_KEYS.music);
+    const savedUi = localStorage.getItem(VOLUME_STORAGE_KEYS.ui);
 
     if (savedMaster !== null) this.masterVolume = parseFloat(savedMaster);
     if (savedSfx !== null) this.sfxVolume = parseFloat(savedSfx);
@@ -57,26 +67,29 @@ export class AudioManager {
   // --- VOLUME SETTERS (Saves automatically) ---
   public setUiVolume(vol: number) {
     this.uiVolume = Phaser.Math.Clamp(vol, 0, 1);
-    localStorage.setItem('uiVolume', this.uiVolume.toString());
+    localStorage.setItem(VOLUME_STORAGE_KEYS.ui, this.uiVolume.toString());
   }
 
   public setMasterVolume(vol: number) {
     this.masterVolume = Phaser.Math.Clamp(vol, 0, 1);
-    localStorage.setItem('masterVolume', this.masterVolume.toString());
-    // Update currently playing music
-    if (this.currentMusic && this.currentMusic.isPlaying) {
-      (this.currentMusic as any).setVolume(this.musicVolume * this.masterVolume);
-    }
+    localStorage.setItem(VOLUME_STORAGE_KEYS.master, this.masterVolume.toString());
+    this.applyCurrentMusicVolume();
   }
 
   public setSfxVolume(vol: number) {
     this.sfxVolume = Phaser.Math.Clamp(vol, 0, 1);
-    localStorage.setItem('sfxVolume', this.sfxVolume.toString());
+    localStorage.setItem(VOLUME_STORAGE_KEYS.sfx, this.sfxVolume.toString());
   }
 
   public setMusicVolume(vol: number) {
     this.musicVolume = Phaser.Math.Clamp(vol, 0, 1);
-    localStorage.setItem('musicVolume', this.musicVolume.toString());
+    localStorage.setItem(VOLUME_STORAGE_KEYS.music, this.musicVolume.toString());
+    this.applyCurrentMusicVolume();
+  }
+
+  // Shared by setMasterVolume/setMusicVolume - both need to push the new
+  // master*music mix onto whatever track is currently playing.
+  private applyCurrentMusicVolume() {
     if (this.currentMusic && this.currentMusic.isPlaying) {
       (this.currentMusic as any).setVolume(this.musicVolume * this.masterVolume);
     }
@@ -89,7 +102,7 @@ export class AudioManager {
     // Multiply by master volume to ensure master mute works on UI too
     const finalVolume = this.masterVolume * this.uiVolume;
 
-    if (finalVolume > 0 && (this.scene.sound.get(key) || this.scene.cache.audio.exists(key))) {
+    if (finalVolume > 0 && this.isSoundLoaded(key)) {
       this.scene.sound.play(key, { volume: finalVolume });
     }
   }
@@ -98,9 +111,15 @@ export class AudioManager {
     if (!this.scene || !this.scene.sound) return;
     const finalVolume = this.masterVolume * this.sfxVolume * (config?.volume || 1);
 
-    if (finalVolume > 0 && (this.scene.sound.get(key) || this.scene.cache.audio.exists(key))) {
+    if (finalVolume > 0 && this.isSoundLoaded(key)) {
       this.scene.sound.play(key, { ...config, volume: finalVolume });
     }
+  }
+
+  // Shared existence check: a sound counts as playable if it's already an active
+  // Phaser sound instance OR is present in the audio cache waiting to be played.
+  private isSoundLoaded(key: string): boolean {
+    return !!(this.scene && this.scene.sound && (this.scene.sound.get(key) || this.scene.cache.audio.exists(key)));
   }
 
   public playMusic(key: string) {
@@ -116,7 +135,7 @@ export class AudioManager {
 
     const finalVolume = this.masterVolume * this.musicVolume;
 
-    if (this.scene.sound.get(key) || this.scene.cache.audio.exists(key)) {
+    if (this.isSoundLoaded(key)) {
       this.currentMusic = this.scene.sound.add(key, { volume: finalVolume, loop: true });
       this.currentMusic.play();
     }

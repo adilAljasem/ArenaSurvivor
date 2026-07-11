@@ -11,7 +11,6 @@ interface ActiveDrag {
   trackLeft: number;
   trackRight: number;
   trackWidth: number;
-  initialValue: number;
   cy: number; // >>> FIX 1: Lock the Y coordinate so the slider doesn't drag up and down
   onChange: (v: number) => void;
 }
@@ -36,29 +35,37 @@ export class EscMenu {
     this.scene = scene;
     this._build();
 
+    // >>> FIX 1: Uses d.cy instead of ptr.y so the slider stays perfectly horizontal
     this.scene.input.on('pointermove', (ptr: Phaser.Input.Pointer) => {
       if (!this._visible || !this._activeDrag) return;
       const d = this._activeDrag;
-
       const clampedX = Phaser.Math.Clamp(ptr.x, d.trackLeft, d.trackRight);
-      const value = (clampedX - d.trackLeft) / d.trackWidth;
-
-      d.valueText.setText(`${Math.round(value * 100)}%`);
-      d.onChange(value);
-
-      // >>> FIX 1: Use d.cy instead of ptr.y so it stays perfectly horizontal
-      d.fillGraphics.clear();
-      d.fillGraphics.fillStyle(0xe5b35c, 1);
-      d.fillGraphics.fillRoundedRect(d.trackLeft, d.cy - this.TRACK_H / 2, clampedX - d.trackLeft, this.TRACK_H, 5);
-
-      d.handleGraphics.clear();
-      d.handleGraphics.fillStyle(0xffffff, 1);
-      d.handleGraphics.fillCircle(clampedX, d.cy, this.HANDLE_RADIUS);
-      d.handleGraphics.lineStyle(2, 0xe5b35c, 1);
-      d.handleGraphics.strokeCircle(clampedX, d.cy, this.HANDLE_RADIUS);
+      this.updateSliderVisual(d, clampedX);
     });
 
     this.scene.input.on('pointerup', () => { this._activeDrag = null; });
+  }
+
+  // Shared by the pointermove drag handler above and each slider's initial
+  // pointerdown (in _buildModernSlider) - both need to recompute the value from
+  // clampedX and redraw the fill/handle the same way, just at different call sites.
+  private updateSliderVisual(d: ActiveDrag, clampedX: number): number {
+    const value = (clampedX - d.trackLeft) / d.trackWidth;
+
+    d.valueText.setText(`${Math.round(value * 100)}%`);
+    d.onChange(value);
+
+    d.fillGraphics.clear();
+    d.fillGraphics.fillStyle(0xe5b35c, 1);
+    d.fillGraphics.fillRoundedRect(d.trackLeft, d.cy - this.TRACK_H / 2, clampedX - d.trackLeft, this.TRACK_H, 5);
+
+    d.handleGraphics.clear();
+    d.handleGraphics.fillStyle(0xffffff, 1);
+    d.handleGraphics.fillCircle(clampedX, d.cy, this.HANDLE_RADIUS);
+    d.handleGraphics.lineStyle(2, 0xe5b35c, 1);
+    d.handleGraphics.strokeCircle(clampedX, d.cy, this.HANDLE_RADIUS);
+
+    return value;
   }
 
   get visible(): boolean { return this._visible; }
@@ -108,6 +115,8 @@ export class EscMenu {
 
   private _build(customWidth?: number, customHeight?: number): void {
     const scene = this.scene;
+
+    this.ensureExitIconTexture();
 
     // Use the new width/height if provided by the resize event, otherwise fallback to scale
     const width = customWidth ?? scene.scale.width;
@@ -176,7 +185,7 @@ export class EscMenu {
     // 4. Quit Button (Red/Danger)
     this.createButton(cx, cy + 120, "Back to Main Menu", () => {
       this.scene.events.emit('quit_to_main_menu');
-    }, this._mainViewElements, true);
+    }, this._mainViewElements, true, EscMenu.EXIT_ICON_KEY);
 
     // ==========================================
     // VIEW 2: OPTIONS (SLIDERS)
@@ -195,7 +204,39 @@ export class EscMenu {
     this.switchView('main');
   }
 
-  private createButton(cx: number, cy: number, text: string, onClick: () => void, targetList: VisibleGameObject[], isDanger: boolean) {
+  // Shared by createButton's initial draw, pointerover, and pointerout - all three
+  // previously repeated this exact clear/fill/stroke sequence with just different colors.
+  private drawButtonBg(bg: Phaser.GameObjects.Graphics, fillColor: number, borderColor: number): void {
+    bg.clear();
+    bg.fillStyle(fillColor, 1);
+    bg.fillRoundedRect(-120, -22.5, 240, 45, 8);
+    bg.lineStyle(2, borderColor, 1);
+    bg.strokeRoundedRect(-120, -22.5, 240, 45, 8);
+  }
+
+  private static readonly EXIT_ICON_KEY = 'esc_icon_exit';
+
+  // Simple "power/exit" glyph (a ring with a gap at the top + a tick through the gap) drawn
+  // once into a shared texture, same technique as the fx_spark/white_pixel textures elsewhere
+  // in the codebase - generateTexture is a one-time cost, and _build() can run again on
+  // resize, so this is guarded to skip regenerating if it's already there.
+  private ensureExitIconTexture(): void {
+    if (this.scene.textures.exists(EscMenu.EXIT_ICON_KEY)) return;
+
+    const size = 32;
+    const g = this.scene.add.graphics();
+    g.lineStyle(3, 0xffffff, 1);
+    g.beginPath();
+    // Ring with a ~60° gap centered at the top (12 o'clock).
+    g.arc(size / 2, size / 2, 11, Phaser.Math.DegToRad(-60), Phaser.Math.DegToRad(240), false);
+    g.strokePath();
+    // Vertical tick through the gap.
+    g.lineBetween(size / 2, 2, size / 2, 14);
+    g.generateTexture(EscMenu.EXIT_ICON_KEY, size, size);
+    g.destroy();
+  }
+
+  private createButton(cx: number, cy: number, text: string, onClick: () => void, targetList: VisibleGameObject[], isDanger: boolean, iconKey?: string) {
     const btnGroup = this.scene.add.container(cx, cy).setDepth(this.DEPTH + 5).setScrollFactor(0);
 
     const bg = this.scene.add.graphics();
@@ -205,16 +246,33 @@ export class EscMenu {
     const borderColor = isDanger ? 0xff4444 : 0xe5b35c;
     const hoverBorderColor = isDanger ? 0xff8888 : 0xffcf77;
 
-    bg.fillStyle(bgColor, 1);
-    bg.fillRoundedRect(-120, -22.5, 240, 45, 8);
-    bg.lineStyle(2, borderColor, 1);
-    bg.strokeRoundedRect(-120, -22.5, 240, 45, 8);
+    this.drawButtonBg(bg, bgColor, borderColor);
 
     const txt = this.scene.add.text(0, 0, text, {
       fontFamily: UIHelpers.FONT, fontSize: '18px', color: '#ffffff', fontStyle: 'bold', resolution: 3
     }).setOrigin(0.5);
 
-    btnGroup.add([bg, txt]);
+    const groupChildren: Phaser.GameObjects.GameObject[] = [bg, txt];
+
+    // Optional icon, white and slightly see-through so it reads as a subtle accent rather
+    // than competing with the label. Positioned so the icon+label pair is centered as a
+    // group (not just the text alone), same as a typical icon button.
+    if (iconKey) {
+      const iconSize = 20;
+      const gap = 8;
+      const icon = this.scene.add.image(0, 0, iconKey)
+        .setDisplaySize(iconSize, iconSize)
+        .setTint(0xffffff)
+        .setAlpha(0.8);
+
+      const totalWidth = iconSize + gap + txt.width;
+      icon.x = -(totalWidth / 2) + (iconSize / 2);
+      txt.x = -(totalWidth / 2) + iconSize + gap + (txt.width / 2);
+
+      groupChildren.push(icon);
+    }
+
+    btnGroup.add(groupChildren);
 
     // >>> FIX 3: Hitboxes detached from containers so they don't offset when the camera moves
     const hitbox = this.scene.add.rectangle(cx, cy, 240, 45, 0x000000, 0)
@@ -224,20 +282,12 @@ export class EscMenu {
 
     hitbox.on('pointerover', () => {
       // >>> FIX 4: Removed ui_hover sound for Esc Menu
-      bg.clear();
-      bg.fillStyle(hoverBgColor, 1);
-      bg.fillRoundedRect(-120, -22.5, 240, 45, 8);
-      bg.lineStyle(2, hoverBorderColor, 1);
-      bg.strokeRoundedRect(-120, -22.5, 240, 45, 8);
+      this.drawButtonBg(bg, hoverBgColor, hoverBorderColor);
       this.scene.tweens.add({ targets: btnGroup, scale: 1.05, duration: 100 });
     });
 
     hitbox.on('pointerout', () => {
-      bg.clear();
-      bg.fillStyle(bgColor, 1);
-      bg.fillRoundedRect(-120, -22.5, 240, 45, 8);
-      bg.lineStyle(2, borderColor, 1);
-      bg.strokeRoundedRect(-120, -22.5, 240, 45, 8);
+      this.drawButtonBg(bg, bgColor, borderColor);
       this.scene.tweens.add({ targets: btnGroup, scale: 1.0, duration: 100 });
     });
 
@@ -300,25 +350,13 @@ export class EscMenu {
 
     const drag: ActiveDrag = {
       handleGraphics, fillGraphics, valueText, trackLeft, trackRight,
-      trackWidth: this.TRACK_W, initialValue, cy, onChange // >>> FIX 1: Passing `cy`
+      trackWidth: this.TRACK_W, cy, onChange // >>> FIX 1: Passing `cy`
     };
 
     hitbox.on('pointerdown', (ptr: Phaser.Input.Pointer) => {
       this._activeDrag = drag;
       const clampedX = Phaser.Math.Clamp(ptr.x, trackLeft, trackRight);
-      const value = (clampedX - trackLeft) / this.TRACK_W;
-      onChange(value);
-      valueText.setText(`${Math.round(value * 100)}%`);
-
-      fillGraphics.clear();
-      fillGraphics.fillStyle(0xe5b35c, 1);
-      fillGraphics.fillRoundedRect(trackLeft, cy - this.TRACK_H / 2, clampedX - trackLeft, this.TRACK_H, 5);
-
-      handleGraphics.clear();
-      handleGraphics.fillStyle(0xffffff, 1);
-      handleGraphics.fillCircle(clampedX, cy, this.HANDLE_RADIUS);
-      handleGraphics.lineStyle(2, 0xe5b35c, 1);
-      handleGraphics.strokeCircle(clampedX, cy, this.HANDLE_RADIUS);
+      this.updateSliderVisual(drag, clampedX);
     });
   }
 }

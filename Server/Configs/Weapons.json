@@ -329,7 +329,7 @@
     "projectileId": "sword_swing",
     "range": 120,
     "textureKey": "weapons_sheet",
-    "scale": 0.6,
+    "scale": 0.45,
     "iconFrame": 15,
     "defaultFacingRight": true,
     "attackAnimType": "stab",
