@@ -199,12 +199,27 @@ export class ActorRenderer {
       // We still blend rather than scale 1:1 via WeaponScaleInfluence (0-1, default 0.5): at
       // 0.5, an actor rendering at 2x the reference height holds weapons at ~1.5x their design
       // size, not the full 2x — noticeably bigger on big actors without looking obese. Give
-      // bosses a lower influence (e.g. 0.25-0.35) if their realHeight is very large. The clamp
-      // is just a safety net against extreme/mistuned config combinations.
+      // bosses a lower influence (e.g. 0.25-0.35) if their realHeight is very large.
+      // NOTE: the blend goes toward 1.0 (design size), not toward actorSizeRatio — a LOW
+      // influence means the weapon stays close to full size regardless of actor size. For an
+      // actor that should shrink its weapon to match a small sprite, use a HIGH influence
+      // (close to 1.0), not a low one.
+      // The clamp is a safety net against extreme/mistuned config combinations. Floor lowered
+      // from 0.5 to 0.2 so very small actors (high influence + small actorSizeRatio) can
+      // actually shrink their weapons down instead of being floored at half design size.
       const REFERENCE_ACTOR_HEIGHT = 32; // matches default VisualHeight/uiWidth for a "normal" actor
       const actorSizeRatio = realHeight / REFERENCE_ACTOR_HEIGHT;
       const weaponScaleInfluence = config?.weaponScaleInfluence ?? config?.WeaponScaleInfluence ?? 0.5;
-      const weaponScaleFactor = Phaser.Math.Clamp(1 + (actorSizeRatio - 1) * weaponScaleInfluence, 0.1, 2.0);
+      const computedWeaponScaleFactor = Phaser.Math.Clamp(1 + (actorSizeRatio - 1) * weaponScaleInfluence, 0.2, 2.0);
+
+      // Direct escape hatch: if set, this actor's weapons render at exactly this fraction of
+      // their own designed scale (e.g. 0.25 = always 25%), completely bypassing VisualHeight/
+      // actorSizeRatio/WeaponScaleInfluence above. Use this when the ratio math isn't landing
+      // where you want and you'd rather just state the final weapon size for this actor.
+      const weaponScaleOverride = config?.weaponScaleOverride ?? config?.WeaponScaleOverride;
+      const weaponScaleFactor = (weaponScaleOverride !== undefined && weaponScaleOverride !== null)
+        ? weaponScaleOverride
+        : computedWeaponScaleFactor;
 
 
       // 2. CREATE CONTAINER

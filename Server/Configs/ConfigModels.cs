@@ -114,6 +114,16 @@ public class CharacterConfig
     /// </summary>
     public float WeaponScaleInfluence { get; set; } = 0.1f;
 
+    /// <summary>
+    /// Direct escape hatch, bypassing Scale/VisualHeight/WeaponScaleInfluence entirely: if
+    /// set, this character's weapons always render at exactly this fraction of their own
+    /// designed WeaponConfig.Scale (e.g. 0.25 = always 25%), regardless of body size. Leave
+    /// unset (null) to use the normal WeaponScaleInfluence blend above. MUST stay nullable -
+    /// a plain float would default to 0 for every character that doesn't set this, which
+    /// would render every unconfigured character's weapons at zero scale (invisible).
+    /// </summary>
+    public float? WeaponScaleOverride { get; set; } = null;
+
     public int[]? AnimIdle { get; set; }
     public int AnimIdleFrameRate { get; set; } = 10;
     public int[]? AnimMove { get; set; }
@@ -168,6 +178,16 @@ public class EnemyConfig
     /// designed size. See CharacterConfig.WeaponScaleInfluence for the same knob on players.
     /// </summary>
     public float WeaponScaleInfluence { get; set; } = 0.5f;
+
+    /// <summary>
+    /// Direct escape hatch, bypassing Scale/VisualHeight/WeaponScaleInfluence entirely: if
+    /// set, this enemy's weapons always render at exactly this fraction of their own designed
+    /// WeaponConfig.Scale (e.g. 0.25 = always 25%), regardless of body size. Leave unset
+    /// (null) to use the normal WeaponScaleInfluence blend above. MUST stay nullable - a
+    /// plain float would default to 0 for every enemy that doesn't set this, which would
+    /// render every unconfigured enemy's weapons at zero scale (invisible).
+    /// </summary>
+    public float? WeaponScaleOverride { get; set; } = null;
 
     // --- Visuals & Animations ---
     public string TextureKey { get; set; } = string.Empty;

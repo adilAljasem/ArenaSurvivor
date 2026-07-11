@@ -74,6 +74,10 @@ public class GameRoom
         foreach (var system in _systems)
             system.Initialize(EventBus, _configManager);
 
+        // Match-over / revive lifecycle. Not a dedicated IGameSystem since it only reacts to
+        // one event and needs no per-tick Update() of its own - see HandleEntityDeath below.
+        EventBus.Subscribe<EntityDeathEvent>(HandleEntityDeath);
+
         Console.WriteLine($"[ROOM] Initialized Sandbox for Room: {roomId}");
     }
 
@@ -147,8 +151,8 @@ public class GameRoom
             _lastAnnouncedPauseMinute = -1;
         }
 
-        // ─── PHYSICS (only when not paused) ───────────────────────────────────
-        if (!isPaused)
+        // ─── PHYSICS (only when not paused, and not after the match has ended) ─
+        if (!isPaused && State.Phase != GamePhase.GameOver)
         {
             UpdateGamePhases(dt);
 
@@ -357,10 +361,66 @@ public class GameRoom
         _ = SaveMatchResultsToDatabaseAsync();
     }
 
+    // ─── MATCH-OVER LIFECYCLE ──────────────────────────────────────────────────
+    // EventBus subscriber (registered in the constructor), not a per-tick system - see the
+    // comment on the Subscribe call above. Marks the player dead, freezes their input, and
+    // ends the match if that was the last one standing.
+    private void HandleEntityDeath(EntityDeathEvent ev, GameState state)
+    {
+        if (!ev.IsPlayer) return; // enemy deaths are handled elsewhere (loot, death skills, etc.)
+        if (!state.Players.TryGetValue(ev.EntityId, out var player)) return;
+        if (player.IsDead) return; // already processed - avoid re-triggering game-over
+
+        player.IsDead = true;
+        player.SetActionState("Dead");
+        player.InputX = 0f;
+        player.InputY = 0f;
+
+        bool anyoneStillAlive = state.Players.Values.Any(p => !p.IsDead);
+        if (!anyoneStillAlive)
+            _ = TriggerGameOverAsync(state);
+    }
+
+    private async Task TriggerGameOverAsync(GameState state)
+    {
+        if (state.Phase == GamePhase.GameOver) return; // already triggered this match
+        state.Phase = GamePhase.GameOver;
+
+        Console.WriteLine($"[ROOM] Room {RoomId}: all players down at wave {state.CurrentWave}. Match over.");
+
+        // Same shape as MatchHub.RequestScoreboard, so the client can reuse its existing
+        // ReceiveScoreboard row-mapping logic for this payload too.
+        var scoreboardData = state.Players.Values.Select(p => new object[] {
+            p.ConnectionId, p.Name, p.ConfigId,
+            (int)p.TotalDamageDealt, (int)p.TotalDamageTaken,
+            (int)p.TotalHealingDone, (int)p.TotalShieldingDone,
+            p.Kills, p.Deaths
+        }).ToList();
+
+        await _matchHubContext.Clients.Clients(state.Players.Keys).SendAsync("MatchOver", new
+        {
+            reachedWave = state.CurrentWave,
+            players = scoreboardData
+        });
+
+        _ = SaveMatchResultsToDatabaseAsync();
+    }
+
     private async Task HandleWaveEndTransition()
     {
         State.Phase = GamePhase.ShopPhase;
         State.PhaseTimer = 30f;
+
+        // Reaching this method at all means the wave was survived by at least one player -
+        // if everyone had died, HandleEntityDeath would already have flipped Phase to GameOver
+        // and TickAsync would never call this. So anyone still IsDead here gets a second
+        // chance, back at half HP.
+        foreach (var player in State.Players.Values.Where(p => p.IsDead))
+        {
+            player.IsDead = false;
+            player.SetActionState("Idle");
+            player.CurrentHp = player.CurrentMaxHp * 0.5f;
+        }
 
         foreach (var enemy in State.Enemies.Values)
         {

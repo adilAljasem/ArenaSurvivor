@@ -859,6 +859,10 @@ export class LobbyUI {
     private renderCharacterGrid() {
         if (!this.masterConfigs?.characters) return;
         const list = document.getElementById('character-picker-list')!;
+        // >>> FIX: selecting a character re-renders this whole list (to update the
+        // "selected" highlight), which used to reset scroll to the top every click.
+        // Save/restore it across the rebuild so browsing stays put.
+        const preservedScrollTop = list.scrollTop;
         list.innerHTML = '';
 
         const readyBtn = document.getElementById('btn-toggle-ready')!;
@@ -894,6 +898,8 @@ export class LobbyUI {
             };
             list.appendChild(item);
         });
+
+        list.scrollTop = preservedScrollTop;
 
         this.renderCharacterDetail();
     }
@@ -1623,6 +1629,22 @@ export class LobbyUI {
         #bg-video { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 1; pointer-events: none; }
         .ui-content { position: relative; z-index: 10; width: 100vw; height: 100vh; }
         .hidden { display: none !important; }
+
+        /* Themed scrollbars everywhere in the lobby, instead of the bare OS scrollbar —
+           applies to every scrollable descendant (char picker, achievements, collection,
+           room browser, chat, modals) without needing to repeat this per section. */
+        #lobby-ui-wrapper *::-webkit-scrollbar { width: 10px; height: 10px; }
+        #lobby-ui-wrapper *::-webkit-scrollbar-track { background: rgba(0,0,0,0.35); border-radius: 6px; }
+        #lobby-ui-wrapper *::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, #4a3b69 0%, #2a1f43 100%);
+            border: 2px solid rgba(0,0,0,0.35);
+            border-radius: 6px;
+        }
+        #lobby-ui-wrapper *::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(180deg, ${LOBBY_ASSETS.colorPrimary} 0%, #8a6a35 100%);
+        }
+        #lobby-ui-wrapper *::-webkit-scrollbar-corner { background: transparent; }
+        #lobby-ui-wrapper * { scrollbar-width: thin; scrollbar-color: #4a3b69 rgba(0,0,0,0.35); }
         .video-overlay { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.6); z-index: 2; pointer-events: none; }
         .game-logo { text-align: center; margin-bottom: 40px; user-select: none; display: flex; justify-content: center; }
         .logo-img { width: clamp(300px, 40vw, 700px); height: auto; transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), filter 0.3s ease; filter: drop-shadow(0 0 10px rgba(0,0,0,0.8)); }
@@ -1680,6 +1702,11 @@ export class LobbyUI {
         .char-grid { display: flex; flex-direction: row; overflow-x: auto; gap: 15px; padding-bottom: 10px; width: 100%; align-items: center; }
         .char-select-layout { display: flex; gap: 16px; flex: 1; overflow: hidden; }
         .char-picker-list { width: 240px; min-width: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 6px; }
+        .char-picker-loading {
+            color: ${LOBBY_ASSETS.colorMuted}; font-size: 13px; text-align: center;
+            padding: 30px 10px; animation: pulseFade 1.4s ease-in-out infinite;
+        }
+        @keyframes pulseFade { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
         .char-picker-item { position: relative; display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.5); border: 2px solid #333; border-radius: 8px; padding: 8px 10px; cursor: pointer; transition: 0.2s; }
         .char-picker-item:hover { border-color: #555; background: rgba(0,0,0,0.7); }
         .char-picker-item.selected { border-color: ${LOBBY_ASSETS.colorPrimary}; background: rgba(229, 179, 92, 0.1); box-shadow: inset 0 0 12px rgba(229, 179, 92, 0.15); }
@@ -2003,7 +2030,9 @@ export class LobbyUI {
                         <div class="waiting-col col-chars">
                             <h3 style="flex-shrink: 0;">Select Character</h3>
                             <div class="char-select-layout">
-                                <div id="character-picker-list" class="char-picker-list"></div>
+                                <div id="character-picker-list" class="char-picker-list">
+                                    <div class="char-picker-loading">Loading characters…</div>
+                                </div>
                                 <div id="character-detail-panel" class="char-detail-panel"></div>
                             </div>
                         </div>
@@ -2231,6 +2260,7 @@ export class LobbyUI {
             if (vDiv) vDiv.innerText = v;
         }).catch(err => console.error("Failed to fetch version:", err));
 
+        this.connection.off("LobbyError");
         this.connection.on("LobbyError", (msg: string) => {
             if (msg === "Incorrect password.") {
                 this.showToast("Room Locked", "The host updated the room. A password is now required.", "error");
@@ -2241,6 +2271,7 @@ export class LobbyUI {
             }
         });
 
+        this.connection.off("ReceiveChatMessage");
         this.connection.on("ReceiveChatMessage", (sender: string, msg: string) => {
             const history = document.getElementById('lobby-chat-history')!;
             const div = document.createElement('div');
@@ -2251,6 +2282,7 @@ export class LobbyUI {
             this.playSound(this.audioMessage);
         });
 
+        this.connection.off("ReceiveHandshake");
         this.connection.on("ReceiveHandshake", (payload: any) => {
             this.masterConfigs = payload;
             this.renderCharacterGrid();
@@ -2260,6 +2292,7 @@ export class LobbyUI {
         // MatchHub's connection), so this fires only if you later add lobby-side unlock
         // triggers. The character grid still updates correctly on lobby (re)join either way,
         // since InnerJoinRoom re-fetches UnlockedAchievementIds from the DB every time.
+        this.connection.off("AchievementUnlocked");
         this.connection.on("AchievementUnlocked", (achievementIds: string[]) => {
             if (!achievementIds || achievementIds.length === 0) return;
 
@@ -2285,12 +2318,14 @@ export class LobbyUI {
             }
         });
 
+        this.connection.off("LobbyListUpdated");
         this.connection.on("LobbyListUpdated", () => {
             if (!document.getElementById('screen-browser')!.classList.contains('hidden')) {
                 this.refreshRooms();
             }
         });
 
+        this.connection.off("RoomSettingsUpdated");
         this.connection.on("RoomSettingsUpdated", (data: any) => {
             document.getElementById('client-view-name')!.innerText = data.roomName + (data.hasPassword ? " 🔒" : "");
             document.getElementById('client-view-diff')!.innerText = data.difficulty.toUpperCase();
@@ -2301,6 +2336,7 @@ export class LobbyUI {
             (document.getElementById('lobby-edit-map') as HTMLSelectElement).value = data.mapId;
         });
 
+        this.connection.off("UpdateLobbyRoster");
         this.connection.on("UpdateLobbyRoster", (data: any) => {
             const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?roomId=' + data.roomId;
             window.history.pushState({ path: newUrl }, '', newUrl);

@@ -11,7 +11,7 @@
     "spawnWeight": 100,
     "textureKey": "spring_enemy",
     "VisualHeight": 25.0,
-    "WeaponScaleInfluence": 0.1,
+    "WeaponScaleOverride": 0.9,
     "scale": 1.5,
     "iconFrame": 1,
     "animIdle": [

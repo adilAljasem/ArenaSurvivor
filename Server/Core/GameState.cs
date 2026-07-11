@@ -3,7 +3,7 @@ using Server.Entities;
 
 namespace Server.Core;
 
-public enum GamePhase { WaitingForPlayers, WaveActive, ShopPhase }
+public enum GamePhase { WaitingForPlayers, WaveActive, ShopPhase, GameOver }
 public enum RoomStatus { Active, Paused_AwaitingPlayers, GracePeriod, ScheduledForDeletion } // NEW
 
 public class SpectatorEntity

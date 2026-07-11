@@ -79,6 +79,11 @@ public abstract class BaseActorEntity
     public string ActionState { get; private set; } = "Idle";
     public void SetActionState(string newState) => ActionState = newState;
 
+    // Explicit death flag, separate from ActionState. ActionState is animation-driven and can
+    // be overwritten every tick by movement/combat systems, so game-over/revive logic reads
+    // this instead of relying on ActionState staying "Dead" between ticks.
+    public bool IsDead { get; set; } = false;
+
 
     // --- Inventory ---
     public List<EquippedWeapon> Weapons { get; set; } = new();

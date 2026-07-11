@@ -4,7 +4,7 @@ import { ShopUI, SkillActionBar, Tooltip, LootNotifier } from './ui/UI';
 import { EscMenu } from './ui/EscMenu';
 import { ActorRenderer, VfxRenderer, WorldRenderer, playerRosterInfo } from './RenderSystems';
 import { AudioManager } from './AudioManager';
-import { LobbyUI, AuthUI } from './LobbyUI';
+import { LobbyUI, AuthUI, LOBBY_ASSETS } from './LobbyUI';
 import { world } from './ECS';
 import { ScoreboardUI } from './ui/ScoreboardUI';
 
@@ -78,6 +78,46 @@ export let matchConnection: any = new HubConnectionBuilder()
     .withUrl("http://localhost:5000/matchHub")
     .withAutomaticReconnect()
     .build();
+
+// --- SHARED APP LOADER ---
+// One reusable centered loading overlay (spinner + status text), used anywhere the client
+// is waiting on a network round-trip or a handshake payload: lobby connect, match handoff/
+// sync, and world/map initialization. Built once and reused via text updates rather than
+// creating a fresh overlay each time, so it never stacks or flickers between phases.
+let appLoaderEl: HTMLDivElement | null = null;
+
+function showAppLoader(message: string = "Loading…") {
+    if (!appLoaderEl) {
+        appLoaderEl = document.createElement('div');
+        appLoaderEl.id = 'app-loader-overlay';
+        appLoaderEl.style.cssText = `
+            position: fixed; inset: 0; width: 100vw; height: 100vh;
+            background: rgba(15, 12, 20, 0.96);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 20px; z-index: 9999999; font-family: 'Segoe UI', Tahoma, sans-serif;
+        `;
+        appLoaderEl.innerHTML = `
+            <div style="width: 60px; height: 60px; border-radius: 50%;
+                border: 5px solid rgba(229, 179, 92, 0.2); border-top-color: ${LOBBY_ASSETS.colorPrimary};
+                box-shadow: 0 0 20px rgba(229, 179, 92, 0.35);
+                animation: appLoaderSpin 0.85s cubic-bezier(0.5, 0.1, 0.5, 0.9) infinite;"></div>
+            <div id="app-loader-text" style="color: ${LOBBY_ASSETS.colorPrimary}; font-size: 15px; letter-spacing: 1.5px;
+                text-transform: uppercase; font-weight: bold; text-shadow: 0 0 10px rgba(229,179,92,0.4);"></div>
+            <style>@keyframes appLoaderSpin { to { transform: rotate(360deg); } }</style>
+        `;
+        document.body.appendChild(appLoaderEl);
+    }
+    appLoaderEl.querySelector('#app-loader-text')!.textContent = message;
+    appLoaderEl.style.display = 'flex';
+}
+
+function updateAppLoaderText(message: string) {
+    if (appLoaderEl) appLoaderEl.querySelector('#app-loader-text')!.textContent = message;
+}
+
+function hideAppLoader() {
+    if (appLoaderEl) appLoaderEl.style.display = 'none';
+}
 
 // --- INTERFACES ---
 interface EquippedWeapon { configId: string; slotIndex: number; level: number; }
@@ -163,6 +203,11 @@ class GameScene extends Phaser.Scene {
     private groundTooltip!: Tooltip;
 
     private isMapInitialized: boolean = false;
+    // Replaces a flag that used to live directly on the camera object (`_isFollowing`),
+    // which meant it never reset between matches - the camera would keep "following" a
+    // destroyed sprite from the previous match instead of picking up the new one, which is
+    // what caused the visible jump-from-origin on a second match. Reset in returnToLobby().
+    private isCameraFollowing: boolean = false;
     private mapWidth: number = 4000;
     private mapHeight: number = 4000;
 
@@ -184,7 +229,22 @@ class GameScene extends Phaser.Scene {
     private currentUncompressedKbps: string = "0.00";
 
     private handoffTimeout: ReturnType<typeof setTimeout> | null = null;
-    private syncOverlay: HTMLElement | null = null;
+    // All three need to be true before the loading overlay disappears - whichever finishes
+    // last is what actually triggers hiding it.
+    private playersSynced: boolean = false;
+    // This is the one that was missing: playersSynced + isMapInitialized only mean the
+    // network/map handshakes finished, not that the local player's own sprite has actually
+    // been created and the camera has started following it. Hiding the loader before that
+    // happened meant the camera's startFollow() lerp (a smooth slide, not an instant snap)
+    // was still catching up to the real position in full view - that's the "jump."
+    private localPlayerRendered: boolean = false;
+
+    private tryHideMatchLoader() {
+        if (!this.playersSynced || !this.isMapInitialized || !this.localPlayerRendered) return;
+        // Small buffer so the camera's follow-lerp has time to actually settle near the
+        // player while still hidden, instead of revealing the tail end of that slide.
+        setTimeout(() => hideAppLoader(), 200);
+    }
 
 
     private pingIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -347,23 +407,15 @@ class GameScene extends Phaser.Scene {
                 localStorage.setItem('currentRoomId', roomId);
             }
 
-            // Show the sync/loading overlay.
-            this.syncOverlay = document.getElementById('sync-overlay');
-            if (!this.syncOverlay) {
-                this.syncOverlay = document.createElement('div');
-                this.syncOverlay.id = 'sync-overlay';
-                this.syncOverlay.innerHTML = `
-          <style>
-            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-            .spinner { width: 50px; height: 50px; border: 5px solid rgba(191, 85, 236, 0.3); border-top-color: #bf55ec; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
-          </style>
-          <div class="spinner"></div>
-          <h2 style="color: white; font-family: 'Segoe UI', sans-serif;">Waiting for other players to join...</h2>
-        `;
-                this.syncOverlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(20,25,35,0.95);z-index:9999999;display:flex;flex-direction:column;justify-content:center;align-items:center;';
-                document.body.appendChild(this.syncOverlay);
-            }
-            this.syncOverlay.style.display = 'flex';
+            // Show the shared loading overlay - stays up through connect, player sync,
+            // AND world/map init (see tryHideMatchLoader), not just the "waiting for
+            // players" phase, so there's no gap where it disappears before the game is
+            // actually ready to look at.
+            this.playersSynced = false;
+            this.localPlayerRendered = false;
+            this.isCameraFollowing = false;
+            this.cameras.main.stopFollow();
+            showAppLoader("Connecting to match server…");
 
             // FIX: Stop any existing worker connection before creating a new one.
             // Without this, the old connection is orphaned and leaks.
@@ -393,7 +445,7 @@ class GameScene extends Phaser.Scene {
             this.handoffTimeout = setTimeout(() => {
                 this.handoffTimeout = null;
                 if (matchConnection.state === HubConnectionState.Connected) matchConnection.stop();
-                if (this.syncOverlay) this.syncOverlay.style.display = 'none';
+                hideAppLoader();
 
                 const toastContainer = document.getElementById('toast-container');
                 if (toastContainer) {
@@ -407,12 +459,13 @@ class GameScene extends Phaser.Scene {
 
             matchConnection.start().then(() => {
                 console.log("Connected to Worker! Waiting for sync...");
+                updateAppLoaderText("Waiting for other players to join…");
                 const isSpec = new URLSearchParams(window.location.search).get('spectate') === 'true';
                 matchConnection.invoke("JoinLiveMatch", roomId, matchToken, isSpec)
                     .catch((err: any) => console.error(err));
             }).catch((err: any) => {
                 if (this.handoffTimeout !== null) { clearTimeout(this.handoffTimeout); this.handoffTimeout = null; }
-                if (this.syncOverlay) this.syncOverlay.style.display = 'none';
+                hideAppLoader();
                 console.error("Failed to connect to worker:", err);
             });
         });
@@ -630,8 +683,10 @@ class GameScene extends Phaser.Scene {
 
         // Initial Boot Sequence (Start the Master Node!)
         if (lobbyConnection.state === HubConnectionState.Disconnected) {
+            showAppLoader("Connecting…");
             lobbyConnection.start()
                 .then(() => {
+                    hideAppLoader();
                     console.log("SignalR Master Connected!");
 
                     const urlParams = new URLSearchParams(window.location.search);
@@ -721,7 +776,10 @@ class GameScene extends Phaser.Scene {
 
                     }
                 })
-                .catch((err: any) => console.error("SignalR Master Connection Error:", err));
+                .catch((err: any) => {
+                    console.error("SignalR Master Connection Error:", err);
+                    showAppLoader("Connection failed — check your network and refresh.");
+                });
         }
 
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -759,6 +817,12 @@ class GameScene extends Phaser.Scene {
 
         // Guard: nothing to do if configs are empty or map already built.
         if (!masterConfigs || Object.keys(masterConfigs).length === 0) return;
+
+        // Warm the scoreboard's icon cache now, in the background, so the first TAB press
+        // doesn't have to pay for it mid-match. Safe to call repeatedly (reconnect) - already
+        // cached icons are skipped.
+        if (this.scoreboardUI) this.scoreboardUI.prewarmIcons(masterConfigs);
+
         if (this.isMapInitialized) return;
 
         // Rebuild animations from fresh config data.
@@ -779,6 +843,7 @@ class GameScene extends Phaser.Scene {
         if (!currentMap) return;
 
         this.isMapInitialized = true;
+        this.tryHideMatchLoader();
         this.mapWidth = currentMap.width || currentMap.Width;
         this.mapHeight = currentMap.height || currentMap.Height;
 
@@ -1135,9 +1200,11 @@ class GameScene extends Phaser.Scene {
             const { activePickups } = WorldRenderer.render(this, state, dummyMap, this.pickupSprites, masterConfigs, this.targetPositions) as any;
 
             const mySprite = this.playerSprites.get(matchConnection.connectionId || "");
-            if (mySprite && !(this.cameras.main as any)._isFollowing) {
+            if (mySprite && !this.isCameraFollowing) {
                 this.cameras.main.startFollow(mySprite, true, 0.1, 0.1);
-                (this.cameras.main as any)._isFollowing = true;
+                this.isCameraFollowing = true;
+                this.localPlayerRendered = true;
+                this.tryHideMatchLoader();
             }
 
             this.cleanupSprites(this.playerSprites, activePlayers);
@@ -1158,7 +1225,7 @@ class GameScene extends Phaser.Scene {
             }
 
             localStorage.removeItem('currentRoomId');
-            if (this.syncOverlay) this.syncOverlay.style.display = 'none';
+            hideAppLoader();
             const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
             window.location.href = cleanUrl;
         });
@@ -1166,10 +1233,17 @@ class GameScene extends Phaser.Scene {
         matchConnection.on("AllPlayersSynced", () => {
             // FIX: Previously inline inside MatchStarted — moved here for the same reason.
             if (this.handoffTimeout !== null) { clearTimeout(this.handoffTimeout); this.handoffTimeout = null; }
-            if (this.syncOverlay) this.syncOverlay.style.display = 'none';
+
+            // Don't hide the loader yet - ReceiveHandshake still needs to build the actual
+            // map/world (see applyHandshakePayload), which can finish before or after this.
+            // Hiding here unconditionally used to leave a gap where players were "synced" but
+            // staring at an empty canvas until the map caught up.
+            this.playersSynced = true;
+            updateAppLoaderText("Loading world…");
+            this.tryHideMatchLoader();
 
             const lobbyWrapper = document.getElementById('lobby-ui-wrapper');
-            if (lobbyWrapper) lobbyWrapper.style.display = 'none';
+            if (lobbyWrapper) lobbyWrapper.remove();
 
             lobbyConnection.stop().then(() => console.log("Safely dropped Master connection. Game On!"));
 
@@ -1232,6 +1306,41 @@ class GameScene extends Phaser.Scene {
             if (this.scoreboardUI && document.getElementById('scoreboard-overlay')?.style.display === 'flex') {
                 this.scoreboardUI.update(mappedData, masterConfigs, matchConnection.connectionId);
             }
+        });
+
+        // Fires once, when the last player standing dies. Same row shape as
+        // ReceiveScoreboard (server reuses that payload format), plus the wave reached.
+        matchConnection.off("MatchOver");
+        matchConnection.on("MatchOver", (payload: any) => {
+            const mappedData = (payload.players || []).map((s: any[]) => ({
+                connectionId: s[0],
+                name: s[1],
+                configId: s[2],
+                totalDamageDealt: s[3] || 0,
+                totalDamageTaken: s[4] || 0,
+                totalHealingDone: s[5] || 0,
+                totalShieldingDone: s[6] || 0,
+                kills: s[7] || 0,
+                deaths: s[8] || 0
+            }));
+
+            this.scoreboardUI.showMatchOver(mappedData, masterConfigs, matchConnection.connectionId, payload.reachedWave || 1, () => {
+                const leaveAndReturn = () => {
+                    // Wait for stop() to actually finish before wiping client state below -
+                    // otherwise a straggler tick can still land on the old connection right
+                    // after cleanup runs and silently re-create sprites for entities that
+                    // no longer exist, with nothing left listening to clean them up again.
+                    matchConnection.stop().catch(() => { }).finally(() => {
+                        this.returnToLobby();
+                    });
+                };
+
+                if (matchConnection && matchConnection.state === 'Connected') {
+                    matchConnection.invoke("LeaveRoom").catch(() => { }).finally(leaveAndReturn);
+                } else {
+                    leaveAndReturn();
+                }
+            });
         });
 
 
@@ -1765,6 +1874,99 @@ class GameScene extends Phaser.Scene {
                 this.targetPositions.delete(id);
             }
         });
+    }
+
+    // Leaves the current match and relaunches the lobby WITHOUT reloading the page. A page
+    // navigation (window.location.href, even to the same URL) always drops Fullscreen mode -
+    // that's a browser-enforced security behavior, not something JS can override after the
+    // fact. Avoiding the reload entirely is the only way "Exit to Main Menu" can keep
+    // Fullscreen intact. Everything below is best-effort match-state cleanup so a second
+    // match in the same session starts clean; the EscMenu quit flow still reloads for now,
+    // since it wasn't part of this pass.
+    private returnToLobby(): void {
+        localStorage.removeItem('currentRoomId');
+
+        // Release the camera's follow target before the sprite it's following gets
+        // destroyed below, and reset the tracking flag so the next match's ActorRenderer
+        // pass picks up the new local-player sprite fresh instead of staying stuck on a
+        // destroyed reference from this match.
+        this.cameras.main.stopFollow();
+        this.isCameraFollowing = false;
+        this.localPlayerRendered = false;
+
+        // World/sprite state - matches what a fresh page load would otherwise give you for free.
+        world.actors.clear();
+        world.pickups.clear();
+        this.cleanupSprites(this.playerSprites, new Set());
+        this.cleanupSprites(this.enemySprites, new Set());
+        this.cleanupSprites(this.pickupSprites, new Set());
+        this.projectileSprites.forEach(sprite => sprite.destroy());
+        this.projectileSprites.clear();
+
+        // This is the actual data source behind the "old enemies" bug: rawState.de (the
+        // server's per-tick deletion list) only ever contains IDs relevant to the CURRENT
+        // room's enemy lifecycle, so it has no way to tell the client to drop entries left
+        // over from a previous room entirely. Clearing the visual sprites above wasn't
+        // enough - this cache is what activeEnemiesArray (and therefore every render call)
+        // is actually built from, so leftover entries here just get redrawn on the next tick.
+        this.enemyCache.clear();
+        this.activeEnemiesArray = [];
+        this.enemiesDirty = true;
+
+        // So the next match's ReceiveHandshake actually rebuilds the map/animations instead
+        // of no-oping on the isMapInitialized guard, and so the loading overlay can show/hide
+        // correctly again next time.
+        this.isMapInitialized = false;
+        this.playersSynced = false;
+
+        // NOTE: don't remove #scoreboard-overlay here. this.scoreboardUI is a single
+        // persistent instance for the whole session (constructed once, not per-match), and
+        // its internal `wrapper` reference is this exact element - detaching it from the DOM
+        // would leave the instance pointing at an orphaned node forever, silently breaking
+        // the scoreboard (both the live TAB-hold view and match-over) for every match after
+        // this one. resetMatchOverState() below already hides it correctly without detaching it.
+        if (this.scoreboardUI) this.scoreboardUI.resetMatchOverState();
+        if (this.shopUIModule && typeof (this.shopUIModule as any).destroy === 'function') {
+            (this.shopUIModule as any).destroy();
+        }
+
+        const relaunchLobby = () => {
+            hideAppLoader();
+
+            // Defensive: makes sure there's never more than one #lobby-ui-wrapper (and its
+            // child ids like btn-toggle-ready, character-picker-list, etc.) in the DOM at
+            // once. Two copies of the same id is what caused every button to silently wire
+            // itself to the stale, invisible instance instead of the one on screen.
+            document.getElementById('lobby-ui-wrapper')?.remove();
+
+            const iconBase64Cache = new Map<string, string>();
+            const getIconHtml = (textureKey: string, frame: number, _size: number): string | null => {
+                const cacheKey = `${textureKey}::${frame}`;
+                let base64 = iconBase64Cache.get(cacheKey);
+                if (base64 === undefined) {
+                    base64 = this.textures.exists(textureKey) ? this.textures.getBase64(textureKey, frame) : '';
+                    iconBase64Cache.set(cacheKey, base64);
+                }
+                return base64 ? `<img src="${base64}" style="width:100%; height:100%; object-fit:contain; image-rendering:pixelated;" />` : null;
+            };
+
+            new LobbyUI(lobbyConnection, getIconHtml, () => {
+                console.log("Match joined. Entering Game mode!");
+            }, playerId);
+        };
+
+        // lobbyConnection gets deliberately stopped once a match starts (see
+        // AllPlayersSynced), so it needs restarting before the lobby can use it again.
+        if (lobbyConnection.state === HubConnectionState.Disconnected) {
+            showAppLoader("Returning to menu…");
+            lobbyConnection.start().then(relaunchLobby).catch(err => {
+                console.error("Failed to reconnect to lobby, falling back to a full reload:", err);
+                const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+                window.location.href = cleanUrl;
+            });
+        } else {
+            relaunchLobby();
+        }
     }
 
     private createAnimations(configs: any) {

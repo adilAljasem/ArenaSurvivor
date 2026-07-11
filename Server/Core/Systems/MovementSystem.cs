@@ -23,6 +23,8 @@ public class MovementSystem : IGameSystem
 
         foreach (var player in state.Players.Values)
         {
+            if (player.IsDead) continue; // dead players don't move, regardless of any residual/incoming input
+
             bool canMovePlayer = true;
             if (!string.IsNullOrEmpty(player.CurrentCastingSkillId) && player.CurrentCastTimer > 0)
             {

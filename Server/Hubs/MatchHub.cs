@@ -330,6 +330,7 @@ public class MatchHub : Hub
     {
         var room = _roomManager.GetRoomForPlayer(Context.ConnectionId);
         if (room == null || !room.State.Players.TryGetValue(Context.ConnectionId, out var player)) return;
+        if (player.IsDead) return; // dead players don't move (or aim/attack)
 
         float length = (float)Math.Sqrt(input.DirX * input.DirX + input.DirY * input.DirY);
         player.AimX = input.AimX;

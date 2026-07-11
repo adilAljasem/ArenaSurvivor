@@ -46,6 +46,28 @@ export class ScoreboardUI {
             .sb-avatar img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
             .txt-dmg { color: #ff5555; } .txt-taken { color: #ffaa00; } .txt-heal { color: #55ff55; }
             .txt-kd { color: #aaaaaa; font-weight: bold; } .txt-kd span { color: #ffffff; }
+
+            .sb-gameover-footer {
+                display: flex; flex-direction: column; align-items: center; gap: 6px;
+                padding: 18px 15px 22px; border-top: 2px solid #e5b35c;
+                background: linear-gradient(180deg, rgba(42,31,67,0.4) 0%, rgba(20,20,28,0.6) 100%);
+            }
+            .sb-gameover-title {
+                font-size: 22px; font-weight: bold; letter-spacing: 3px; color: #ff5555;
+                text-shadow: 0 0 12px rgba(255,85,85,0.6), 1px 1px 2px black;
+            }
+            .sb-gameover-wave {
+                font-size: 15px; color: #ffcf77; font-family: Consolas, monospace; font-weight: bold;
+                text-shadow: 1px 1px 1px black; margin-bottom: 4px;
+            }
+            .sb-exit-btn {
+                pointer-events: auto; cursor: pointer;
+                background: linear-gradient(180deg, #4a3b69 0%, #2a1f43 100%);
+                border: 2px solid #e5b35c; border-radius: 6px; color: #fff;
+                font-family: 'Segoe UI', Tahoma, sans-serif; font-size: 16px; font-weight: bold;
+                padding: 10px 28px; letter-spacing: 1px; transition: background 0.15s, border-color 0.15s;
+            }
+            .sb-exit-btn:hover { background: linear-gradient(180deg, #5c4a80 0%, #3a2c54 100%); border-color: #ffcf77; }
         `;
         document.head.appendChild(style);
     }
@@ -68,8 +90,44 @@ export class ScoreboardUI {
         return html;
     }
 
-    public update(players: any[], masterConfigs: any, myConnectionId: string) {
-        // Sort by damage dealt descending
+    // Pre-computes and caches every known character's scoreboard icon in the background, so
+    // the FIRST time someone opens the scoreboard mid-match it's already warm instead of
+    // synchronously paying the canvas-draw + toDataURL cost right when TAB is pressed (that
+    // one-time cost is what caused the freeze). Spread across idle callbacks in small chunks
+    // so this never competes with an actual frame being rendered - call once, right after the
+    // match handshake gives us the character list, well before anyone's likely to open it.
+    public prewarmIcons(masterConfigs: any) {
+        const characters = masterConfigs?.characters || masterConfigs?.Characters;
+        if (!characters) return;
+
+        const entries = Object.values(characters) as any[];
+        let i = 0;
+
+        const step = (deadline?: any) => {
+            const hasTime = () => !deadline || typeof deadline.timeRemaining !== 'function' || deadline.timeRemaining() > 0;
+            while (i < entries.length && hasTime()) {
+                const cfg = entries[i++];
+                const texKey = cfg?.textureKey || cfg?.TextureKey;
+                const frame = cfg?.iconFrame ?? cfg?.IconFrame ?? 0;
+                if (texKey) this.getIconHtml(texKey, frame, 42);
+            }
+            if (i < entries.length) scheduleNext();
+        };
+
+        const scheduleNext = () => {
+            if ('requestIdleCallback' in window) {
+                (window as any).requestIdleCallback(step);
+            } else {
+                setTimeout(() => step(), 16); // Safari fallback - one chunk per frame-ish
+            }
+        };
+
+        scheduleNext();
+    }
+
+    // Shared row-building for both the live (TAB-hold) view and the match-over screen, so
+    // there's one place that knows how to render a player row instead of two copies drifting.
+    private buildRowsHtml(players: any[], masterConfigs: any, myConnectionId: string): string {
         const sortedPlayers = [...players].sort((a, b) => b.totalDamageDealt - a.totalDamageDealt);
         let rowsHtml = '';
 
@@ -104,7 +162,11 @@ export class ScoreboardUI {
                 </div>`;
         });
 
-        this.wrapper.innerHTML = `
+        return rowsHtml;
+    }
+
+    private headerHtml(): string {
+        return `
             <div class="sb-header">
                 <div class="sb-col-player" style="color: #fff;">Player</div>
                 <div class="sb-col" style="text-align: center;">Damage</div>
@@ -112,10 +174,52 @@ export class ScoreboardUI {
                 <div class="sb-col" style="text-align: center;">Heal / Shield</div>
                 <div class="sb-col" style="text-align: center;">Kills / Deaths</div>
             </div>
-            <div id="sb-body">${rowsHtml}</div>
         `;
     }
 
+    public update(players: any[], masterConfigs: any, myConnectionId: string) {
+        if (this.isMatchOverMode) return; // match-over screen stays put until Exit is clicked
+
+        const rowsHtml = this.buildRowsHtml(players, masterConfigs, myConnectionId);
+        this.wrapper.innerHTML = `${this.headerHtml()}<div id="sb-body">${rowsHtml}</div>`;
+    }
+
+    // Match-over version: same table, plus a footer with the wave reached and an Exit button.
+    // Stays visible (hide() becomes a no-op) until the person actually clicks Exit, so
+    // releasing TAB or anything else that would normally hide the live scoreboard can't
+    // dismiss the match-over screen out from under them.
+    private isMatchOverMode: boolean = false;
+
+    public showMatchOver(players: any[], masterConfigs: any, myConnectionId: string, reachedWave: number, onExit: () => void) {
+        this.isMatchOverMode = true;
+
+        const rowsHtml = this.buildRowsHtml(players, masterConfigs, myConnectionId);
+        this.wrapper.innerHTML = `
+            ${this.headerHtml()}
+            <div id="sb-body">${rowsHtml}</div>
+            <div class="sb-gameover-footer">
+                <div class="sb-gameover-title">MATCH OVER</div>
+                <div class="sb-gameover-wave">Reached Wave ${reachedWave}</div>
+                <button id="sb-exit-btn" class="sb-exit-btn">Exit to Main Menu</button>
+            </div>
+        `;
+
+        document.getElementById('sb-exit-btn')!.addEventListener('click', () => onExit());
+
+        this.show();
+    }
+
     public show() { this.wrapper.style.display = 'flex'; }
-    public hide() { this.wrapper.style.display = 'none'; }
+    public hide() {
+        if (this.isMatchOverMode) return;
+        this.wrapper.style.display = 'none';
+    }
+
+    // Called when returning to the lobby after a match ends, so the live TAB-hold scoreboard
+    // (update()/hide()) works again for the next match instead of staying permanently stuck
+    // in match-over mode from the previous one.
+    public resetMatchOverState() {
+        this.isMatchOverMode = false;
+        this.wrapper.style.display = 'none';
+    }
 }
