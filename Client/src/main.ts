@@ -251,6 +251,10 @@ class GameScene extends Phaser.Scene {
     private currentPhase: string = "WaitingForPlayers";
     private previousPhase: string = "WaitingForPlayers";
     private manuallyClosedShop: boolean = false;
+    // Set true the instant "MatchOver" fires, cleared when a new match's ShopUI is created.
+    // Guards every path that can open/show the shop (B key, phase transitions) so a player
+    // can't still buy things once the scoreboard is up and the match has actually ended.
+    private isMatchOver: boolean = false;
 
     private spaceKey!: Phaser.Input.Keyboard.Key;
     private nearbyLootId: string | null = null;
@@ -609,6 +613,7 @@ class GameScene extends Phaser.Scene {
         this.shopUIModule = new ShopUI(this, matchConnection);
         this.shopUIModule.setDepth(1000);
         this.shopUIModule.setVisible(false);
+        this.isMatchOver = false;
 
         this.escMenu = new EscMenu(this);
         this.escMenu.setVisible(false);
@@ -696,6 +701,7 @@ class GameScene extends Phaser.Scene {
         // this.skillActionBar.setPosition(this.scale.width / 2, this.scale.height - 40);
 
         this.input.keyboard?.on('keydown-B', () => {
+            if (this.isMatchOver) return;
             const isNowVisible = !this.shopUIModule.visible;
             this.shopUIModule.setVisible(isNowVisible);
             this.manuallyClosedShop = !isNowVisible;
@@ -1239,7 +1245,7 @@ class GameScene extends Phaser.Scene {
                 if (this.previousPhase !== "WaveActive") { this.shopUIModule.setVisible(false); this.manuallyClosedShop = true; }
             } else if (this.currentPhase === "ShopPhase") {
                 this.waveUIText.setText(`SHOP PHASE - ${state.timeRemaining}s`).setColor('#00ff00');
-                if (this.previousPhase !== "ShopPhase") { this.shopUIModule.setVisible(true); this.manuallyClosedShop = false; }
+                if (!this.isMatchOver && this.previousPhase !== "ShopPhase") { this.shopUIModule.setVisible(true); this.manuallyClosedShop = false; }
             }
             this.previousPhase = this.currentPhase;
 
@@ -1326,6 +1332,7 @@ class GameScene extends Phaser.Scene {
             this.shopUIModule = new ShopUI(this, matchConnection);
             this.shopUIModule.setDepth(1000);
             this.shopUIModule.setVisible(false);
+            this.isMatchOver = false;
         });
 
         matchConnection.off("ReceiveHandshake");
@@ -1353,6 +1360,14 @@ class GameScene extends Phaser.Scene {
         matchConnection.off("MatchOver");
         matchConnection.on("MatchOver", (payload: any) => {
             const mappedData = (payload.players || []).map(mapScoreboardRow);
+
+            // The match is over - lock the shop shut immediately so it can't be reopened
+            // (B key / phase transitions) while the match-over scoreboard is up. Without this,
+            // the shop was only ever hidden by the normal wave/shop phase cycle, which stops
+            // being relevant the moment the last player dies.
+            this.isMatchOver = true;
+            this.shopUIModule.setVisible(false);
+            this.manuallyClosedShop = true;
 
             this.scoreboardUI.showMatchOver(mappedData, masterConfigs, matchConnection.connectionId, payload.reachedWave || 1, () => {
                 this.leaveRoomAndReturnToLobby();
@@ -1981,6 +1996,7 @@ class GameScene extends Phaser.Scene {
         if (this.shopUIModule && typeof (this.shopUIModule as any).destroy === 'function') {
             (this.shopUIModule as any).destroy();
         }
+        this.isMatchOver = false;
 
         const relaunchLobby = () => {
             hideAppLoader();

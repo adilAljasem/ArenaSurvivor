@@ -34,6 +34,96 @@ export function getTierColor(tier: number): string {
 }
 
 // ==========================================
+// STAT ICONS (SVG-based, replacing the old plain-text-only labels)
+// ==========================================
+// Inner SVG markup (no <svg> wrapper, no color) for each icon concept - kept deliberately
+// simple (circles/lines/basic paths) so it reads clearly at the small sizes these render at.
+// A few related stats intentionally share an icon (see STAT_ICON_ALIASES below) and are told
+// apart by their badge color/label instead, same as real game UIs commonly do.
+// IMPORTANT: UI.ts (the in-game client) keeps its own copy of this exact object - if you
+// add/change an icon here, mirror the change there so every screen stays visually identical.
+const STAT_ICON_PATHS: Record<string, string> = {
+    maxHp: '<path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54Z"/>',
+    hpRegen: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
+    lifeStealPercent: '<path d="M12 2C12 2 5 10.5 5 15a7 7 0 0 0 14 0C19 10.5 12 2 12 2Z"/>',
+    damagePercent: '<path d="m12 2 2.2 6.8H21l-5.6 4.1 2.1 6.9L12 15.7l-5.5 4.1 2.1-6.9L3 8.8h6.8Z"/>',
+    meleeDamage: '<path d="M12 2v14M8 6h8M9 20h6M12 16v4"/>',
+    rangedDamage: '<path d="M6 3a9 9 0 0 0 0 18M6 3l3 3M6 21l3-3M3 12h14M14 9l4 3-4 3"/>',
+    magicDamage: '<path d="m12 2 1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8Z"/>',
+    movementSpeed: '<path d="M4 12h6M13 6l6 6-6 6"/>',
+    range: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/>',
+    haste: '<path d="M13 2 4 14h6l-1 8 9-12h-6Z"/>',
+    engineering: '<circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+    armor: '<path d="M12 2 20 5v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5Z"/>',
+    defensePercent: '<path d="M12 2 20 5v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5Z"/><path d="M7 10.5h10"/>',
+    magicDefense: '<path d="M12 2 20 6.5v9L12 22 4 15.5v-9Z"/>',
+    shieldPower: '<path d="M4 15a8 8 0 0 1 16 0"/><path d="M4 15h16"/>',
+    dodge: '<path d="M4 12c4-8 12-8 16 0M16 8l4 4-4 4"/>',
+    luck: '<circle cx="9" cy="8" r="3.1"/><circle cx="15" cy="8" r="3.1"/><circle cx="9" cy="14" r="3.1"/><circle cx="15" cy="14" r="3.1"/><path d="M12 14v7"/>',
+    harvesting: '<path d="M12 2C7 4 4 9 4 14a8 8 0 0 0 16 0c0-5-3-10-8-12Z"/><path d="M12 6v14"/>',
+    attackSpeedPercent: '<circle cx="12" cy="13" r="8"/><path d="M12 13V8M9 2h6"/>',
+    xpGainPercent: '<path d="M12 20V4M6 10l6-6 6 6"/>',
+    projectileSpeedPercent: '<path d="M3 12h4M9 12h4M17 6l4 6-4 6"/>',
+    critChance: '<path d="M12 3v6M12 15v6M3 12h6M15 12h6M5.6 5.6l4.2 4.2M14.2 14.2l4.2 4.2M18.4 5.6l-4.2 4.2M9.8 14.2l-4.2 4.2"/>',
+    healPower: '<path d="M12 3v6M12 15v6M6 12H3M21 12h-3"/><circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/>',
+    pickupRange: '<path d="M6 4v8a6 6 0 0 0 12 0V4M6 4h4M14 4h4M6 9h4M14 9h4"/>',
+    default: '<circle cx="12" cy="12" r="9"/><path d="M12 16h.01M12 8v4"/>',
+};
+
+// Every stat now has its own unique icon (see STAT_ICON_PATHS) - this stays as the mechanism
+// for it, in case a genuinely intentional icon reuse comes up later, but is empty for now.
+const STAT_ICON_ALIASES: Record<string, string> = {};
+
+function getStatIconKey(key: string): string {
+    return STAT_ICON_ALIASES[key] || key;
+}
+
+// Each icon's own fixed, characteristic color (e.g. a red heart, yellow lightning bolt) -
+// independent of whether the badge it's in is showing a positive or negative value. This is
+// what the old emoji set had for free; a plain-shape icon needs it assigned explicitly or
+// everything ends up the same 2-3 sign colors (green/red/gray) and loses its identity.
+const STAT_ICON_COLORS: Record<string, string> = {
+    maxHp: '#ef5350',
+    hpRegen: '#66bb6a',
+    lifeStealPercent: '#c2185b',
+    damagePercent: '#ffa726',
+    meleeDamage: '#e64a19',
+    rangedDamage: '#66bb6a',
+    magicDamage: '#ab47bc',
+    movementSpeed: '#29b6f6',
+    range: '#26a69a',
+    haste: '#fdd835',
+    engineering: '#90a4ae',
+    armor: '#5c6bc0',
+    defensePercent: '#7986cb',
+    magicDefense: '#7e57c2',
+    shieldPower: '#26c6da',
+    dodge: '#4fc3f7',
+    luck: '#66bb6a',
+    harvesting: '#8bc34a',
+    attackSpeedPercent: '#ff8a65',
+    xpGainPercent: '#ffca28',
+    projectileSpeedPercent: '#4dd0e1',
+    critChance: '#ff5252',
+    healPower: '#f06292',
+    pickupRange: '#7986cb',
+    default: '#9e9e9e',
+};
+
+function getStatIconColor(key: string): string {
+    return STAT_ICON_COLORS[getStatIconKey(key)] ?? STAT_ICON_COLORS['default'];
+}
+
+// Inline SVG for a stat icon - safe to drop straight into innerHTML. Bakes in the icon's own
+// fixed color (see STAT_ICON_COLORS) rather than inheriting the wrapping badge's sign-color,
+// so e.g. the heart stays red whether it's showing a +10 or a -10 Max HP.
+function statIconSvg(key: string, sizePx: number = 13): string {
+    const color = getStatIconColor(key);
+    const inner = (STAT_ICON_PATHS[getStatIconKey(key)] ?? STAT_ICON_PATHS['default']).replace(/currentColor/g, color);
+    return `<svg viewBox="0 0 24 24" width="${sizePx}" height="${sizePx}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;flex-shrink:0;margin-right:2px;">${inner}</svg>`;
+}
+
+// ==========================================
 // CHARACTER BASE STAT REFERENCE VALUES
 // ==========================================
 // "Normal"/expected value for each base stat, used only by the character picker UI to show
@@ -44,18 +134,18 @@ export function getTierColor(tier: number): string {
 // from this table, so changing it only changes what players see, not actual gameplay.
 export const CHARACTER_BASE_STAT_REFERENCE: Record<string, number> = {
     maxHp: 100,
-    hpRegen: 0,
-    lifeSteal: 0,
+    hpRegen: 0.5,
+    lifeStealPercent: 0,
     damagePercent: 0,
-    meleeDamage: 10,
-    rangedDamage: 10,
-    magicDamage: 10,
+    meleeDamage: 5,
+    rangedDamage: 5,
+    magicDamage: 5,
     movementSpeed: 180,
     range: 0,
     haste: 0,
     engineering: 0,
-    armor: 0,
-    magicDefense: 0,
+    armor: 5,
+    magicDefense: 5,
     defensePercent: 0,
     dodge: 0,
     luck: 0,
@@ -68,6 +158,19 @@ export const CHARACTER_BASE_STAT_REFERENCE: Record<string, number> = {
     shieldPower: 0,
     pickupRange: 0,
 };
+
+// ==========================================
+// PERCENT-STYLE STAT CLASSIFICATION
+// ==========================================
+// Whether a stat should ever render with a "%" is decided purely by its name: any key ending
+// in "Percent" (damagePercent, lifeStealPercent, defensePercent, ...) - exactly matching the
+// naming convention already used in Stats.json. Stats without that suffix (dodge, critChance,
+// healPower, shieldPower, etc.) always render as plain flat numbers when shown as a base/bonus
+// stat. This does NOT apply to the statMultipliers bucket, which always shows "%" regardless
+// of key - a multiplier is inherently a percentage no matter what stat it's scaling.
+function isPercentStat(key: string): boolean {
+    return !!key && key.endsWith('Percent');
+}
 
 // Difficulty id -> color. Falls back to a neutral gray for any custom difficulty id not
 // listed here, so new difficulties added server-side (Configs/Difficulties.json) never break.
@@ -802,8 +905,8 @@ export class LobbyUI {
             const grantedShield = this.pick(cfg, 'grantedShield') ?? 0;
             const statModifiers = this.pick(cfg, 'statModifiers') || {};
             const statMultipliers = this.pick(cfg, 'statMultipliers') || {};
-            const modBadges = Object.entries(statModifiers).map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, false)).join('');
-            const multBadges = Object.entries(statMultipliers).map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, true)).join('');
+            const modBadges = Object.entries(statModifiers).map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, false, '', k)).join('');
+            const multBadges = Object.entries(statMultipliers).map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, true, '', k)).join('');
 
             detailsHtml = `
                 <div class="coll-tags" style="margin-bottom:12px;">
@@ -823,8 +926,8 @@ export class LobbyUI {
             const statMultipliers = this.pick(cfg, 'statMultipliers') || {};
             const grantedSkills: string[] = this.pick(cfg, 'grantedSkills') || [];
             const skillsSource = this.masterConfigs?.skills || this.masterConfigs?.Skills || {};
-            const bonusBadges = Object.entries(statBonuses).map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, false)).join('');
-            const multBadges = Object.entries(statMultipliers).map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, true)).join('');
+            const bonusBadges = Object.entries(statBonuses).map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, false, '', k)).join('');
+            const multBadges = Object.entries(statMultipliers).map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, true, '', k)).join('');
 
             detailsHtml = `
                 <div class="coll-tags" style="margin-bottom:12px;">
@@ -1094,7 +1197,13 @@ export class LobbyUI {
     }
 
     private formatStatName(key: string): string {
-        const withSpaces = key.replace(/([A-Z])/g, ' $1').trim();
+        // Drop the "Percent" suffix (damagePercent, lifeStealPercent, etc.) - the "%" already
+        // shown on the value makes the word redundant in the label.
+        let displayKey = key;
+        if (isPercentStat(key)) {
+            displayKey = displayKey.slice(0, -'Percent'.length);
+        }
+        const withSpaces = displayKey.replace(/([A-Z])/g, ' $1').trim();
         return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1);
     }
 
@@ -1102,6 +1211,15 @@ export class LobbyUI {
         if (n === undefined || n === null || isNaN(n)) return '0';
         if (Number.isInteger(n)) return n.toString();
         return n.toFixed(2).replace(/\.?0+$/, '');
+    }
+
+    // Unsigned display of a raw stat value, e.g. for enemy/character base-stat grids that
+    // aren't rendered through buildStatBadge. Only Percent-suffixed stats (see isPercentStat)
+    // get a "%" - everything else (dodge, critChance, healPower, shieldPower, etc.) is a plain
+    // flat number here.
+    private formatStatValue(key: string, value: number): string {
+        if (isPercentStat(key)) return `${Math.round(value * 100)}%`;
+        return this.formatNumber(value);
     }
 
     // Compares a character's actual base stat value against the CHARACTER_BASE_STAT_REFERENCE
@@ -1115,16 +1233,21 @@ export class LobbyUI {
         if (diff === 0) return '';
         const color = diff > 0 ? '#4caf50' : '#f44336';
         const sign = diff > 0 ? '+' : '';
-        return ` <span class="stat-diff-tag" style="color:${color};">(${sign}${this.formatNumber(diff)})</span>`;
+        const diffDisplay = isPercentStat(key) ? `${Math.round(diff * 100)}%` : this.formatNumber(diff);
+        return ` <span class="stat-diff-tag" style="color:${color};">(${sign}${diffDisplay})</span>`;
     }
 
     // Sign-colored stat badge: green for positive, red for negative, neutral gray for zero.
-    // isPercent controls whether the value is shown as "+12" or "+12%".
-    private buildStatBadge(label: string, value: number, isPercent: boolean, suffix: string = ''): string {
+    // Shows "%" if EITHER the bucket says so (isPercent=true, i.e. the statMultipliers bucket -
+    // always percent, no matter the key, since a multiplier is inherently a percentage) OR the
+    // stat's own name is Percent-suffixed (see isPercentStat) - so e.g. a flat "lifeStealPercent"
+    // bonus still shows "+5%" even outside the multiplier bucket. Anything else is a flat number.
+    private buildStatBadge(label: string, value: number, isPercent: boolean, suffix: string = '', statKey: string = ''): string {
         const color = value > 0 ? '#4caf50' : (value < 0 ? '#f44336' : '#999');
         const sign = value > 0 ? '+' : '';
-        const displayValue = isPercent ? `${sign}${Math.round(value * 100)}%` : `${sign}${this.formatNumber(value)}${suffix}`;
-        return `<span class="coll-badge" style="color:${color}; border-color:${color}66;">${label} ${displayValue}</span>`;
+        const showAsPercent = isPercent || isPercentStat(statKey);
+        const displayValue = showAsPercent ? `${sign}${Math.round(value * 100)}%` : `${sign}${this.formatNumber(value)}${suffix}`;
+        return `<span class="coll-badge" style="color:${color}; border-color:${color}66;">${statIconSvg(statKey)}${label} ${displayValue}</span>`;
     }
 
     private buildIconHtml(entry: any, fallbackLetter: string, size: number): string {
@@ -1259,7 +1382,7 @@ export class LobbyUI {
 
         const statBadges = Object.entries(baseStats)
             .filter(([, v]) => (v as number) !== 0)
-            .map(([k, v]) => `<div class="coll-stat"><span class="coll-stat-label">${this.formatStatName(k)}</span><span class="coll-stat-value">${this.formatNumber(v as number)}</span></div>`)
+            .map(([k, v]) => `<div class="coll-stat"><span class="coll-stat-label">${statIconSvg(k)}${this.formatStatName(k)}</span><span class="coll-stat-value">${this.formatStatValue(k, v as number)}</span></div>`)
             .join('');
 
         card.innerHTML = `
@@ -1338,7 +1461,7 @@ export class LobbyUI {
         ].join('');
 
         const bonusBadges = Object.entries(statBonuses)
-            .map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, false))
+            .map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, false, '', k))
             .join('');
 
         card.innerHTML = `
@@ -1395,15 +1518,15 @@ export class LobbyUI {
         const { locked, missing } = this.isGearLocked(required);
 
         const bonusBadges = Object.entries(statBonuses)
-            .map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, false))
+            .map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, false, '', k))
             .join('');
         const multBadges = Object.entries(statMultipliers)
-            .map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, true))
+            .map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, true, '', k))
             .join('');
         const waveEndBadges = effectsAtWaveEnd.map(we => {
             const statName = this.pick(we, 'statName') || '';
             const amount = this.pick(we, 'amount') ?? 0;
-            return this.buildStatBadge(this.formatStatName(statName), amount, false, "/wave");
+            return this.buildStatBadge(this.formatStatName(statName), amount, false, "/wave", statName);
         }).join('');
 
         card.innerHTML = `
@@ -1455,11 +1578,11 @@ export class LobbyUI {
 
         const statBadges = Object.entries(baseStats)
             .filter(([, v]) => (v as number) !== 0)
-            .map(([k, v]) => `<div class="coll-stat"><span class="coll-stat-label">${this.formatStatName(k)}</span><span class="coll-stat-value">${this.formatNumber(v as number)}${this.buildStatDiffSuffix(k, v as number)}</span></div>`)
+            .map(([k, v]) => `<div class="coll-stat"><span class="coll-stat-label">${statIconSvg(k)}${this.formatStatName(k)}</span><span class="coll-stat-value">${this.formatStatValue(k, v as number)}${this.buildStatDiffSuffix(k, v as number)}</span></div>`)
             .join('');
         const multBadges = Object.entries(statMultipliers)
             .filter(([, v]) => (v as number) !== 0)
-            .map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, true))
+            .map(([k, v]) => this.buildStatBadge(this.formatStatName(k), v as number, true, '', k))
             .join('');
 
         card.innerHTML = `

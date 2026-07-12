@@ -15,6 +15,14 @@ export interface TextBlock {
     text: string;
     color: string;
     isHeader?: boolean;
+    // If true, renderers draw a thin divider line immediately above this block instead of at
+    // a fixed position - used to put the divider right above the "Base Stats" section,
+    // wherever that ends up landing (below On Hit / Scales, or right under the title if
+    // there's no weapon-info content at all).
+    dividerBefore?: boolean;
+    // If set, renderers draw a small stat icon (see STAT_ICON_PATHS) to the left of this
+    // line's text instead of no icon.
+    iconKey?: string;
 }
 
 export interface FocusItem {
@@ -33,6 +41,182 @@ function findConfigCaseInsensitive(dict: any, id: string): any {
     if (direct) return direct;
     const foundKey = Object.keys(dict).find(k => k.toLowerCase() === id.toLowerCase());
     return foundKey ? dict[foundKey] : undefined;
+}
+
+// Shared layout routine for an array of TextBlocks (see buildStatBlocks): creates one Phaser
+// Text (plus an icon Image if the block has one - see TextBlock.iconKey) per block, top-to-
+// bottom, and reports where (if anywhere) a block asked for a divider (see
+// TextBlock.dividerBefore) so the caller can position one without re-implementing this loop -
+// used identically by Tooltip.show() and the Shop's big purchase card.
+function layoutStatBlocks(
+    scene: Phaser.Scene,
+    blocks: TextBlock[],
+    opts: {
+        x: number, startY: number,
+        headerFontSize: string, normalFontSize: string,
+        wordWrapWidth: number, lineSpacing: number,
+        headerGap: number, normalGap: number,
+        dividerGapAbove: number, dividerGapBelow: number,
+        iconSize?: number, iconGap?: number,
+    }
+): { texts: Phaser.GameObjects.Text[], icons: Phaser.GameObjects.Image[], endY: number, dividerYs: number[] } {
+    const texts: Phaser.GameObjects.Text[] = [];
+    const icons: Phaser.GameObjects.Image[] = [];
+    let currentY = opts.startY;
+    const dividerYs: number[] = [];
+    const iconSize = opts.iconSize ?? 14;
+    const iconGap = opts.iconGap ?? 4;
+
+    blocks.forEach(b => {
+        if (b.dividerBefore) {
+            dividerYs.push(currentY + opts.dividerGapAbove);
+            currentY += opts.dividerGapAbove + opts.dividerGapBelow;
+        }
+
+        let textX = opts.x;
+        let rowHeight = 0;
+        if (b.iconKey) {
+            const texKey = ensureStatIconTexture(scene, b.iconKey);
+            const icon = scene.add.image(opts.x + iconSize / 2, currentY + iconSize / 2, texKey);
+            icon.setDisplaySize(iconSize, iconSize);
+            icons.push(icon);
+            textX = opts.x + iconSize + iconGap;
+            rowHeight = iconSize;
+        }
+
+        const t = scene.add.text(textX, currentY, b.text, {
+            fontFamily: UIHelpers.FONT,
+            fontSize: b.isHeader ? opts.headerFontSize : opts.normalFontSize,
+            fontStyle: b.isHeader ? 'bold' : 'normal',
+            color: b.color,
+            wordWrap: { width: opts.wordWrapWidth - (textX - opts.x) },
+            lineSpacing: opts.lineSpacing,
+            resolution: 3
+        });
+        texts.push(t);
+        rowHeight = Math.max(rowHeight, t.displayHeight);
+        currentY += rowHeight + (b.isHeader ? opts.headerGap : opts.normalGap);
+    });
+
+    return { texts, icons, endY: currentY, dividerYs };
+}
+
+// =========================================================================
+// STAT ICONS (SVG-based, replacing the old emoji set)
+// =========================================================================
+// Inner SVG markup (no <svg> wrapper, no color) for each icon concept - kept deliberately
+// simple (circles/lines/basic paths) so it reads clearly at the small sizes these render at.
+// A few related stats intentionally share an icon (see STAT_ICON_ALIASES below) and are told
+// apart by their badge color/label instead, same as real game UIs commonly do.
+// IMPORTANT: LobbyUI.ts keeps its own copy of this exact object - if you add/change an icon
+// here, mirror the change there so the lobby's collection cards stay visually identical.
+const STAT_ICON_PATHS: Record<string, string> = {
+    maxHp: '<path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54Z"/>',
+    hpRegen: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
+    lifeStealPercent: '<path d="M12 2C12 2 5 10.5 5 15a7 7 0 0 0 14 0C19 10.5 12 2 12 2Z"/>',
+    damagePercent: '<path d="m12 2 2.2 6.8H21l-5.6 4.1 2.1 6.9L12 15.7l-5.5 4.1 2.1-6.9L3 8.8h6.8Z"/>',
+    meleeDamage: '<path d="M12 2v14M8 6h8M9 20h6M12 16v4"/>',
+    rangedDamage: '<path d="M6 3a9 9 0 0 0 0 18M6 3l3 3M6 21l3-3M3 12h14M14 9l4 3-4 3"/>',
+    magicDamage: '<path d="m12 2 1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8Z"/>',
+    movementSpeed: '<path d="M4 12h6M13 6l6 6-6 6"/>',
+    range: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/>',
+    haste: '<path d="M13 2 4 14h6l-1 8 9-12h-6Z"/>',
+    engineering: '<circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+    armor: '<path d="M12 2 20 5v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5Z"/>',
+    // Same shield silhouette as armor plus a reinforcement band - same "defense" family,
+    // visually distinct rather than an identical reused icon.
+    defensePercent: '<path d="M12 2 20 5v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5Z"/><path d="M7 10.5h10"/>',
+    magicDefense: '<path d="M12 2 20 6.5v9L12 22 4 15.5v-9Z"/>',
+    // A barrier/dome shape - distinct from magicDefense's hexagon, reads as an energy shield.
+    shieldPower: '<path d="M4 15a8 8 0 0 1 16 0"/><path d="M4 15h16"/>',
+    dodge: '<path d="M4 12c4-8 12-8 16 0M16 8l4 4-4 4"/>',
+    luck: '<circle cx="9" cy="8" r="3.1"/><circle cx="15" cy="8" r="3.1"/><circle cx="9" cy="14" r="3.1"/><circle cx="15" cy="14" r="3.1"/><path d="M12 14v7"/>',
+    harvesting: '<path d="M12 2C7 4 4 9 4 14a8 8 0 0 0 16 0c0-5-3-10-8-12Z"/><path d="M12 6v14"/>',
+    attackSpeedPercent: '<circle cx="12" cy="13" r="8"/><path d="M12 13V8M9 2h6"/>',
+    xpGainPercent: '<path d="M12 20V4M6 10l6-6 6 6"/>',
+    projectileSpeedPercent: '<path d="M3 12h4M9 12h4M17 6l4 6-4 6"/>',
+    critChance: '<path d="M12 3v6M12 15v6M3 12h6M15 12h6M5.6 5.6l4.2 4.2M14.2 14.2l4.2 4.2M18.4 5.6l-4.2 4.2M9.8 14.2l-4.2 4.2"/>',
+    healPower: '<path d="M12 3v6M12 15v6M6 12H3M21 12h-3"/><circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/>',
+    pickupRange: '<path d="M6 4v8a6 6 0 0 0 12 0V4M6 4h4M14 4h4M6 9h4M14 9h4"/>',
+    // Non-Stats.json extras used for weapon-info lines, so the whole tooltip reads consistently.
+    cooldown: '<circle cx="12" cy="13" r="8"/><path d="M12 13V8M9 2h6"/>',
+    scaling: '<path d="M12 20V4M6 10l6-6 6 6"/>',
+    onhit: '<path d="M9 2h6M10 2v5l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V2"/>',
+    default: '<circle cx="12" cy="12" r="9"/><path d="M12 16h.01M12 8v4"/>',
+};
+
+// Every stat now has its own unique icon (see STAT_ICON_PATHS) - this stays as the mechanism
+// for it, in case a genuinely intentional icon reuse comes up later, but is empty for now.
+const STAT_ICON_ALIASES: Record<string, string> = {};
+
+function getStatIconKey(key: string): string {
+    return STAT_ICON_ALIASES[key] || key;
+}
+
+// Each icon's own fixed, characteristic color (e.g. a red heart, yellow lightning bolt) -
+// independent of whether the line it's on is showing a positive or negative value. This is
+// what the old emoji set had for free; a plain-shape icon needs it assigned explicitly or
+// everything ends up the same 2-3 sign colors (green/red/gray) and loses its identity.
+// IMPORTANT: LobbyUI.ts keeps its own copy of this exact object - keep them in sync.
+const STAT_ICON_COLORS: Record<string, string> = {
+    maxHp: '#ef5350',
+    hpRegen: '#66bb6a',
+    lifeStealPercent: '#c2185b',
+    damagePercent: '#ffa726',
+    meleeDamage: '#e64a19',
+    rangedDamage: '#66bb6a',
+    magicDamage: '#ab47bc',
+    movementSpeed: '#29b6f6',
+    range: '#26a69a',
+    haste: '#fdd835',
+    engineering: '#90a4ae',
+    armor: '#5c6bc0',
+    defensePercent: '#7986cb',
+    magicDefense: '#7e57c2',
+    shieldPower: '#26c6da',
+    dodge: '#4fc3f7',
+    luck: '#66bb6a',
+    harvesting: '#8bc34a',
+    attackSpeedPercent: '#ff8a65',
+    xpGainPercent: '#ffca28',
+    projectileSpeedPercent: '#4dd0e1',
+    critChance: '#ff5252',
+    healPower: '#f06292',
+    pickupRange: '#7986cb',
+    cooldown: '#ff8a65',
+    scaling: '#ffca28',
+    onhit: '#9ccc65',
+    default: '#9e9e9e',
+};
+
+function getStatIconColor(key: string): string {
+    return STAT_ICON_COLORS[getStatIconKey(key)] ?? STAT_ICON_COLORS['default'];
+}
+
+// Builds a self-contained SVG string for a stat icon, with its own fixed color baked directly
+// in (see STAT_ICON_COLORS) - this is rasterized once into a texture, not tinted per-instance,
+// since the color no longer varies by context the way the old sign-tinted version did.
+function buildStatIconSvgString(key: string): string {
+    const color = getStatIconColor(key);
+    const inner = (STAT_ICON_PATHS[getStatIconKey(key)] ?? STAT_ICON_PATHS['default']).replace(/currentColor/g, color);
+    // viewBox stays 0 0 24 24 (path coordinates unchanged) - width/height is bumped to 64 so
+    // the browser rasterizes at higher pixel density. This only affects the one-time texture
+    // generation per unique icon (cached forever after via ensureStatIconTexture), so it's a
+    // free quality win: crisper edges when Phaser downscales it to the ~14-22px display size
+    // these actually render at, with zero ongoing performance cost.
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+}
+
+// Lazily registers (and caches) a Phaser texture for a stat icon, keyed by icon name so
+// aliased stats (e.g. defensePercent -> armor) share one texture instead of duplicating it.
+function ensureStatIconTexture(scene: Phaser.Scene, key: string): string {
+    const texKey = `staticon_${getStatIconKey(key)}`;
+    if (!scene.textures.exists(texKey)) {
+        const svgStr = buildStatIconSvgString(key);
+        const b64 = btoa(unescape(encodeURIComponent(svgStr)));
+        scene.textures.addBase64(texKey, `data:image/svg+xml;base64,${b64}`);
+    }
+    return texKey;
 }
 
 // =========================================================================
@@ -69,51 +253,69 @@ export const UIHelpers = {
         return 0xffd700;
     },
 
-    getStatInfo: (key: string): { e: string, n: string } => {
-        if (!key) return { e: "❓", n: "Unknown" };
-        const map: Record<string, { e: string, n: string }> = {
-            maxHp: { e: "❤️", n: "Max HP" },
-            hpRegen: { e: "🩹", n: "HP Regen" },
-            lifeSteal: { e: "🦇", n: "Life Steal" },
-            damagePercent: { e: "⚔️", n: "Damage %" },
-            meleeDamage: { e: "🪓", n: "Melee Damage" },
-            rangedDamage: { e: "🏹", n: "Ranged Damage" },
-            magicDamage: { e: "🔮", n: "Magic Damage" },
-            movementSpeed: { e: "👟", n: "Movement Speed" },
-            range: { e: "📏", n: "Range" },
-            haste: { e: "⚡", n: "Haste" },
-            engineering: { e: "⚙️", n: "Engineering" },
-            armor: { e: "🛡️", n: "Armor" },
-            magicDefense: { e: "✨", n: "Magic Defense" },
-            defensePercent: { e: "🏰", n: "Defense %" },
-            dodge: { e: "💨", n: "Dodge Chance" },
-            luck: { e: "🍀", n: "Luck" },
-            harvesting: { e: "🌾", n: "Harvesting" },
-            attackSpeedPercent: { e: "⏱️", n: "Attack Speed %" },
-            xpGainPercent: { e: "🧠", n: "XP Gain %" },
-            projectileSpeedPercent: { e: "🚀", n: "Proj. Speed %" },
-            critChance: { e: "🎯", n: "Crit Chance" },
-            healPower: { e: "💖", n: "Heal Power" },
-            shieldPower: { e: "💠", n: "Shield Power" },
-            pickupRange: { e: "🧲", n: "Pickup Range" } // <<< ADDED HERE
+    getStatInfo: (key: string): { iconKey: string, n: string } => {
+        if (!key) return { iconKey: 'default', n: "Unknown" };
+        const map: Record<string, string> = {
+            maxHp: "Max HP",
+            hpRegen: "HP Regen",
+            lifeStealPercent: "Life Steal",
+            damagePercent: "Damage %",
+            meleeDamage: "Melee Damage",
+            rangedDamage: "Ranged Damage",
+            magicDamage: "Magic Damage",
+            movementSpeed: "Movement Speed",
+            range: "Range",
+            haste: "Haste",
+            engineering: "Engineering",
+            armor: "Armor",
+            magicDefense: "Magic Defense",
+            defensePercent: "Defense %",
+            dodge: "Dodge Chance",
+            luck: "Luck",
+            harvesting: "Harvesting",
+            attackSpeedPercent: "Attack Speed %",
+            xpGainPercent: "XP Gain %",
+            projectileSpeedPercent: "Proj. Speed %",
+            critChance: "Crit Chance",
+            healPower: "Heal Power",
+            shieldPower: "Shield Power",
+            pickupRange: "Pickup Range"
         };
-        return map[key] || { e: "❓", n: key };
+        return { iconKey: getStatIconKey(key), n: map[key] || key };
+    },
+
+    // A stat shows with a "%" only if it's one of the handful of genuinely percent/chance-based
+    // stats (dodge, critChance, projectileBlockChance, or anything with "percent" in the name,
+    // e.g. lifeStealPercent). healPower/shieldPower are NOT percent-displayed here - they're
+    // plain flat numbers, same rule the lobby character card already uses.
+    isPercentStat: (key: string): boolean => {
+        if (!key) return false;
+        const lower = key.toLowerCase();
+        return lower.includes('percent') || key === 'dodge' || key === 'critChance' || key === 'projectileBlockChance';
     },
 
     formatVal: (key: string, val: number): string => {
         if (!key) return `${Math.round(val)}`;
-        const isPct = key.toLowerCase().includes('percent') || key === 'lifeSteal' || key === 'dodge' || key === 'critChance' || key === 'projectileBlockChance';
 
         if (key === 'critChance' || key === 'dodge' || key === 'projectileBlockChance') {
             val = Math.min(1.0, val);
         }
 
-        return isPct ? `${Math.round(val * 100)}%` : `${Math.round(val)}`;
+        if (UIHelpers.isPercentStat(key)) return `${Math.round(val * 100)}%`;
+        return `${Math.round(val)}`;
     },
 
     formatEffectName: (str: string): string => {
         if (!str) return "";
         return str.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    },
+
+    // A skill config is "Immune" if it's meant to ignore the caster's outside power-scaling
+    // stats entirely - haste (cooldown/cast time) and magicDamage/damagePercent (damage).
+    // Single source of truth for the casing-insensitive read, used anywhere the client needs
+    // to know this (tooltip preview, action-bar cooldown bar, etc).
+    isImmune: (config: any): boolean => {
+        return !!(config?.immune ?? config?.Immune);
     },
 
     resolveSynergies: (rawIds: string[], dict: any, isSkillMap: boolean = false): string[] => {
@@ -236,29 +438,37 @@ export const UIHelpers = {
     buildStatBlocks: (
         config: any,
         totalBaseStats: any = null,
-        _rolledStats: any = null,
+        rolledStats: any = null,
         rolledSkills: any = null,
         atlasConfigs: any = null,
         stackCount: number = 1
     ): TextBlock[] => {
         const blocks: TextBlock[] = [];
-        let posLines: string[] = [];
-        let negLines: string[] = [];
-        let randomLines: string[] = [];
+        let weaponInfoLines: TextBlock[] = [];
+        let posLines: TextBlock[] = [];
+        let negLines: TextBlock[] = [];
+        let randomLines: TextBlock[] = [];
+        let negRandomLines: TextBlock[] = [];
         let skillsLines: string[] = [];
         let traitBlocks: TextBlock[] = [];
 
         if (!config) return blocks;
 
         try {
+            // Items always declare itemFamily; weapons never do (they use weaponFamily
+            // inconsistently, when at all) - this is what tells apart "meleeDamage is this
+            // weapon's own primary combat stat" from "meleeDamage is just one of this item's
+            // granted stat bonuses, no different from maxHp or armor".
+            const isWeapon = !(config.itemFamily ?? config.ItemFamily);
+
             const cfgMelee = config.meleeDamage ?? config.MeleeDamage;
-            const meleeDmg = totalBaseStats?.meleeDamage ?? totalBaseStats?.MeleeDamage ?? (cfgMelee ? cfgMelee * stackCount : undefined);
+            const meleeDmg = isWeapon ? (totalBaseStats?.meleeDamage ?? totalBaseStats?.MeleeDamage ?? (cfgMelee ? cfgMelee * stackCount : undefined)) : undefined;
 
             const cfgRanged = config.rangedDamage ?? config.RangedDamage;
-            const rangedDmg = totalBaseStats?.rangedDamage ?? totalBaseStats?.RangedDamage ?? (cfgRanged ? cfgRanged * stackCount : undefined);
+            const rangedDmg = isWeapon ? (totalBaseStats?.rangedDamage ?? totalBaseStats?.RangedDamage ?? (cfgRanged ? cfgRanged * stackCount : undefined)) : undefined;
 
             const cfgMagic = config.magicDamage ?? config.MagicDamage ?? config.elementalDamage ?? config.ElementalDamage;
-            const magicDmg = totalBaseStats?.magicDamage ?? totalBaseStats?.MagicDamage ?? (cfgMagic ? cfgMagic * stackCount : undefined);
+            const magicDmg = isWeapon ? (totalBaseStats?.magicDamage ?? totalBaseStats?.MagicDamage ?? (cfgMagic ? cfgMagic * stackCount : undefined)) : undefined;
             const cooldown = config.cooldownSeconds ?? config.CooldownSeconds;
             const range = config.range ?? config.Range;
             const scaling = config.damageScaling ?? config.DamageScaling;
@@ -267,24 +477,36 @@ export const UIHelpers = {
             const waveEndEffects = config.effectsAtWaveEnd ?? config.EffectsAtWaveEnd;
             const onPurchase = config.effectsOnPurchase ?? config.EffectsOnPurchase;
             const mechanics = config.mechanics ?? config.Mechanics;
+            const effectsMap = atlasConfigs?.effects ?? atlasConfigs?.Effects;
 
-            if (meleeDmg) posLines.push(`🗡️ Melee Dmg: ${Math.round(meleeDmg)}`);
-            if (rangedDmg) posLines.push(`🏹 Ranged Dmg: ${Math.round(rangedDmg)}`);
-            if (magicDmg) posLines.push(`🔥 Magic Dmg: ${Math.round(magicDmg)}`);
-            if (cooldown) posLines.push(`⏱️ Cooldown: ${cooldown}s`);
-            if (range) posLines.push(`📏 Range: ${Math.round(range)}`);
+            // "Weapon info" - damage, cooldown, range, scaling, on-hit effects. Rendered first,
+            // with no header of its own; the "Base Stats" section (and its divider) comes
+            // right after this.
+            if (meleeDmg) weaponInfoLines.push({ text: `Melee Dmg: ${Math.round(meleeDmg)}`, color: "#ffffff", iconKey: "meleeDamage" });
+            if (rangedDmg) weaponInfoLines.push({ text: `Ranged Dmg: ${Math.round(rangedDmg)}`, color: "#ffffff", iconKey: "rangedDamage" });
+            if (magicDmg) weaponInfoLines.push({ text: `Magic Dmg: ${Math.round(magicDmg)}`, color: "#ffffff", iconKey: "magicDamage" });
+            if (cooldown) weaponInfoLines.push({ text: `Cooldown: ${cooldown}s`, color: "#ffffff", iconKey: "cooldown" });
+            if (range) weaponInfoLines.push({ text: `Range: ${Math.round(range)}`, color: "#ffffff", iconKey: "range" });
 
             if (scaling) {
                 const parts = Object.entries(scaling).map(([k, v]) => `${Math.round((v as number) * 100)}% ${UIHelpers.getStatInfo(k).n}`);
-                if (parts.length) posLines.push(`📈 Scales: ${parts.join(', ')}`);
+                if (parts.length) weaponInfoLines.push({ text: `Scales: ${parts.join(', ')}`, color: "#ffffff", iconKey: "scaling" });
             }
 
-            if (onHitEffects?.length) onHitEffects.forEach((e: string) => posLines.push(`🧪 On Hit: ${UIHelpers.formatEffectName(e)}`));
+            if (onHitEffects?.length) {
+                onHitEffects.forEach((e: string) => {
+                    // Look up the effect's actual configured name (same pattern as traits/skills
+                    // below) instead of just title-casing the raw config id.
+                    const effectCfg = findConfigCaseInsensitive(effectsMap, e);
+                    const name = effectCfg ? (effectCfg.name ?? effectCfg.Name ?? UIHelpers.formatEffectName(e)) : UIHelpers.formatEffectName(e);
+                    weaponInfoLines.push({ text: `On Hit: ${name}`, color: "#ffffff", iconKey: "onhit" });
+                });
+            }
 
             if (mechanics) {
                 Object.entries(mechanics).forEach(([k, v]) => {
                     const info = UIHelpers.getStatInfo(k);
-                    posLines.push(`${info.e} ${info.n}: ${UIHelpers.formatVal(k, (v as number) * stackCount)}`);
+                    posLines.push({ text: `${info.n}: ${UIHelpers.formatVal(k, (v as number) * stackCount)}`, color: "#ffffff", iconKey: info.iconKey });
                 });
             }
 
@@ -301,17 +523,17 @@ export const UIHelpers = {
 
             if (statSource) {
                 Object.entries(statSource).forEach(([k, v]) => {
-                    // Only skip damage keys when the source is totalBaseStats (already shown
-                    // above via meleeDmg/rangedDmg/magicDmg). When falling back to
-                    // config.statBonuses, a rangedDamage/meleeDamage/magicDamage entry there is
-                    // a genuinely separate bonus - distinct from the weapon's own damage number
-                    // - so it must still be shown, not filtered out.
-                    if (totalBaseStatsHasBonuses && damageStatKeys.includes(k)) return;
+                    // Only skip damage keys when the source is totalBaseStats AND this is a
+                    // weapon (already shown above via meleeDmg/rangedDmg/magicDmg). Items never
+                    // pull these out to the top - see isWeapon above - so an item's
+                    // meleeDamage/rangedDamage/magicDamage bonus must still show here, same as
+                    // any other stat bonus like maxHp or armor.
+                    if (isWeapon && totalBaseStatsHasBonuses && damageStatKeys.includes(k)) return;
                     const num = totalBaseStatsHasBonuses ? (v as number) : (v as number) * stackCount;
                     const info = UIHelpers.getStatInfo(k);
 
-                    if (num > 0) posLines.push(`${info.e} ${info.n}: +${UIHelpers.formatVal(k, num)}`);
-                    else if (num < 0) negLines.push(`${info.e} ${info.n}: ${UIHelpers.formatVal(k, num)}`);
+                    if (num > 0) posLines.push({ text: `${info.n}: +${UIHelpers.formatVal(k, num)}`, color: "#ffffff", iconKey: info.iconKey });
+                    else if (num < 0) negLines.push({ text: `${info.n}: ${UIHelpers.formatVal(k, num)}`, color: "#ef5350", iconKey: info.iconKey });
                 });
             }
 
@@ -321,7 +543,7 @@ export const UIHelpers = {
                     const amt = (m.amount ?? m.Amount) * stackCount;
                     const thresh = m.conditionThreshold ?? m.ConditionThreshold;
                     const info = UIHelpers.getStatInfo(stat);
-                    posLines.push(`⚡ ${info.n}: ${amt > 0 ? '+' : ''}${UIHelpers.formatVal(stat, amt)} per ${Math.round(thresh * 100)}% missing HP`);
+                    posLines.push({ text: `${info.n}: ${amt > 0 ? '+' : ''}${UIHelpers.formatVal(stat, amt)} per ${Math.round(thresh * 100)}% missing HP`, color: "#ffffff", iconKey: info.iconKey });
                 });
             }
 
@@ -330,12 +552,12 @@ export const UIHelpers = {
                     const stat = e.statName ?? e.StatName ?? "";
                     const amt = (e.amount ?? e.Amount) * stackCount;
                     const info = UIHelpers.getStatInfo(stat);
-                    const line = `🌊 Wave End: ${info.n} ${amt > 0 ? '+' : ''}${UIHelpers.formatVal(stat, amt)}`;
-                    if (amt < 0) negLines.push(line); else posLines.push(line);
+                    const block: TextBlock = { text: `Wave End: ${info.n} ${amt > 0 ? '+' : ''}${UIHelpers.formatVal(stat, amt)}`, color: amt < 0 ? "#ef5350" : "#ffffff", iconKey: info.iconKey };
+                    if (amt < 0) negLines.push(block); else posLines.push(block);
                 });
             }
 
-            if (onPurchase?.length) onPurchase.forEach((e: string) => posLines.push(`🔹 Grants: ${UIHelpers.formatEffectName(e)}`));
+            if (onPurchase?.length) onPurchase.forEach((e: string) => posLines.push({ text: `Grants: ${UIHelpers.formatEffectName(e)}`, color: "#ffffff", iconKey: "onhit" }));
 
             const traitMap = atlasConfigs?.traits ?? atlasConfigs?.Traits;
             const traits = config.traits ?? config.Traits ?? [];
@@ -423,16 +645,30 @@ export const UIHelpers = {
                 });
             }
 
+            if (rolledStats) {
+                Object.entries(rolledStats).forEach(([k, v]) => {
+                    const num = v as number;
+                    if (!num) return;
+                    const info = UIHelpers.getStatInfo(k);
+                    if (num > 0) randomLines.push({ text: `${info.n}: +${UIHelpers.formatVal(k, num)}`, color: "#ffffff", iconKey: info.iconKey });
+                    else negRandomLines.push({ text: `${info.n}: ${UIHelpers.formatVal(k, num)}`, color: "#ef5350", iconKey: info.iconKey });
+                });
+            }
+
+            if (weaponInfoLines.length > 0) {
+                blocks.push(...weaponInfoLines);
+            }
             if (posLines.length > 0) {
-                blocks.push({ text: "[ Base Stats ]", color: "#4fc3f7", isHeader: true });
-                blocks.push({ text: posLines.join('\n'), color: "#ffffff" });
+                blocks.push({ text: "[ Base Stats ]", color: "#4fc3f7", isHeader: true, dividerBefore: true });
+                blocks.push(...posLines);
             }
             if (negLines.length > 0) {
-                blocks.push({ text: negLines.join('\n'), color: "#ef5350" });
+                blocks.push(...negLines);
             }
-            if (randomLines.length > 0) {
-                blocks.push({ text: "[ Random Rolls ]", color: "#ffd54f", isHeader: true });
-                blocks.push({ text: randomLines.join('\n'), color: "#ffffff" });
+            if (randomLines.length > 0 || negRandomLines.length > 0) {
+                blocks.push({ text: "[ Random Rolls ]", color: "#ffd54f", isHeader: true, dividerBefore: true });
+                blocks.push(...randomLines);
+                blocks.push(...negRandomLines);
             }
             if (skillsLines.length > 0) {
                 blocks.push({ text: "[ Skills ]", color: "#ba68c8", isHeader: true });
@@ -457,6 +693,8 @@ export class Tooltip extends Phaser.GameObjects.Container {
     private bg: Phaser.GameObjects.Graphics;
     private titleText: Phaser.GameObjects.Text;
     private dynamicTexts: Phaser.GameObjects.Text[] = [];
+    private dynamicIcons: Phaser.GameObjects.Image[] = [];
+    private dynamicDividers: Phaser.GameObjects.Rectangle[] = [];
     private currentHeight: number = 80;
     private hideTimer?: Phaser.Time.TimerEvent;
 
@@ -475,6 +713,14 @@ export class Tooltip extends Phaser.GameObjects.Container {
         scene.add.existing(this);
     }
 
+    // Creates a divider rectangle at the given y (same style everywhere it's used), adds it
+    // to the container, and tracks it in dynamicDividers for cleanup on the next show/showSkill.
+    private addDivider(y: number) {
+        const d = this.scene.add.rectangle(12, y, 240, 2, 0x3a4454).setOrigin(0, 0.5);
+        this.add(d);
+        this.dynamicDividers.push(d);
+    }
+
     public show(
         config: any, x: number, y: number, incomingLevel: number, atlasConfigs: any,
         totalBaseStats?: any, rolledStats?: any, rolledSkills?: any
@@ -488,7 +734,11 @@ export class Tooltip extends Phaser.GameObjects.Container {
 
         try {
             this.dynamicTexts.forEach(t => t.destroy());
+            this.dynamicIcons.forEach(i => i.destroy());
+            this.dynamicDividers.forEach(d => d.destroy());
             this.dynamicTexts = [];
+            this.dynamicIcons = [];
+            this.dynamicDividers = [];
 
             const tier = config.tier ?? config.Tier ?? 1;
             const maxLevel = config.maxLevel ?? config.MaxLevel ?? 5;
@@ -497,23 +747,18 @@ export class Tooltip extends Phaser.GameObjects.Container {
 
             const blocks = UIHelpers.buildStatBlocks(config, totalBaseStats, rolledStats, rolledSkills, atlasConfigs, incomingLevel);
 
-            let currentY = 38;
-            blocks.forEach(b => {
-                const t = this.scene.add.text(12, currentY, b.text, {
-                    fontFamily: UIHelpers.FONT,
-                    fontSize: b.isHeader ? '14px' : '13px',
-                    fontStyle: b.isHeader ? 'bold' : 'normal',
-                    color: b.color,
-                    wordWrap: { width: 240 },
-                    lineSpacing: 3,
-                    resolution: 3
-                });
-                this.add(t);
-                this.dynamicTexts.push(t);
-                currentY += t.displayHeight + (b.isHeader ? 2 : 6);
+            const { texts, icons, endY, dividerYs } = layoutStatBlocks(this.scene, blocks, {
+                x: 12, startY: 38,
+                headerFontSize: '14px', normalFontSize: '13px',
+                wordWrapWidth: 240, lineSpacing: 3,
+                headerGap: 2, normalGap: 6,
+                dividerGapAbove: 4, dividerGapBelow: 10,
             });
+            texts.forEach(t => { this.add(t); this.dynamicTexts.push(t); });
+            icons.forEach(i => { this.add(i); this.dynamicIcons.push(i); });
+            dividerYs.forEach(y => this.addDivider(y));
 
-            this.currentHeight = Math.max(80, currentY + 10);
+            this.currentHeight = Math.max(80, endY + 10);
 
             this.bg.clear();
             this.bg.fillStyle(0x111317, 0.95);
@@ -557,12 +802,21 @@ export class Tooltip extends Phaser.GameObjects.Container {
 
         try {
             this.dynamicTexts.forEach(t => t.destroy());
+            this.dynamicIcons.forEach(i => i.destroy());
+            this.dynamicDividers.forEach(d => d.destroy());
             this.dynamicTexts = [];
+            this.dynamicIcons = [];
+            this.dynamicDividers = [];
 
             const colorStr = UIHelpers.getSkillColorStr(level);
             this.titleText.setText(config.name ?? config.Name ?? "Unknown Skill").setColor(colorStr);
 
-            let currentY = 38;
+            // Skill tooltips don't have a "Base Stats"/"Random Rolls" section to position a
+            // divider against (see show() for that logic) - always just one, at its default
+            // spot right under the title.
+            this.addDivider(34);
+
+            let currentY = 44;
             const addLine = (text: string, color: string = '#ffffff') => {
                 const t = this.scene.add.text(12, currentY, text, { fontFamily: UIHelpers.FONT, fontSize: '13px', color: color, wordWrap: { width: 240 }, resolution: 3 });
                 this.add(t);
@@ -571,7 +825,8 @@ export class Tooltip extends Phaser.GameObjects.Container {
             };
 
             const hasteVal = Math.max(0, playerStats?.haste || 0);
-            const hasteMult = (100 + hasteVal) / 100;
+            const isImmune = UIHelpers.isImmune(config);
+            const hasteMult = isImmune ? 1 : (100 + hasteVal) / 100;
 
 
             const rawCd = config.cooldownSeconds ?? config.CooldownSeconds;
@@ -591,6 +846,7 @@ export class Tooltip extends Phaser.GameObjects.Container {
                 const castStr = hasteMult > 1 ? `⏳ Cast Time: ${actualCast}s (${rawCast}s base)` : `⏳ Cast Time: ${rawCast}s`;
                 addLine(castStr, '#4fc3f7');
             }
+            if (isImmune) addLine(`🛡️ Immune to Haste & Damage Scaling`, '#b0bec5');
 
             if (dmg) addLine(`💥 Base Damage: ${Math.round(dmg)}`, '#ff8a65');
             if (rad) addLine(`📏 Radius/Range: ${Math.round(rad)}`, '#aed581');
@@ -657,13 +913,19 @@ export class StatDisplay extends Phaser.GameObjects.Container {
             let index = 0;
             Object.keys(statsPayload).forEach(key => {
                 const info = UIHelpers.getStatInfo(key);
-                const labelText = this.scene.add.text(15, 80 + (index * 21), `${info.e} ${info.n}`, {
+                const rowY = 80 + (index * 21);
+
+                const iconTexKey = ensureStatIconTexture(this.scene, info.iconKey);
+                const icon = this.scene.add.image(15 + 7, rowY + 7, iconTexKey);
+                icon.setDisplaySize(14, 14);
+
+                const labelText = this.scene.add.text(15 + 18, rowY, info.n, {
                     fontFamily: UIHelpers.FONT, fontSize: '12px', color: '#aaaaaa', resolution: 3
                 });
-                const valueText = this.scene.add.text(220, 80 + (index * 21), '0', {
+                const valueText = this.scene.add.text(220, rowY, '0', {
                     fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#ffffff', fontStyle: 'bold', resolution: 3
                 }).setOrigin(1, 0);
-                this.add([labelText, valueText]);
+                this.add([icon, labelText, valueText]);
                 this.statTexts.set(key, valueText);
                 index++;
             });
@@ -685,6 +947,17 @@ export class StatDisplay extends Phaser.GameObjects.Container {
 // =========================================================================
 // INVENTORY DISPLAY
 // =========================================================================
+// Item-slot grid sizing. Shrunk from the original 65/75 so 3 rows fit in the viewport
+// before scrolling kicks in (was ~1 row). Shared between the constructor (viewport mask)
+// and updateInventory (slot layout, scrollbar, scroll-into-view math) so they can't drift
+// out of sync with each other.
+const ITEM_SLOT_SIZE = 45;
+const ITEM_SLOT_HALF = ITEM_SLOT_SIZE / 2;
+const ITEM_CELL_SIZE = 52;
+const ITEM_VIEWPORT_W = 395;
+const ITEM_VISIBLE_ROWS = 3;
+const ITEM_VIEWPORT_H = ITEM_CELL_SIZE * ITEM_VISIBLE_ROWS;
+
 export class InventoryDisplay extends Phaser.GameObjects.Container {
     private itemGrid: Phaser.GameObjects.Container;
     private itemScrollable: Phaser.GameObjects.Container;
@@ -717,7 +990,7 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
         this.itemMaskGraphics.setVisible(false);
 
         this.itemMaskGraphics.fillStyle(0xffffff);
-        this.itemMaskGraphics.fillRect(0, 0, 395, 85);
+        this.itemMaskGraphics.fillRect(0, 0, ITEM_VIEWPORT_W, ITEM_VIEWPORT_H);
 
         this.itemScrollable.setMask(this.itemMaskGraphics.createGeometryMask());
 
@@ -755,7 +1028,7 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
 
         const totalItemSlots = Math.max(5, maxItemSlots, items?.length || 0);
         const rows = Math.ceil(totalItemSlots / 5);
-        this.maxItemScroll = Math.max(0, (rows - 1) * 75);
+        this.maxItemScroll = Math.max(0, (rows - ITEM_VISIBLE_ROWS) * ITEM_CELL_SIZE);
 
         if (this.itemScrollable.y < -this.maxItemScroll) this.itemScrollable.y = -this.maxItemScroll;
         if (this.itemScrollable.y > 0) this.itemScrollable.y = 0;
@@ -766,22 +1039,22 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
         for (let i = 0; i < totalItemSlots; i++) {
             const col = i % 5;
             const row = Math.floor(i / 5);
-            const slotX = col * 75;
-            const slotY = row * 75;
+            const slotX = col * ITEM_CELL_SIZE;
+            const slotY = row * ITEM_CELL_SIZE;
 
             // CENTERED SLOT CONTAINER (Scales smoothly from its center)
-            const slotContainer = this.scene.add.container(slotX + 32.5, slotY + 32.5);
+            const slotContainer = this.scene.add.container(slotX + ITEM_SLOT_HALF, slotY + ITEM_SLOT_HALF);
             this.itemScrollable.add(slotContainer);
 
             const slotBg = this.scene.add.graphics();
             slotBg.fillStyle(0x161920, 1);
-            slotBg.fillRoundedRect(-32.5, -32.5, 65, 65, 8);
+            slotBg.fillRoundedRect(-ITEM_SLOT_HALF, -ITEM_SLOT_HALF, ITEM_SLOT_SIZE, ITEM_SLOT_SIZE, 8);
             slotBg.lineStyle(2, 0x3a4454, 1);
-            slotBg.strokeRoundedRect(-32.5, -32.5, 65, 65, 8);
+            slotBg.strokeRoundedRect(-ITEM_SLOT_HALF, -ITEM_SLOT_HALF, ITEM_SLOT_SIZE, ITEM_SLOT_SIZE, 8);
             slotContainer.add(slotBg);
 
             const itemData = items?.find((x: any) => (x.slotIndex ?? x.SlotIndex) === i);
-            const hitbox = this.scene.add.rectangle(0, 0, 65, 65, 0x000000, 0)
+            const hitbox = this.scene.add.rectangle(0, 0, ITEM_SLOT_SIZE, ITEM_SLOT_SIZE, 0x000000, 0)
                 .setInteractive({ useHandCursor: true }).setScrollFactor(0);
 
             if (itemData) {
@@ -791,7 +1064,7 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
 
                 if (config) {
                     slotBg.lineStyle(2, UIHelpers.getTierColorHex(iTier), 1);
-                    slotBg.strokeRoundedRect(-32.5, -32.5, 65, 65, 8);
+                    slotBg.strokeRoundedRect(-ITEM_SLOT_HALF, -ITEM_SLOT_HALF, ITEM_SLOT_SIZE, ITEM_SLOT_SIZE, 8);
                 }
 
                 let icon: any;
@@ -800,16 +1073,16 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                     icon = this.scene.add.sprite(0, 0, tex);
                     const frame = config.iconFrame ?? config.IconFrame;
                     if (frame !== undefined) icon.setFrame(frame);
-                    icon.setScale(Math.min(50 / icon.width, 50 / icon.height));
+                    icon.setScale(Math.min(35 / icon.width, 35 / icon.height));
                 } else {
-                    icon = this.scene.add.rectangle(0, 0, 40, 40, 0x000000).setStrokeStyle(2, 0x00ff00);
+                    icon = this.scene.add.rectangle(0, 0, 28, 28, 0x000000).setStrokeStyle(2, 0x00ff00);
                 }
                 slotContainer.add(icon);
                 slotContainer.add(hitbox);
 
                 const iMax = config?.maxLevel ?? config?.MaxLevel ?? 5;
-                const lvlTxt = this.scene.add.text(27.5, 27.5, `Lv.${iLevel}/${iMax}`, {
-                    fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#ffffff', stroke: '#000', strokeThickness: 3, resolution: 3
+                const lvlTxt = this.scene.add.text(19, 19, `Lv.${iLevel}/${iMax}`, {
+                    fontFamily: UIHelpers.FONT, fontSize: '10px', color: '#ffffff', stroke: '#000', strokeThickness: 2, resolution: 3
                 }).setOrigin(1, 1);
                 slotContainer.add(lvlTxt);
 
@@ -820,7 +1093,7 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                             slotBg.clear();
                             slotBg.fillStyle(0x2a303a, 1);
                             slotBg.lineStyle(4, 0xffffff, 1);
-                            slotBg.strokeRoundedRect(-32.5, -32.5, 65, 65, 8);
+                            slotBg.strokeRoundedRect(-ITEM_SLOT_HALF, -ITEM_SLOT_HALF, ITEM_SLOT_SIZE, ITEM_SLOT_SIZE, 8);
 
                             // POP THE WHOLE SLOT CONTAINER!
                             this.scene.tweens.add({ targets: slotContainer, scale: 1.15, duration: 100 });
@@ -831,11 +1104,11 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                             this.tooltip.show(config, bx, by, iLevel, this.atlasConfigs, itemData.totalBaseStats ?? itemData.TotalBaseStats, itemData.rolledStats ?? itemData.RolledStats, itemData.itemSkills ?? itemData.ItemSkills);
 
                             if (!p && this.maxItemScroll > 0) {
-                                const targetY = slotContainer.y - 32.5; // True top of slot
+                                const targetY = slotContainer.y - ITEM_SLOT_HALF; // True top of slot
                                 const visibleTop = Math.abs(this.itemScrollable.y);
-                                const visibleBottom = visibleTop + 85;
+                                const visibleBottom = visibleTop + ITEM_VIEWPORT_H;
                                 if (targetY < visibleTop) this.itemScrollable.y = -targetY;
-                                else if (targetY + 65 > visibleBottom) this.itemScrollable.y = -(targetY + 65 - 85);
+                                else if (targetY + ITEM_SLOT_SIZE > visibleBottom) this.itemScrollable.y = -(targetY + ITEM_SLOT_SIZE - ITEM_VIEWPORT_H);
                                 if (this.itemScrollable.y < -this.maxItemScroll) this.itemScrollable.y = -this.maxItemScroll;
                                 if (this.itemScrollable.y > 0) this.itemScrollable.y = 0;
                                 updateThumb();
@@ -845,7 +1118,7 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                             slotBg.clear();
                             slotBg.fillStyle(0x161920, 1);
                             slotBg.lineStyle(2, UIHelpers.getTierColorHex(iTier), 1);
-                            slotBg.strokeRoundedRect(-32.5, -32.5, 65, 65, 8);
+                            slotBg.strokeRoundedRect(-ITEM_SLOT_HALF, -ITEM_SLOT_HALF, ITEM_SLOT_SIZE, ITEM_SLOT_SIZE, 8);
 
                             this.scene.tweens.add({ targets: slotContainer, scale: 1.0, duration: 100 });
                             slotContainer.setDepth(0);
@@ -865,21 +1138,21 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                     hitbox.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip.updatePosition(p.x, p.y));
                 }
 
-                const delBg = this.scene.add.circle(22.5, -22.5, 10, 0xd32f2f).setStrokeStyle(1, 0xffffff);
-                const delTxt = this.scene.add.text(22.5, -22.5, '🗑️', { fontSize: '10px' }).setOrigin(0.5);
+                const delBg = this.scene.add.circle(15.5, -15.5, 7, 0xd32f2f).setStrokeStyle(1, 0xffffff);
+                const delTxt = this.scene.add.text(15.5, -15.5, '🗑️', { fontSize: '8px' }).setOrigin(0.5);
                 slotContainer.add([delBg, delTxt]);
             } else {
                 slotContainer.add(hitbox);
                 const focusItemEmpty: FocusItem = {
                     onFocus: (p?: Phaser.Input.Pointer) => {
                         slotBg.lineStyle(2, 0xffffff, 1);
-                        slotBg.strokeRoundedRect(-32.5, -32.5, 65, 65, 8);
+                        slotBg.strokeRoundedRect(-ITEM_SLOT_HALF, -ITEM_SLOT_HALF, ITEM_SLOT_SIZE, ITEM_SLOT_SIZE, 8);
                         if (!p && this.maxItemScroll > 0) {
-                            const targetY = slotContainer.y - 32.5;
+                            const targetY = slotContainer.y - ITEM_SLOT_HALF;
                             const visibleTop = Math.abs(this.itemScrollable.y);
-                            const visibleBottom = visibleTop + 85;
+                            const visibleBottom = visibleTop + ITEM_VIEWPORT_H;
                             if (targetY < visibleTop) this.itemScrollable.y = -targetY;
-                            else if (targetY + 65 > visibleBottom) this.itemScrollable.y = -(targetY + 65 - 85);
+                            else if (targetY + ITEM_SLOT_SIZE > visibleBottom) this.itemScrollable.y = -(targetY + ITEM_SLOT_SIZE - ITEM_VIEWPORT_H);
                             if (this.itemScrollable.y < -this.maxItemScroll) this.itemScrollable.y = -this.maxItemScroll;
                             if (this.itemScrollable.y > 0) this.itemScrollable.y = 0;
                             updateThumb();
@@ -887,7 +1160,7 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                     },
                     onBlur: () => {
                         slotBg.lineStyle(2, 0x3a4454, 1);
-                        slotBg.strokeRoundedRect(-32.5, -32.5, 65, 65, 8);
+                        slotBg.strokeRoundedRect(-ITEM_SLOT_HALF, -ITEM_SLOT_HALF, ITEM_SLOT_SIZE, ITEM_SLOT_SIZE, 8);
                     },
                     onSelect: () => { }
                 };
@@ -910,18 +1183,18 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
         if (this.maxItemScroll > 0) {
             const scrollBg = this.scene.add.graphics();
             scrollBg.fillStyle(0x000000, 0.5);
-            scrollBg.fillRoundedRect(375, 0, 4, 65, 2);
+            scrollBg.fillRoundedRect(375, 0, 4, ITEM_VIEWPORT_H, 2);
             this.itemGrid.add(scrollBg);
 
             const scrollThumb = this.scene.add.graphics();
             this.itemGrid.add(scrollThumb);
 
-            const thumbHeight = Math.max(15, 65 * (65 / (rows * 75)));
+            const thumbHeight = Math.max(15, ITEM_VIEWPORT_H * (ITEM_VIEWPORT_H / (rows * ITEM_CELL_SIZE)));
             updateThumb = () => {
                 scrollThumb.clear();
                 scrollThumb.fillStyle(0x8892a0, 1);
                 const progress = Math.abs(this.itemScrollable.y) / this.maxItemScroll;
-                const thumbY = progress * (65 - thumbHeight);
+                const thumbY = progress * (ITEM_VIEWPORT_H - thumbHeight);
                 scrollThumb.fillRoundedRect(375, thumbY, 4, thumbHeight, 2);
             };
             updateThumb();
@@ -1394,13 +1667,17 @@ export class ShopUI {
                     const statName = card.statName || card.StatName || "";
                     const amount = card.amount ?? card.Amount;
                     const info = UIHelpers.getStatInfo(statName);
-                    const isPct = statName.toLowerCase().includes('percent') || statName === 'lifeSteal' || statName === 'dodge';
-                    const valStr = isPct ? `+${Math.round(amount * 100)}%` : `+${amount}`;
-                    const statText = this.scene.add.text(0, 0, `${info.e} ${info.n}:\n${valStr}`, {
+                    const isPct = UIHelpers.isPercentStat(statName);
+                    const valStr = isPct ? `+${UIHelpers.formatVal(statName, amount)}` : `+${amount}`;
+
+                    const statIcon = this.scene.add.image(0, -34, ensureStatIconTexture(this.scene, info.iconKey));
+                    statIcon.setDisplaySize(22, 22);
+
+                    const statText = this.scene.add.text(0, 0, `${info.n}:\n${valStr}`, {
                         fontFamily: UIHelpers.FONT, fontSize: '20px', color: '#00ff00', fontStyle: 'bold', align: 'center', resolution: 3
                     }).setOrigin(0.5);
 
-                    singleCardContainer.add([bgGraphics, nameText, tierText, statText, hitbox]);
+                    singleCardContainer.add([bgGraphics, nameText, tierText, statIcon, statText, hitbox]);
                 });
 
                 this.safelyReapplyKeyboardFocus();
@@ -1482,16 +1759,24 @@ export class ShopUI {
 
                 const blocks = UIHelpers.buildStatBlocks(config, totalBaseStats, rolledStats, rolledSkills, atlasConfigs, 1);
 
-                let currentY = -108; // -240 + 132
-                blocks.forEach(b => {
-                    const t = this.scene.add.text(-105, currentY, b.text, {
-                        fontFamily: UIHelpers.FONT, fontSize: b.isHeader ? '13px' : '12px',
-                        fontStyle: b.isHeader ? 'bold' : 'normal', color: b.color,
-                        lineSpacing: 1, wordWrap: { width: 200 }, resolution: 3
-                    }).setOrigin(0, 0);
-                    statsContainer.add(t);
-                    currentY += t.displayHeight + (b.isHeader ? 2 : 4);
+                const { texts, icons, endY, dividerYs } = layoutStatBlocks(this.scene, blocks, {
+                    x: -105, startY: -108,
+                    headerFontSize: '13px', normalFontSize: '12px',
+                    wordWrapWidth: 200, lineSpacing: 1,
+                    headerGap: 2, normalGap: 4,
+                    dividerGapAbove: 2, dividerGapBelow: 6,
                 });
+                texts.forEach(t => statsContainer.add(t));
+                icons.forEach(i => statsContainer.add(i));
+                // Lives inside statsContainer (not singleCardContainer) so it scrolls together
+                // with the text it's marking the boundary of - a divider that stayed at a fixed
+                // screen position while the content scrolled past it would drift out of
+                // alignment with the section it's marking the moment the user scrolled at all.
+                dividerYs.forEach(y => {
+                    const sectionDivider = this.scene.add.rectangle(0, y, 200, 2, 0x3a4454).setOrigin(0.5);
+                    statsContainer.add(sectionDivider);
+                });
+                const currentY = endY;
 
                 const viewHeight = 250;
                 const textHeight = currentY - (-108);
@@ -1552,9 +1837,10 @@ export class ShopUI {
                     icon.setScale(Math.min(80 / icon.width, 80 / icon.height));
                 }
 
-                const divider = this.scene.add.rectangle(0, -114, 200, 2, 0x3a4454).setOrigin(0.5);
+                // Original static divider, right below the icon/header - unchanged from before.
+                const topDivider = this.scene.add.rectangle(0, -114, 200, 2, 0x3a4454).setOrigin(0.5);
 
-                singleCardContainer.add([tierTextObj, nameText, divider]);
+                singleCardContainer.add([tierTextObj, nameText, topDivider]);
                 if (icon) singleCardContainer.add(icon);
 
                 // 6. FOOTER CONTENT & BUTTONS 
@@ -1714,7 +2000,17 @@ export class SkillActionBar extends Phaser.GameObjects.Container {
         const skillMap = atlasConfigs?.skills ?? atlasConfigs?.Skills;
         if (!skillMap) return;
 
-        const currentIds = new Set(skills.map(s => s.configId));
+        // A skill with showCastBar explicitly false gets no action-bar button at all - not
+        // just no world-space cast bar. Filter these out before laying out slots so the
+        // remaining buttons sit flush together instead of leaving a gap.
+        const visibleSkills = skills.filter(s => {
+            const cfg = skillMap[s.configId];
+            if (!cfg) return true; // let the per-skill `if (!config) return;` below handle it
+            const showCastBar = cfg.showCastBar ?? cfg.ShowCastBar;
+            return showCastBar !== false;
+        });
+
+        const currentIds = new Set(visibleSkills.map(s => s.configId));
         for (const [id, slot] of this.slots.entries()) {
             if (!currentIds.has(id)) {
                 slot.bg.destroy(); slot.icon.destroy(); slot.cdOverlay.destroy();
@@ -1725,10 +2021,10 @@ export class SkillActionBar extends Phaser.GameObjects.Container {
 
         const slotSize = 48;
         const spacing = 10;
-        const totalWidth = (skills.length * slotSize) + ((skills.length - 1) * spacing);
+        const totalWidth = (visibleSkills.length * slotSize) + ((visibleSkills.length - 1) * spacing);
         const startX = -totalWidth / 2;
 
-        skills.forEach((skillData, index) => {
+        visibleSkills.forEach((skillData, index) => {
             const configId = skillData.configId;
             const config = skillMap[configId];
             if (!config) return;
@@ -1810,8 +2106,9 @@ export class SkillActionBar extends Phaser.GameObjects.Container {
                 skillData.currentCooldown = Math.max(0, skillData.currentCooldown - deltaSeconds);
                 const config = skillMap[skillData.configId];
 
+                const skillHasteMult = UIHelpers.isImmune(config) ? 1 : hasteMult;
                 const rawMaxCd = config?.cooldownSeconds ?? config?.CooldownSeconds ?? 1;
-                const trueMaxCd = rawMaxCd / hasteMult;
+                const trueMaxCd = rawMaxCd / skillHasteMult;
 
                 if (skillData.currentCooldown > 0) {
                     const pct = skillData.currentCooldown / trueMaxCd;

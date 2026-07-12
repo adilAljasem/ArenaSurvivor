@@ -378,6 +378,11 @@ public class SkillConfig
     public int Tier { get; set; } = 1;
     public bool ScalesWithGearLevel { get; set; } = true;
     public bool ShowCastBar { get; set; } = true;
+    // When true, this skill is fully immune to the caster's outside power-scaling stats:
+    // haste (cooldown/cast time always run at their full configured duration), and
+    // magicDamage/damagePercent (damage stays exactly BaseDamage, unscaled). Nothing else
+    // about the skill (targeting, effects, healPower on heals, etc.) is affected.
+    public bool Immune { get; set; } = false;
 
     // --- Visuals ---
     public string TextureKey { get; set; } = string.Empty;

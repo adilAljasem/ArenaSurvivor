@@ -109,8 +109,8 @@ public class CombatSystem : IGameSystem
                         player.FiredWeaponsThisTick.Add(weapon.SlotIndex);
 
                         var (physDmg, magicDmg, isCrit) = CalculateWeaponDamageSplit(player, config, weapon, _configs);
-                        float localLifeSteal = config.Mechanics != null && config.Mechanics.ContainsKey("lifeSteal") ? config.Mechanics["lifeSteal"] : 0f;
-                        float totalLifeSteal = localLifeSteal + player.GetTotalStat("lifeSteal", _configs);
+                        float localLifeStealPercent = config.Mechanics != null && config.Mechanics.ContainsKey("lifeStealPercent") ? config.Mechanics["lifeStealPercent"] : 0f;
+                        float totalLifeStealPercent = localLifeStealPercent + player.GetTotalStat("lifeStealPercent", _configs);
 
                         string projId = config.ProjectileId ?? "9mm_bullet";
                         if (_configs.Projectiles.TryGetValue(projId, out var projConfig))
@@ -139,7 +139,7 @@ public class CombatSystem : IGameSystem
                                 allNewBullets.AddRange(ProjectileFactory.Create(
                                     projConfig, player.ConnectionId, "Player", spawnX, spawnY,
                                     spreadDirX, spreadDirY,
-                                    physDmg, magicDmg, finalSpeed, totalLifeSteal, combinedEffects,
+                                    physDmg, magicDmg, finalSpeed, totalLifeStealPercent, combinedEffects,
                                     1, computedLifespan, isCrit
                                 ));
                             }

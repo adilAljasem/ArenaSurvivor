@@ -164,19 +164,24 @@ public static class WeaponGenerator
     public static EquippedWeapon MergeWeapons(EquippedWeapon w1, EquippedWeapon w2, ConfigManager configs)
         => GearGeneratorHelper.MergeGear(w1, w2, configs, configs.Weapons, CalculateTotalBaseStats);
 
-    // CalculateTotalBaseStats(EquippedWeapon, ConfigManager) - unchanged, stays weapon-specific
-    // (reads MeleeDamage/RangedDamage/MagicDamage directly off WeaponConfig).
+    // CalculateTotalBaseStats(EquippedWeapon, ConfigManager) - stays weapon-specific (reads
+    // MeleeDamage/RangedDamage/MagicDamage directly off WeaponConfig).
+    //
+    // FIX: this used to sum MeleeDamage/RangedDamage/MagicDamage once per entry in
+    // MergedConfigIds, meaning the weapon's primary damage grew with every level/merge. That's
+    // wrong - the primary stat is fixed to the weapon's identity and should never scale.
+    // Leveling instead scales the weapon's StatBonuses (see
+    // StatContributionHelper.AddGearContributions in StatSystem.cs, which now sums each merged
+    // copy's StatBonuses the same way ItemGenerator.CalculateTotalBaseStats below already does
+    // for items). So this only ever reads the weapon's CURRENT config, once.
     public static void CalculateTotalBaseStats(EquippedWeapon weapon, ConfigManager configs)
     {
         weapon.TotalBaseStats.Clear();
-        foreach (var id in weapon.MergedConfigIds)
+        if (configs.Weapons.TryGetValue(weapon.ConfigId, out var cfg))
         {
-            if (configs.Weapons.TryGetValue(id, out var cfg))
-            {
-                if (cfg.MeleeDamage > 0) GearGeneratorHelper.AddToStat(weapon.TotalBaseStats, "meleeDamage", cfg.MeleeDamage);
-                if (cfg.RangedDamage > 0) GearGeneratorHelper.AddToStat(weapon.TotalBaseStats, "rangedDamage", cfg.RangedDamage);
-                if (cfg.MagicDamage > 0) GearGeneratorHelper.AddToStat(weapon.TotalBaseStats, "magicDamage", cfg.MagicDamage);
-            }
+            if (cfg.MeleeDamage > 0) GearGeneratorHelper.AddToStat(weapon.TotalBaseStats, "meleeDamage", cfg.MeleeDamage);
+            if (cfg.RangedDamage > 0) GearGeneratorHelper.AddToStat(weapon.TotalBaseStats, "rangedDamage", cfg.RangedDamage);
+            if (cfg.MagicDamage > 0) GearGeneratorHelper.AddToStat(weapon.TotalBaseStats, "magicDamage", cfg.MagicDamage);
         }
     }
 }

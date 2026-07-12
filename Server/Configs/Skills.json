@@ -629,5 +629,21 @@
             "effect_shield_basic"
         ],
         "ColorTint": "#00ccff"
+    },
+    "skill_hurtme_t1": {
+        "Id": "skill_hurtme_t1",
+        "Name": "Hurt Me",
+        "TriggerType": "Auto",
+        "ActionType": "selfBuff",
+        "TargetType": "ClosestAlly",
+        "ProjectileId": "proj_shield_orb",
+        "ProjectileCount": 1,
+        "CooldownSeconds": 5.0,
+        "BaseDamage": 0.0,
+        "Range": 700,
+        "ApplyEffects": [
+            "effect_shield_basic"
+        ],
+        "ColorTint": "#00ccff"
     }
 }

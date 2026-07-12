@@ -55,32 +55,32 @@
         "statName": "hpRegen",
         "amount": 4.0
     },
-    "lifeSteal_1": {
-        "id": "lifeSteal_1",
+    "lifeStealPercent_1": {
+        "id": "lifeStealPercent_1",
         "name": "Minor Drain",
         "tier": 1,
-        "statName": "lifeSteal",
+        "statName": "lifeStealPercent",
         "amount": 0.01
     },
-    "lifeSteal_2": {
-        "id": "lifeSteal_2",
+    "lifeStealPercent_2": {
+        "id": "lifeStealPercent_2",
         "name": "Steady Siphon",
         "tier": 2,
-        "statName": "lifeSteal",
+        "statName": "lifeStealPercent",
         "amount": 0.02
     },
-    "lifeSteal_3": {
-        "id": "lifeSteal_3",
+    "lifeStealPercent_3": {
+        "id": "lifeStealPercent_3",
         "name": "True Leecher",
         "tier": 3,
-        "statName": "lifeSteal",
+        "statName": "lifeStealPercent",
         "amount": 0.03
     },
-    "lifeSteal_4": {
-        "id": "lifeSteal_4",
+    "lifeStealPercent_4": {
+        "id": "lifeStealPercent_4",
         "name": "Devouring Power",
         "tier": 4,
-        "statName": "lifeSteal",
+        "statName": "lifeStealPercent",
         "amount": 0.06
     },
     "damagePercent_1": {

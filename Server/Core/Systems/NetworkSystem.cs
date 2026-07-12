@@ -67,9 +67,14 @@ public class NetworkSystem : IGameSystem
         _eventBus.Subscribe<BeamEndedEvent>((ev, state) => _beamEndedEvents.Add(ev));
         _eventBus.Subscribe<ChatMessageEvent>((ev, state) =>
         {
-            if (!_clientKnownEnemies.IsEmpty)
+            // NOTE: this used to send to _clientKnownEnemies.Keys - that dictionary only
+            // gets a connectionId key once that player's first enemy-visibility diff has run,
+            // and gets cleared at points like wave transitions (see DiffKnownIds/Update below).
+            // A chat message sent while it's empty or doesn't yet contain everyone silently
+            // reached nobody. state.Players.Keys is the actual, always-current room roster.
+            if (state.Players.Count > 0)
             {
-                _hubContext.Clients.Clients(_clientKnownEnemies.Keys).SendAsync("ReceiveChatMessage", ev.Sender, ev.Message);
+                _hubContext.Clients.Clients(state.Players.Keys).SendAsync("ReceiveChatMessage", ev.Sender, ev.Message);
             }
         });
 

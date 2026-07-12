@@ -53,7 +53,7 @@
     "textureKey": "characters",
     "iconFrame": 15,
     "VisualHeight": 350.0,
-    "WeaponOffset":170,
+    "WeaponOffset": 170,
     "scale": 0.25,
     "defaultFacingRight": true,
     "animIdle": [
@@ -147,7 +147,10 @@
     "VisualHeight": 350.0,
     "scale": 0.25,
     "defaultFacingRight": true,
-    "RequiredAchievements":["ach_no_hit_15","ach_heal_500000"],
+    "RequiredAchievements": [
+      "ach_no_hit_15",
+      "ach_heal_500000"
+    ],
     "animIdle": [
       129,
       146
@@ -297,15 +300,23 @@
     ],
     "animDeathFrameRate": 15,
     "baseStats": {
-      "maxHp": 100,
-      "movementSpeed": 180,
-      "meleeDamage": 10,
-      "rangedDamage": 10,
+      "maxHp": 150,
+      "movementSpeed": 190,
+      "meleeDamage": 20,
+      "lifeStealPercent": 0.05,
+      "rangedDamage": -10,
       "armor": 10,
-      "magicDefense": 5,
+      "magicDefense": 10,
       "hpRegen": 1
     },
-    "statMultipliers": {},
+    "statMultipliers": {
+      "meleeDamage": 1.0,
+      "armor": 0.20,
+      "rangedDamage": -1.0,
+      "healPower": -1.0,
+      "shieldPower": -1.0,
+      "magicDamage": -1.0
+    },
     "startingWeapons": [],
     "startingItems": [],
     "startingSkills": [],
@@ -342,20 +353,20 @@
     "baseStats": {
       "maxHp": 80,
       "movementSpeed": 180,
-      "meleeDamage": 5,
-      "rangedDamage": 5,
-      "healPower": 0.5,
-      "shieldPower": 0.4,
+      "meleeDamage": 0,
+      "rangedDamage": 0,
+      "healPower": 10.0,
+      "shieldPower": 5.0,
       "hpRegen": 2,
-      "armor": 10
+      "magicDefense": 10,
+      "armor": 2
     },
     "statMultipliers": {
       "healPower": 1.5,
-      "shieldPower": 1.2
+      "meleeDamage": -1.0
     },
     "startingSkills": [
-      "skill_heal_shot",
-      "skill_shield_shot"
+      "skill_heal_shot"
     ],
     "startingWeapons": [],
     "startingItems": [],

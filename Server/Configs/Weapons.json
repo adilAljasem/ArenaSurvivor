@@ -403,7 +403,7 @@
         "min": 0.02,
         "max": 0.08
       },
-      "lifeSteal": {
+      "lifeStealPercent": {
         "min": 0.01,
         "max": 0.03
       }

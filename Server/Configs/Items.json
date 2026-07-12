@@ -331,7 +331,7 @@
         "amount": 0.15
       },
       {
-        "statName": "lifeSteal",
+        "statName": "lifeStealPercent",
         "amount": 0.02
       }
     ],
@@ -346,7 +346,7 @@
     ],
     "statBonuses": {
       "armor": -5,
-      "lifeSteal": 0.05
+      "lifeStealPercent": 0.05
     },
     "statRollChance": 0.90,
     "maxRandomStats": 3,
@@ -359,7 +359,7 @@
         "min": 0.05,
         "max": 0.12
       },
-      "lifeSteal": {
+      "lifeStealPercent": {
         "min": 0.01,
         "max": 0.04
       },
@@ -618,20 +618,20 @@
     "traits": [],
     "effectsAtWaveEnd": [
       {
-        "statName": "lifeSteal",
+        "statName": "lifeStealPercent",
         "amount": 0.01
       }
     ],
     "effectsOnPurchase": [],
     "dynamicModifiers": [],
     "statBonuses": {
-      "lifeSteal": 0.02,
+      "lifeStealPercent": 0.02,
       "maxHp": -5
     },
     "statRollChance": 0.45,
     "maxRandomStats": 1,
     "allowedRandomStats": {
-      "lifeSteal": {
+      "lifeStealPercent": {
         "min": 0.005,
         "max": 0.02
       },

@@ -42,9 +42,14 @@ public class SkillSystem : IGameSystem
 
             if (!isHeal)
             {
-                float magicBonus = caster.GetTotalStat("magicDamage", _configs);
-                float damagePercent = caster.GetTotalStat("damagePercent", _configs);
-                rawAbsoluteDamage = (rawAbsoluteDamage + (magicBonus * 0.5f)) * (1f + damagePercent);
+                // Immune skills skip outside damage scaling entirely - damage stays exactly
+                // BaseDamage, unaffected by the caster's magicDamage or damagePercent stats.
+                if (!config.Immune)
+                {
+                    float magicBonus = caster.GetTotalStat("magicDamage", _configs);
+                    float damagePercent = caster.GetTotalStat("damagePercent", _configs);
+                    rawAbsoluteDamage = (rawAbsoluteDamage + (magicBonus * 0.5f)) * (1f + damagePercent);
+                }
                 rawAbsoluteDamage = Math.Max(0f, rawAbsoluteDamage);
             }
             else
@@ -417,17 +422,21 @@ public class SkillSystem : IGameSystem
 
             if (busySkill != null && _configs.Skills.TryGetValue(busySkill.ConfigId, out var busyConfig))
             {
+                // Immune skills always run their cooldown/cast time at the full
+                // configured value, regardless of the caster's haste stat.
+                float busyEffectiveHasteMult = busyConfig.Immune ? 1f : hasteMult;
+
                 if (busySkill.CurrentCastTimer > 0)
                 {
                     isCasting = true;
                     enemy.CurrentCastingSkillId = busySkill.ConfigId;
                     enemy.CurrentCastTimer = busySkill.CurrentCastTimer;
-                    enemy.MaxCastTimer = busyConfig.CastTimeSeconds / hasteMult;
+                    enemy.MaxCastTimer = busyConfig.CastTimeSeconds / busyEffectiveHasteMult;
                     busySkill.CurrentCastTimer -= dt;
                     if (busySkill.CurrentCastTimer <= 0)
                     {
                         if (busyConfig.ChannelDurationSeconds > 0) { busySkill.CurrentChannelTimer = busyConfig.ChannelDurationSeconds; if (!busyConfig.IsRepeated) SkillStateHelper.RequestSkillCast(_eventBus, busyConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team); }
-                        else { SkillStateHelper.RequestSkillCast(_eventBus, busyConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team); busySkill.CurrentCooldown = busyConfig.CooldownSeconds / hasteMult; }
+                        else { SkillStateHelper.RequestSkillCast(_eventBus, busyConfig, enemy.Id, enemy.X, enemy.Y, enemy.Team); busySkill.CurrentCooldown = busyConfig.CooldownSeconds / busyEffectiveHasteMult; }
                     }
                 }
                 else
@@ -476,17 +485,21 @@ public class SkillSystem : IGameSystem
 
             if (busySkill != null && _configs.Skills.TryGetValue(busySkill.ConfigId, out var busyConfig))
             {
+                // Immune skills always run their cooldown/cast time at the full
+                // configured value, regardless of the caster's haste stat.
+                float busyEffectiveHasteMult = busyConfig.Immune ? 1f : hasteMult;
+
                 if (busySkill.CurrentCastTimer > 0)
                 {
                     isCasting = true;
                     player.CurrentCastingSkillId = busySkill.ConfigId;
                     player.CurrentCastTimer = busySkill.CurrentCastTimer;
-                    player.MaxCastTimer = busyConfig.CastTimeSeconds / hasteMult;
+                    player.MaxCastTimer = busyConfig.CastTimeSeconds / busyEffectiveHasteMult;
                     busySkill.CurrentCastTimer -= dt;
                     if (busySkill.CurrentCastTimer <= 0)
                     {
                         if (busyConfig.ChannelDurationSeconds > 0) { busySkill.CurrentChannelTimer = busyConfig.ChannelDurationSeconds; if (!busyConfig.IsRepeated) SkillStateHelper.RequestSkillCast(_eventBus, busyConfig, player.ConnectionId, player.X, player.Y, player.Team); }
-                        else { SkillStateHelper.RequestSkillCast(_eventBus, busyConfig, player.ConnectionId, player.X, player.Y, player.Team); busySkill.CurrentCooldown = busyConfig.CooldownSeconds / hasteMult; }
+                        else { SkillStateHelper.RequestSkillCast(_eventBus, busyConfig, player.ConnectionId, player.X, player.Y, player.Team); busySkill.CurrentCooldown = busyConfig.CooldownSeconds / busyEffectiveHasteMult; }
                     }
                 }
                 else
@@ -581,6 +594,10 @@ internal static class SkillStateHelper
         ActiveSkill skill, SkillConfig skillConfig, string casterId, float x, float y, string team,
         GameState state, EventBus eventBus, float dt, float hasteMult)
     {
+        // Immune skills always run their cooldown/cast time at the full configured
+        // value, regardless of the caster's haste stat - nothing else about the skill changes.
+        float effectiveHasteMult = skillConfig.Immune ? 1f : hasteMult;
+
         if (skill.CurrentCooldown > 0) skill.CurrentCooldown -= dt;
 
         if (skill.CurrentChannelTimer > 0)
@@ -606,7 +623,7 @@ internal static class SkillStateHelper
 
             if (skill.CurrentChannelTimer <= 0)
             {
-                skill.CurrentCooldown = skillConfig.CooldownSeconds / hasteMult;
+                skill.CurrentCooldown = skillConfig.CooldownSeconds / effectiveHasteMult;
                 skill.TimeSinceLastTick = 0f;
                 eventBus.Publish(new BeamEndedEvent { CasterId = casterId, SkillId = skillConfig.Id });
             }
@@ -618,7 +635,7 @@ internal static class SkillStateHelper
             if (skill.CurrentCastTimer <= 0)
             {
                 if (skillConfig.ChannelDurationSeconds > 0) { skill.CurrentChannelTimer = skillConfig.ChannelDurationSeconds; if (!skillConfig.IsRepeated) RequestSkillCast(eventBus, skillConfig, casterId, x, y, team); }
-                else { RequestSkillCast(eventBus, skillConfig, casterId, x, y, team); skill.CurrentCooldown = skillConfig.CooldownSeconds / hasteMult; }
+                else { RequestSkillCast(eventBus, skillConfig, casterId, x, y, team); skill.CurrentCooldown = skillConfig.CooldownSeconds / effectiveHasteMult; }
             }
         }
     }
@@ -646,15 +663,19 @@ internal static class SkillStateHelper
 
             skillIndex = (checkIndex + 1) % skills.Count;
 
+            // Immune skills always run their cooldown/cast time at the full configured
+            // value, regardless of the caster's haste stat.
+            float effectiveHasteMult = config.Immune ? 1f : hasteMult;
+
             if (config.CastTimeSeconds > 0)
             {
-                skill.CurrentCastTimer = config.CastTimeSeconds / hasteMult;
+                skill.CurrentCastTimer = config.CastTimeSeconds / effectiveHasteMult;
                 if (!config.IsIndependent) return skillIndex;
             }
             else
             {
                 if (config.ChannelDurationSeconds > 0) { skill.CurrentChannelTimer = config.ChannelDurationSeconds; if (!config.IsRepeated) RequestSkillCast(eventBus, config, casterId, x, y, team); }
-                else { RequestSkillCast(eventBus, config, casterId, x, y, team); skill.CurrentCooldown = config.CooldownSeconds / hasteMult; }
+                else { RequestSkillCast(eventBus, config, casterId, x, y, team); skill.CurrentCooldown = config.CooldownSeconds / effectiveHasteMult; }
                 if (!config.IsIndependent) return skillIndex;
             }
         }
@@ -685,13 +706,16 @@ internal static class SkillStateHelper
             if (activeSkill == null) { activeSkill = new ActiveSkill { ConfigId = trigger.SkillId }; skills.Add(activeSkill); }
             timers[trigger.SkillId] = trigger.Cooldown;
 
+            // Immune skills always run their cooldown/cast time at the full configured
+            // value, regardless of the caster's haste stat.
+            float effectiveHasteMult = skillConfig.Immune ? 1f : hasteMult;
+
             if (castTime <= 0)
             {
                 if (skillConfig.ChannelDurationSeconds > 0) { activeSkill.CurrentChannelTimer = skillConfig.ChannelDurationSeconds; if (!skillConfig.IsRepeated) RequestSkillCast(eventBus, skillConfig, casterId, x, y, team); }
-                else { RequestSkillCast(eventBus, skillConfig, casterId, x, y, team); activeSkill.CurrentCooldown = skillConfig.CooldownSeconds / hasteMult; }
+                else { RequestSkillCast(eventBus, skillConfig, casterId, x, y, team); activeSkill.CurrentCooldown = skillConfig.CooldownSeconds / effectiveHasteMult; }
             }
-            else activeSkill.CurrentCastTimer = castTime / hasteMult;
+            else activeSkill.CurrentCastTimer = castTime / effectiveHasteMult;
         }
     }
 }
-

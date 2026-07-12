@@ -91,7 +91,7 @@
       "movementSpeed": 60,
       "meleeDamage": 50,
       "armor": 15,
-      "lifeSteal": 0.05
+      "lifeStealPercent": 0.05
     },
     "dynamicModifiers": [
       {
@@ -220,7 +220,7 @@
       "maxHp": 50,
       "movementSpeed": 100,
       "meleeDamage": 8,
-      "lifeSteal": 0.10,
+      "lifeStealPercent": 0.10,
       "armor": 500
     },
     "startingSkills": [],

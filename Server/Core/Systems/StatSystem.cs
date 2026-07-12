@@ -278,8 +278,14 @@ internal static class StatContributionHelper
                 percentBonus += iMult;
         }
 
-        // meleeDamage/rangedDamage/magicDamage are the weapon's OWN identity stat - excluded
-        // from flatBonus here (see GearGenerator.cs comment for the full story).
+        // meleeDamage/rangedDamage/magicDamage are the weapon's OWN identity stat - TotalBaseStats
+        // (see GearGenerator.cs's CalculateTotalBaseStats) is excluded from flatBonus here since
+        // it's already counted directly per-weapon in CombatSystem.CalculateWeaponDamageSplit.
+        // RolledStats is different: a randomly-rolled meleeDamage/rangedDamage/magicDamage bonus
+        // is a genuine stat bonus like any other roll - it should count toward the actor's
+        // overall stat the same way it already does for items (see the items loop above, which
+        // has no such exclusion). Excluding it here meant a weapon that rolled bonus damage
+        // never actually contributed that roll to the actor's status.
         bool isWeaponDamageStat = statName == "meleeDamage" || statName == "rangedDamage" || statName == "magicDamage";
 
         foreach (var weapon in weapons)
@@ -287,12 +293,28 @@ internal static class StatContributionHelper
             if (!isWeaponDamageStat)
             {
                 if (weapon.TotalBaseStats != null && weapon.TotalBaseStats.TryGetValue(statName, out float wBase)) flatBonus += wBase;
-                if (weapon.RolledStats != null && weapon.RolledStats.TryGetValue(statName, out var wRoll)) flatBonus += wRoll;
+            }
+            if (weapon.RolledStats != null && weapon.RolledStats.TryGetValue(statName, out var wRoll)) flatBonus += wRoll;
+
+            // FIX: StatBonuses used to be applied once via weapon.ConfigId, so leveling a
+            // weapon (merging duplicates) never increased its statBonuses at all - inconsistent
+            // with items, where ItemGenerator.CalculateTotalBaseStats already sums each merged
+            // copy's StatBonuses into TotalBaseStats. Now each entry in MergedConfigIds
+            // contributes its own StatBonuses, so e.g. a level-2 pistol (two merged copies)
+            // gets its movementSpeed/critChance/etc bonuses twice. This is unrelated to
+            // meleeDamage/rangedDamage/magicDamage possibly also appearing in StatBonuses (e.g.
+            // a flat ranged-damage-boosting bonus) - those aren't the weapon's own identity stat
+            // (see isWeaponDamageStat/GearGenerator.cs), so they still count here same as before.
+            foreach (var mergedId in weapon.MergedConfigIds)
+            {
+                if (configs.Weapons.TryGetValue(mergedId, out var mergedCfg)
+                    && mergedCfg.StatBonuses != null
+                    && mergedCfg.StatBonuses.TryGetValue(statName, out float wStatBonus))
+                    flatBonus += wStatBonus;
             }
 
             if (configs.Weapons.TryGetValue(weapon.ConfigId, out var weaponConfig))
             {
-                if (weaponConfig.StatBonuses != null && weaponConfig.StatBonuses.TryGetValue(statName, out float wStatBonus)) flatBonus += wStatBonus;
                 if (weaponConfig.StatMultipliers != null && weaponConfig.StatMultipliers.TryGetValue(statName, out float wMult)) percentBonus += wMult;
             }
         }
