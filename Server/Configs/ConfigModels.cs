@@ -383,6 +383,13 @@ public class SkillConfig
     // magicDamage/damagePercent (damage stays exactly BaseDamage, unscaled). Nothing else
     // about the skill (targeting, effects, healPower on heals, etc.) is affected.
     public bool Immune { get; set; } = false;
+    // Every Nth character level (Level % LevelUpEveryXCharacterLevels == 0), this skill
+    // auto-advances exactly one tier within its SkillFamily - same "find SkillFamily match
+    // with Tier + 1" resolution the duplicate-merge loop in RecalculateSynergies uses, just
+    // triggered by the player's own Level instead of a second copy being acquired.
+    // 0 (default) disables this entirely - the skill only changes tier via merging or gear leveling.
+    public int LevelUpEveryXCharacterLevels { get; set; } = 0;
+
 
     // --- Visuals ---
     public string TextureKey { get; set; } = string.Empty;
@@ -490,7 +497,7 @@ public class MapConfig
     public float Height { get; set; } = 4000f;
     public string TextureKey { get; set; } = string.Empty;
     public float TextureScale { get; set; } = 1.0f;
-    public int MaxPlayers { get; set; } = 4; 
+    public int MaxPlayers { get; set; } = 4;
 }
 
 

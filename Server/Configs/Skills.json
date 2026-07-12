@@ -591,6 +591,8 @@
     "skill_heal_shot_t1": {
         "Id": "skill_heal_shot_t1",
         "Name": "Healing Shot",
+        "skillFamily": "heal_shot",
+        "tier": 1,
         "TriggerType": "Auto",
         "ActionType": "Projectile",
         "TargetType": "ClosestAlly",
@@ -604,6 +606,8 @@
     "skill_heal_shot_t2": {
         "Id": "skill_heal_shot_t2",
         "Name": "Healing Shot II",
+        "skillFamily": "heal_shot",
+        "tier": 2,
         "TriggerType": "Auto",
         "ActionType": "Projectile",
         "TargetType": "ClosestAlly",
@@ -630,20 +634,49 @@
         ],
         "ColorTint": "#00ccff"
     },
-    "skill_hurtme_t1": {
-        "Id": "skill_hurtme_t1",
-        "Name": "Hurt Me",
-        "TriggerType": "Auto",
-        "ActionType": "selfBuff",
-        "TargetType": "ClosestAlly",
-        "ProjectileId": "proj_shield_orb",
-        "ProjectileCount": 1,
-        "CooldownSeconds": 5.0,
-        "BaseDamage": 0.0,
-        "Range": 700,
-        "ApplyEffects": [
-            "effect_shield_basic"
-        ],
-        "ColorTint": "#00ccff"
+    "skill_selfdamage_t1": {
+        "id": "skill_selfdamage_t1",
+        "name": "Self Harm",
+        "skillFamily": "selfdamage",
+        "tier": 1,
+        "scalesWithGearLevel": true,
+        "showCastBar": true,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "SelfBuff",
+        "levelUpEveryXCharacterLevels": 5,
+        "cooldownSeconds": 1.0,
+        "castTimeSeconds": 0.0,
+        "baseDamage": 1
+    },
+    "skill_selfdamage_t2": {
+        "id": "skill_selfdamage_t2",
+        "name": "Self Harm II",
+        "skillFamily": "selfdamage",
+        "tier": 2,
+        "scalesWithGearLevel": true,
+        "showCastBar": true,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "SelfBuff",
+        "levelUpEveryXCharacterLevels": 5,
+        "cooldownSeconds": 1.0,
+        "castTimeSeconds": 0.0,
+        "baseDamage": 5
+    },
+    "skill_selfdamage_t3": {
+        "id": "skill_selfdamage_t3",
+        "name": "Self Harm III",
+        "skillFamily": "selfdamage",
+        "tier": 3,
+        "scalesWithGearLevel": true,
+        "showCastBar": false,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "SelfBuff",
+        "levelUpEveryXCharacterLevels": 5,
+        "cooldownSeconds": 1.0,
+        "castTimeSeconds": 0.0,
+        "baseDamage": 20
     }
 }

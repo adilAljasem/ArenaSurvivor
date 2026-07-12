@@ -650,11 +650,51 @@ public class PlayerEntity : BaseActorEntity
         float xpBonus = GetTotalStat("xpGainPercent", configManager);
         CurrentXp += amount * diff.XpMultiplier * (1f + xpBonus);
 
+        bool leveledUp = false;
         while (CurrentXp >= GetXpRequirement())
         {
             CurrentXp -= GetXpRequirement();
             Level++;
             PendingLevelUps++;
+            leveledUp = true;
+
+            // Checked on every SINGLE Level++ step, not just once at the end comparing start
+            // vs. final level - a big XP dump (e.g. /givexp) can cross several X-level
+            // milestones in one call, and each one should still award its own tier-up rather
+            // than only the last milestone reached.
+            TryLevelUpSkillsForCharacterLevel(configManager);
+        }
+
+        // Skills may have just changed ConfigIds above - refresh SynergizedSkills/stats exactly
+        // like every other place that mutates Skills or gear. (RecalculateSynergies' own
+        // doc-comment already called out "or levels up" as a case it should cover.)
+        if (leveledUp) RecalculateSynergies(configManager);
+    }
+
+    // Advances any currently-owned skill that's due for a tier-up at the level just reached.
+    // Deliberately mirrors two rules already used elsewhere so this behaves exactly like
+    // "the normal way" a skill levels:
+    //   - SkillFamily + Tier resolution: same lookup as RecalculateSynergies' merge loop.
+    //   - ScalesWithGearLevel gate: same gate GearGeneratorHelper.UpgradeScalingSkills uses -
+    //     a skill flagged ScalesWithGearLevel = false is meant to stay one fixed tier forever,
+    //     so it's skipped here too, same as it would be for gear-driven leveling.
+    private void TryLevelUpSkillsForCharacterLevel(ConfigManager configs)
+    {
+        foreach (var skill in Skills)
+        {
+            if (!configs.Skills.TryGetValue(skill.ConfigId, out var sCfg)) continue;
+            if (!sCfg.ScalesWithGearLevel) continue;
+            if (sCfg.LevelUpEveryXCharacterLevels <= 0) continue;
+            if (Level % sCfg.LevelUpEveryXCharacterLevels != 0) continue;
+
+            var nextTierSkill = configs.Skills.Values.FirstOrDefault(
+                s => s.SkillFamily == sCfg.SkillFamily && s.Tier == sCfg.Tier + 1);
+
+            if (nextTierSkill != null)
+            {
+                skill.ConfigId = nextTierSkill.Id;
+                skill.CurrentCooldown = nextTierSkill.CooldownSeconds;
+            }
         }
     }
 

@@ -64,15 +64,39 @@ public class SkillSystem : IGameSystem
         // >>> THE RESTORED SELF-BUFF LOGIC <<<
         if (config.ActionType == SkillActionType.SelfBuff)
         {
-            if (caster != null && config.ApplyEffects != null)
+            if (caster != null)
             {
-                foreach (var effectId in config.ApplyEffects)
+                // Direct self-damage/self-heal: finalSpellDamage was already computed above with the
+                // same magicDamage/damagePercent scaling (or Immune bypass) every other damage-dealing
+                // ActionType gets - it just never had anywhere to go for SelfBuff before now.
+                // Deliberately NOT run through CombatSystem.CalculateMitigatedDamage: this is a
+                // self-inflicted hit, so the caster's own armor/magicDefense shouldn't water it down.
+                // Wrap it in CalculateMitigatedDamage(0f, finalSpellDamage, caster, _configs) instead
+                // if you'd rather a tankier character take less from their own skill.
+                if (Math.Abs(finalSpellDamage) > 0)
                 {
-                    _eventBus.Publish(new ApplyEffectEvent { TargetId = casterId, EffectConfigId = effectId, CasterId = casterId });
+                    _eventBus.Publish(new DamageAppliedEvent
+                    {
+                        TargetId = casterId,
+                        AttackerId = casterId,
+                        Amount = finalSpellDamage,
+                        IsCritical = false,
+                        IsDodge = false,
+                        IsBlock = false
+                    });
+                }
+
+                if (config.ApplyEffects != null)
+                {
+                    foreach (var effectId in config.ApplyEffects)
+                    {
+                        _eventBus.Publish(new ApplyEffectEvent { TargetId = casterId, EffectConfigId = effectId, CasterId = casterId });
+                    }
                 }
             }
             return;
         }
+
 
         // >>> THE UPDATED PROJECTILE LOGIC <<<
         if (config.ActionType == SkillActionType.Projectile && _configs.Projectiles.TryGetValue(config.ProjectileId, out var projConfig))

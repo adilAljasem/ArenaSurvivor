@@ -2099,6 +2099,7 @@ class GameScene extends Phaser.Scene {
 // =========================================================
 // CHAT & COMMAND UI OVERLAY
 // =========================================================
+
 export function setupChatUI(scene: Phaser.Scene, connection: any) {
     const availableCommands = [
         { cmd: '/setwave', desc: '/setwave <number>' },
@@ -2118,7 +2119,6 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
         { cmd: '/setstat', desc: '/setstat <statName> <value> (supports negatives)' },
         { cmd: '/titan', desc: '/titan (100000 armor/magicDefense/maxHp)' },
         { cmd: '/clearskills', desc: '/clearskills' },
-
     ];
 
     const chatHTML = `
@@ -2143,7 +2143,6 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
   `;
 
     if (!document.getElementById('chat-wrapper')) {
-        // Fix: Append to the app container so it stays visible in Fullscreen
         const appContainer = document.getElementById('app') || document.body;
         appContainer.insertAdjacentHTML('beforeend', chatHTML);
     }
@@ -2152,6 +2151,22 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
     const inputContainer = document.getElementById('chat-input-container')!;
     const inputEl = document.getElementById('chat-input') as HTMLInputElement;
     const suggestionsBox = document.getElementById('chat-suggestions')!;
+
+    // FIX: setupChatUI runs once per match (on AllPlayersSynced), but the DOM
+    // elements above persist across matches - they're only created the first
+    // time. Previously we re-attached addEventListener('input'/'keydown') and
+    // scene.input.keyboard.on('keydown-ENTER') on every single match, stacking
+    // duplicate handlers. The stale handler from the PREVIOUS match (closed
+    // over a now-disconnected connection) still fired first on Enter, cleared
+    // inputEl.value, and left the new match's handler with nothing to send -
+    // which is why chat "silently" stopped working from the 2nd match on.
+    //
+    // Fix: bind the raw DOM/keyboard listeners exactly once per scene, and
+    // route sends through `activeConnection`, which we update below on every
+    // call so the one-time listener always talks to the CURRENT match's hub
+    // connection instead of the one captured when it was first created.
+    (scene as any)._activeChatConnection = connection;
+    const getConnection = () => (scene as any)._activeChatConnection;
 
     let isChatActive = false;
     let suggestionIndex = -1;
@@ -2176,6 +2191,9 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
     connection.on("ReceiveChatMessage", (sender: string, msg: string) => {
         addMessage(sender, msg);
     });
+
+    if ((scene as any)._chatUIBound) return; // already bound raw listeners once - don't stack more
+    (scene as any)._chatUIBound = true;
 
     const drawSuggestions = () => {
         suggestionsBox.innerHTML = '';
@@ -2242,7 +2260,7 @@ export function setupChatUI(scene: Phaser.Scene, connection: any) {
 
             const text = inputEl.value.trim();
             if (text.length > 0) {
-                connection.invoke("SendChatMessage", text).catch((err: any) => console.error(err));
+                getConnection().invoke("SendChatMessage", text).catch((err: any) => console.error(err));
             }
 
             inputEl.value = '';
