@@ -1,51 +1,56 @@
 {
-  "char_well_rounded": {
-    "id": "char_well_rounded",
-    "name": "Well Rounded",
-    "textureKey": "characters_sheet1",
-    "iconFrame": 0,
-    "VisualHeight": 35.0,
-    "scale": 2.0,
+  "char_forest_ranger": {
+    "id": "char_forest_ranger",
+    "name": "Forest Ranger",
+    "textureKey": "characters",
+    "iconFrame": 72,
+    "VisualHeight": 350.0,
+    "scale": 0.25,
     "defaultFacingRight": true,
+    "WeaponOffset":200,
+    "WeaponScaleOverride":0.9,
     "animIdle": [
-      0,
-      1
+      72,
+      89
     ],
-    "animIdleFrameRate": 3,
+    "animIdleFrameRate": 10,
     "animMove": [
-      24,
-      31
+      90,
+      101
     ],
-    "animMoveFrameRate": 20,
+    "animMoveFrameRate": 15,
+    "animAttack": [
+      102,
+      113
+    ],
     "animDeath": [
-      17,
-      22
+      57,
+      71
     ],
-    "animDeathFrameRate": 12,
+    "animDeathFrameRate": 15,
     "baseStats": {
-      "maxHp": 10000,
-      "movementSpeed": 500,
-      "meleeDamage": 50,
-      "rangedDamage": 50,
-      "harvesting": 1,
-      "luck": 5,
+      "maxHp": 80,
+      "hpRegen": 0.5,
+      "movementSpeed": 170,
+      "meleeDamage": 5,
+      "rangedDamage": 10,
+      "damagePercent": 0.0,
       "armor": 10,
       "magicDefense": 5
     },
+    "statMultipliers": {
+      "healPower": -1.0,
+      "shieldPower": -1.0,
+      "rangedDamage": 1.0
+    },
     "startingWeapons": [],
-    "startingItems": [
-      "ugly_tooth"
-    ],
+    "startingItems": [],
     "startingSkills": [],
     "dynamicModifiers": [],
     "traits": [
       "trait_packrat",
       "trait_vacuum"
-    ],
-    "statMultipliers": {
-      "rangedDamage": 0.2,
-      "armor": 1.0
-    }
+    ]
   },
   "char_Warlock": {
     "id": "char_Warlock",
@@ -78,245 +83,14 @@
     "baseStats": {
       "maxHp": 10000000,
       "movementSpeed": 180,
-      "meleeDamage": 10,
-      "rangedDamage": 10,
-      "armor": 10,
-      "magicDefense": 5,
-      "hpRegen": 1
-    },
-    "statMultipliers": {},
-    "startingWeapons": [],
-    "startingItems": [],
-    "startingSkills": [],
-    "dynamicModifiers": [],
-    "traits": []
-  },
-  "char_forest_ranger": {
-    "id": "char_forest_ranger",
-    "name": "Forest Ranger",
-    "textureKey": "characters",
-    "iconFrame": 72,
-    "VisualHeight": 350.0,
-    "scale": 0.25,
-    "defaultFacingRight": true,
-    "animIdle": [
-      72,
-      89
-    ],
-    "animIdleFrameRate": 10,
-    "animMove": [
-      90,
-      101
-    ],
-    "animMoveFrameRate": 15,
-    "animAttack": [
-      102,
-      113
-    ],
-    "animDeath": [
-      57,
-      71
-    ],
-    "animDeathFrameRate": 15,
-    "baseStats": {
-      "maxHp": 300,
-      "hpRegen": 3,
-      "movementSpeed": 160,
-      "meleeDamage": 10,
-      "rangedDamage": 15,
-      "damagePercent": 0.0,
-      "armor": 10,
-      "magicDefense": 5
-    },
-    "statMultipliers": {
-      "healPower": -1.0,
-      "shieldPower": -1.0,
-      "rangedDamage": -1.0
-    },
-    "startingWeapons": [],
-    "startingItems": [],
-    "startingSkills": [],
-    "dynamicModifiers": [],
-    "traits": []
-  },
-  "char_goblin": {
-    "id": "char_goblin",
-    "name": "Goblin",
-    "textureKey": "characters",
-    "iconFrame": 129,
-    "VisualHeight": 350.0,
-    "scale": 0.25,
-    "defaultFacingRight": true,
-    "RequiredAchievements": [
-      "ach_no_hit_15",
-      "ach_heal_500000"
-    ],
-    "animIdle": [
-      129,
-      146
-    ],
-    "animIdleFrameRate": 10,
-    "animMove": [
-      147,
-      158
-    ],
-    "animMoveFrameRate": 15,
-    "animAttack": [
-      159,
-      170
-    ],
-    "animDeath": [
-      114,
-      128
-    ],
-    "animDeathFrameRate": 15,
-    "baseStats": {
-      "maxHp": 100,
-      "movementSpeed": 180,
-      "meleeDamage": 10,
-      "rangedDamage": 10,
-      "armor": 10,
-      "magicDefense": 5,
-      "hpRegen": 1
-    },
-    "statMultipliers": {},
-    "startingWeapons": [],
-    "startingItems": [],
-    "startingSkills": [],
-    "dynamicModifiers": [],
-    "traits": []
-  },
-  "char_golem": {
-    "id": "char_golem",
-    "name": "Golem",
-    "textureKey": "characters",
-    "iconFrame": 186,
-    "VisualHeight": 350.0,
-    "scale": 0.25,
-    "defaultFacingRight": true,
-    "animIdle": [
-      186,
-      203
-    ],
-    "animIdleFrameRate": 10,
-    "animMove": [
-      204,
-      215
-    ],
-    "animMoveFrameRate": 15,
-    "animAttack": [
-      216,
-      227
-    ],
-    "animDeath": [
-      171,
-      185
-    ],
-    "animDeathFrameRate": 15,
-    "baseStats": {
-      "maxHp": 100,
-      "movementSpeed": 180,
-      "meleeDamage": 10,
-      "rangedDamage": 10,
-      "armor": 10,
-      "magicDefense": 5,
-      "hpRegen": 1
-    },
-    "statMultipliers": {},
-    "startingWeapons": [],
-    "startingItems": [],
-    "startingSkills": [],
-    "dynamicModifiers": [],
-    "traits": []
-  },
-  "char_orc": {
-    "id": "char_orc",
-    "name": "Orc",
-    "textureKey": "characters",
-    "iconFrame": 243,
-    "VisualHeight": 350.0,
-    "scale": 0.25,
-    "defaultFacingRight": true,
-    "animIdle": [
-      243,
-      260
-    ],
-    "animIdleFrameRate": 10,
-    "animMove": [
-      261,
-      272
-    ],
-    "animMoveFrameRate": 15,
-    "animAttack": [
-      273,
-      284
-    ],
-    "animDeath": [
-      228,
-      242
-    ],
-    "animDeathFrameRate": 15,
-    "baseStats": {
-      "maxHp": 100,
-      "movementSpeed": 180,
-      "meleeDamage": 10,
-      "rangedDamage": 10,
-      "armor": 10,
-      "magicDefense": 5,
-      "hpRegen": 1
-    },
-    "statMultipliers": {},
-    "startingWeapons": [],
-    "startingItems": [],
-    "startingSkills": [],
-    "dynamicModifiers": [],
-    "traits": []
-  },
-  "char_skeleton_warrior": {
-    "id": "char_skeleton_warrior",
-    "name": "Skeleton Warrior",
-    "textureKey": "characters",
-    "iconFrame": 300,
-    "VisualHeight": 350.0,
-    "scale": 0.25,
-    "defaultFacingRight": true,
-    "animIdle": [
-      300,
-      317
-    ],
-    "animIdleFrameRate": 10,
-    "animMove": [
-      318,
-      329
-    ],
-    "animMoveFrameRate": 15,
-    "animAttack": [
-      330,
-      341
-    ],
-    "animDeath": [
-      285,
-      299
-    ],
-    "animDeathFrameRate": 15,
-    "baseStats": {
-      "maxHp": 150,
-      "movementSpeed": 190,
-      "meleeDamage": 20,
-      "lifeStealPercent": 0.05,
-      "rangedDamage": -10,
-      "armor": 10,
+      "meleeDamage": 0,
+      "rangedDamage": 0,
+      "magicDamage": 20,
+      "armor": 2,
       "magicDefense": 10,
       "hpRegen": 1
     },
-    "statMultipliers": {
-      "meleeDamage": 1.0,
-      "armor": 0.20,
-      "rangedDamage": -1.0,
-      "healPower": -1.0,
-      "shieldPower": -1.0,
-      "magicDamage": -1.0
-    },
+    "statMultipliers": {},
     "startingWeapons": [],
     "startingItems": [],
     "startingSkills": [],
@@ -373,10 +147,215 @@
     "dynamicModifiers": [],
     "traits": []
   },
-  "char_dark_oracle_alt": {
-    "id": "char_dark_oracle_alt",
-    "name": "Dark Oracle (Alt)",
+  "char_skeleton_warrior": {
+    "id": "char_skeleton_warrior",
+    "name": "Skeleton Warrior",
     "textureKey": "characters",
+    "RequiredAchievements": [
+      "ach_no_hit_15",
+      "ach_heal_500000",
+      "ach_matches_500"
+    ],
+    "iconFrame": 300,
+    "VisualHeight": 350.0,
+    "scale": 0.25,
+    "defaultFacingRight": true,
+    "animIdle": [
+      300,
+      317
+    ],
+    "animIdleFrameRate": 10,
+    "animMove": [
+      318,
+      329
+    ],
+    "animMoveFrameRate": 15,
+    "animAttack": [
+      330,
+      341
+    ],
+    "animDeath": [
+      285,
+      299
+    ],
+    "animDeathFrameRate": 15,
+    "baseStats": {
+      "maxHp": 150,
+      "movementSpeed": 190,
+      "meleeDamage": 20,
+      "lifeStealPercent": 0.05,
+      "rangedDamage": -10,
+      "armor": 10,
+      "magicDefense": 10,
+      "hpRegen": 1
+    },
+    "statMultipliers": {
+      "meleeDamage": 1.0,
+      "armor": 0.20,
+      "rangedDamage": -1.0,
+      "healPower": -1.0,
+      "shieldPower": -1.0,
+      "magicDamage": -1.0
+    },
+    "startingWeapons": [],
+    "startingItems": [],
+    "startingSkills": [],
+    "dynamicModifiers": [],
+    "traits": []
+  },
+  "char_goblin": {
+    "id": "char_goblin",
+    "name": "Goblin",
+    "textureKey": "characters",
+    "iconFrame": 129,
+    "VisualHeight": 350.0,
+    "scale": 0.25,
+    "defaultFacingRight": true,
+    "RequiredAchievements": [
+      "ach_no_hit_15",
+      "ach_heal_500000",
+      "ach_matches_500"
+    ],
+    "animIdle": [
+      129,
+      146
+    ],
+    "animIdleFrameRate": 10,
+    "animMove": [
+      147,
+      158
+    ],
+    "animMoveFrameRate": 15,
+    "animAttack": [
+      159,
+      170
+    ],
+    "animDeath": [
+      114,
+      128
+    ],
+    "animDeathFrameRate": 15,
+    "baseStats": {
+      "maxHp": 100,
+      "movementSpeed": 180,
+      "meleeDamage": 10,
+      "rangedDamage": 10,
+      "armor": 10,
+      "magicDefense": 5,
+      "hpRegen": 1
+    },
+    "statMultipliers": {},
+    "startingWeapons": [],
+    "startingItems": [],
+    "startingSkills": [],
+    "dynamicModifiers": [],
+    "traits": []
+  },
+  "char_golem": {
+    "id": "char_golem",
+    "name": "Golem",
+    "textureKey": "characters",
+    "RequiredAchievements": [
+      "ach_no_hit_15",
+      "ach_heal_500000",
+      "ach_matches_500"
+    ],
+    "iconFrame": 186,
+    "VisualHeight": 350.0,
+    "scale": 0.25,
+    "defaultFacingRight": true,
+    "animIdle": [
+      186,
+      203
+    ],
+    "animIdleFrameRate": 10,
+    "animMove": [
+      204,
+      215
+    ],
+    "animMoveFrameRate": 15,
+    "animAttack": [
+      216,
+      227
+    ],
+    "animDeath": [
+      171,
+      185
+    ],
+    "animDeathFrameRate": 15,
+    "baseStats": {
+      "maxHp": 100,
+      "movementSpeed": 180,
+      "meleeDamage": 10,
+      "rangedDamage": 10,
+      "armor": 10,
+      "magicDefense": 5,
+      "hpRegen": 1
+    },
+    "statMultipliers": {},
+    "startingWeapons": [],
+    "startingItems": [],
+    "startingSkills": [],
+    "dynamicModifiers": [],
+    "traits": []
+  },
+  "char_orc": {
+    "id": "char_orc",
+    "name": "Orc",
+    "textureKey": "characters",
+    "RequiredAchievements": [
+      "ach_no_hit_15",
+      "ach_heal_500000",
+      "ach_matches_500"
+    ],
+    "iconFrame": 243,
+    "VisualHeight": 350.0,
+    "scale": 0.25,
+    "defaultFacingRight": true,
+    "animIdle": [
+      243,
+      260
+    ],
+    "animIdleFrameRate": 10,
+    "animMove": [
+      261,
+      272
+    ],
+    "animMoveFrameRate": 15,
+    "animAttack": [
+      273,
+      284
+    ],
+    "animDeath": [
+      228,
+      242
+    ],
+    "animDeathFrameRate": 15,
+    "baseStats": {
+      "maxHp": 100,
+      "movementSpeed": 180,
+      "meleeDamage": 10,
+      "rangedDamage": 10,
+      "armor": 10,
+      "magicDefense": 5,
+      "hpRegen": 1
+    },
+    "statMultipliers": {},
+    "startingWeapons": [],
+    "startingItems": [],
+    "startingSkills": [],
+    "dynamicModifiers": [],
+    "traits": []
+  },
+  "char_dark_oracle": {
+    "id": "char_dark_oracle",
+    "name": "Dark Oracle",
+    "textureKey": "characters",
+    "RequiredAchievements": [
+      "ach_no_hit_15",
+      "ach_heal_500000",
+      "ach_matches_500"
+    ],
     "iconFrame": 414,
     "VisualHeight": 350.0,
     "scale": 0.25,

@@ -41,7 +41,9 @@
       "magicDefense": 5,
       "armor": 2
     },
-    "startingWeapons": ["pistol"],
+    "startingWeapons": [
+      "pistol"
+    ],
     "startingItems": [
       "ugly_tooth"
     ],
@@ -392,5 +394,230 @@
       "movementSpeed": 0,
       "meleeDamage": 0
     }
+  },
+  "enemy_lightning_wisp": {
+    "id": "enemy_lightning_wisp",
+    "name": "Voltaic Spark",
+    "tier": 1,
+    "minWave": 3,
+    "maxWave": 999,
+    "spawnWeight": 90,
+    "textureKey": "goblinCavebat_sheet",
+    "scale": 1.0,
+    "AttackRadius": 350,
+    "baseStats": {
+      "maxHp": 45,
+      "movementSpeed": 140
+    },
+    "startingWeapons": [
+      "weapon_variant_sparker"
+    ],
+    "startingItems": [
+      "item_variant_static_charge"
+    ],
+    "weaponDropChance": 0.0
+  },
+  "enemy_acid_ooze": {
+    "id": "enemy_acid_ooze",
+    "name": "Corrosive Slime",
+    "tier": 2,
+    "minWave": 13,
+    "maxWave": 999,
+    "spawnWeight": 75,
+    "textureKey": "mushroomEnemy",
+    "scale": 1.3,
+    "AttackRadius": 400,
+    "baseStats": {
+      "maxHp": 110,
+      "movementSpeed": 85
+    },
+    "startingWeapons": [
+      "weapon_variant_acid_spit"
+    ],
+    "startingItems": [
+      "item_variant_corrosive_sac"
+    ],
+    "onDeathSkills": [
+      "skill_variant_acid_pool_t1"
+    ]
+  },
+  "enemy_void_specter": {
+    "id": "enemy_void_specter",
+    "name": "Singularity Anchor",
+    "tier": 2,
+    "minWave": 23,
+    "maxWave": 999,
+    "spawnWeight": 60,
+    "textureKey": "spike_enemy",
+    "scale": 1.2,
+    "AttackRadius": 200,
+    "baseStats": {
+      "maxHp": 220,
+      "movementSpeed": 60
+    },
+    "startingWeapons": [
+      "weapon_variant_void_shard"
+    ],
+    "startingItems": [
+      "item_variant_void_fragment"
+    ]
+  },
+  "enemy_sanguine_hound": {
+    "id": "enemy_sanguine_hound",
+    "name": "Gore Hound",
+    "tier": 3,
+    "minWave": 33,
+    "maxWave": 999,
+    "spawnWeight": 110,
+    "textureKey": "enemies_sheet1",
+    "scale": 0.3,
+    "AttackRadius": 50,
+    "baseStats": {
+      "maxHp": 95,
+      "movementSpeed": 175
+    },
+    "startingWeapons": [
+      "weapon_variant_blood_claw"
+    ],
+    "startingItems": [
+      "item_variant_gore_tooth"
+    ]
+  },
+  "boss_volt_overlord": {
+    "id": "boss_volt_overlord",
+    "name": "Baron von Shock (Boss)",
+    "tier": 3,
+    "isBoss": true,
+    "spawnOnWaves": [
+      10,
+      50,
+      90
+    ],
+    "textureKey": "enemies_sheet",
+    "scale": 2.8,
+    "AttackRadius": 500,
+    "baseStats": {
+      "maxHp": 6500,
+      "movementSpeed": 85,
+      "armor": 25
+    },
+    "startingWeapons": [
+      "weapon_boss_tesla_coil"
+    ],
+    "startingItems": [
+      "item_boss_insulated_plating"
+    ],
+    "startingSkills": [
+      "skill_boss_summon_pylons_t1"
+    ],
+    "dynamicModifiers": [
+      {
+        "conditionType": "MissingHealthPercent",
+        "conditionThreshold": 0.50,
+        "targetStat": "attackSpeedPercent",
+        "amount": 0.40
+      }
+    ]
+  },
+  "boss_corrosive_titan": {
+    "id": "boss_corrosive_titan",
+    "name": "Golem of Rust (Boss)",
+    "tier": 3,
+    "isBoss": true,
+    "spawnOnWaves": [
+      20,
+      60,
+      100
+    ],
+    "textureKey": "spike_enemy",
+    "scale": 3.2,
+    "AttackRadius": 450,
+    "baseStats": {
+      "maxHp": 9000,
+      "movementSpeed": 55,
+      "armor": 45
+    },
+    "startingWeapons": [
+      "weapon_boss_acid_mortar"
+    ],
+    "startingItems": [
+      "item_boss_catalytic_converter"
+    ],
+    "dynamicSkills": [
+      {
+        "conditionType": "MissingHealthPercent",
+        "conditionThreshold": 0.30,
+        "skillId": "skill_boss_nanite_reboot_t1",
+        "cooldown": 999.0,
+        "overrideCastTime": 4.0
+      }
+    ]
+  },
+  "boss_void_weaver": {
+    "id": "boss_void_weaver",
+    "name": "The Singularity Construct (Boss)",
+    "tier": 4,
+    "isBoss": true,
+    "spawnOnWaves": [
+      30,
+      70,
+      110
+    ],
+    "textureKey": "Enemies1_sheet",
+    "scale": 2.6,
+    "AttackRadius": 600,
+    "baseStats": {
+      "maxHp": 12000,
+      "movementSpeed": 70,
+      "magicDefense": 50
+    },
+    "startingWeapons": [
+      "weapon_boss_void_lens"
+    ],
+    "startingItems": [
+      "item_boss_singularity_matrix"
+    ],
+    "dynamicModifiers": [
+      {
+        "conditionType": "MissingHealthPercent",
+        "conditionThreshold": 0.40,
+        "targetStat": "movementSpeed",
+        "amount": 35
+      }
+    ]
+  },
+  "boss_bloodreave_gladiator": {
+    "id": "boss_bloodreave_gladiator",
+    "name": "Sanguine Butcher (Boss)",
+    "tier": 4,
+    "isBoss": true,
+    "spawnOnWaves": [
+      40,
+      80,
+      120
+    ],
+    "textureKey": "enemies_sheet",
+    "scale": 3.0,
+    "AttackRadius": 150,
+    "baseStats": {
+      "maxHp": 16000,
+      "movementSpeed": 110,
+      "armor": 20
+    },
+    "startingWeapons": [
+      "weapon_boss_executioner_blades"
+    ],
+    "startingItems": [
+      "item_boss_bloodstained_crest"
+    ],
+    "dynamicSkills": [
+      {
+        "conditionType": "MissingHealthPercent",
+        "conditionThreshold": 0.40,
+        "skillId": "skill_boss_frenzy_aura_t1",
+        "cooldown": 30.0,
+        "overrideCastTime": 0.0
+      }
+    ]
   }
 }

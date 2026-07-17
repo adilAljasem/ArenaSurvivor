@@ -176,5 +176,55 @@
         "HitRadius": 25,
         "Lifespan": 3.0,
         "ColorTint": "#00ccff"
+    },
+    "proj_lightning_spark": {
+        "id": "proj_lightning_spark",
+        "name": "Lightning Spark",
+        "textureKey": "ammo_sheet2",
+        "iconFrame": 0,
+        "scale": 0.8,
+        "baseSpeed": 700,
+        "hitRadius": 12,
+        "pierceCount": 1,
+        "applyEffectsOnHit": [
+            "effect_boss_electric_overcharge"
+        ]
+    },
+    "proj_acid_glob": {
+        "id": "proj_acid_glob",
+        "name": "Acidic Glob",
+        "textureKey": "effects5",
+        "scale": 1.2,
+        "baseSpeed": 350,
+        "hitRadius": 20,
+        "pierceCount": 0,
+        "onDeathSkillId": "skill_boss_acid_pool_t1"
+    },
+    "proj_gravity_orb": {
+        "id": "proj_gravity_orb",
+        "name": "Gravity Singularity",
+        "textureKey": "ammo_sheet",
+        "iconFrame": 26,
+        "scale": 1.5,
+        "baseSpeed": 200,
+        "hitRadius": 30,
+        "pierceCount": 999,
+        "lifespan": 4.0,
+        "tickRate": 0.3,
+        "tickSkillId": "skill_boss_void_pulse_t1"
+    },
+    "proj_blood_wave": {
+        "id": "proj_blood_wave",
+        "name": "Sanguine Cleave",
+        "textureKey": "ammo_sheet",
+        "iconFrame": 6,
+        "scale": 1.4,
+        "movementBehavior": "Linear",
+        "baseSpeed": 450,
+        "hitRadius": 40,
+        "pierceCount": 4,
+        "applyEffectsOnHit": [
+            "effect_boss_sanguine_bleed"
+        ]
     }
 }

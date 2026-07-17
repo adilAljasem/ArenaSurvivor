@@ -1577,6 +1577,46 @@ export class ShopUI {
         this.levelUpContainer.setPosition(centerX + (120 * cardScale), centerY);
     }
 
+    // Figures out - BEFORE the player clicks BUY - whether this shop offer can actually be
+    // purchased right now, so the card can say so up front instead of the player only finding
+    // out from the ShopError toast after a rejected click. Mirrors the two rejection reasons
+    // the server can send back: family conflict (AllowDuplicates=false + already own a piece
+    // of gear from the same Weapon/ItemFamily) and insufficient gold. This is a client-side
+    // prediction of the server's rule, not a replacement for it - ShopError/ShopSuccess still
+    // fire normally and remain the source of truth if this ever disagrees with the server.
+    private getPurchaseBlock(item: any, config: any, isWeapon: boolean, uiData: any, atlasConfigs: any):
+        { reason: 'family' | 'gold' | null, label: string, shortLabel: string } {
+        if (!config) return { reason: null, label: '', shortLabel: '' };
+
+        const family = isWeapon ? (config.weaponFamily ?? config.WeaponFamily) : (config.itemFamily ?? config.ItemFamily);
+        const allowDupes = !!(config.allowDuplicates ?? config.AllowDuplicates);
+
+        if (family && !allowDupes) {
+            const ownedList: any[] = (isWeapon ? uiData.weapons : uiData.ownedItems) ?? [];
+            const sourceConfigs = isWeapon ? (atlasConfigs?.weapons ?? atlasConfigs?.Weapons) : (atlasConfigs?.items ?? atlasConfigs?.Items);
+
+            const conflict = ownedList.find((owned: any) => {
+                const oCfg = sourceConfigs?.[owned.configId ?? owned.ConfigId];
+                const oFam = isWeapon ? (oCfg?.weaponFamily ?? oCfg?.WeaponFamily) : (oCfg?.itemFamily ?? oCfg?.ItemFamily);
+                return oFam === family;
+            });
+
+            if (conflict) {
+                const oCfg = sourceConfigs?.[conflict.configId ?? conflict.ConfigId];
+                const conflictName = oCfg?.name ?? oCfg?.Name ?? family;
+                return { reason: 'family', label: `Already have ${conflictName}`, shortLabel: '🚫 OWNED' };
+            }
+        }
+
+        const price = item.price ?? item.Price ?? 0;
+        const gold = uiData.gold ?? 0;
+        if (gold < price) {
+            return { reason: 'gold', label: `Need ${price - gold} more gold`, shortLabel: `Need ${price - gold} more` };
+        }
+
+        return { reason: null, label: '', shortLabel: '' };
+    }
+
     public updateUIData(uiData: any, atlasConfigs: any) {
         if (!uiData) return;
 
@@ -1732,6 +1772,9 @@ export class ShopUI {
                     isWeapon = true;
                 }
 
+                const blockInfo = this.getPurchaseBlock(item, config, isWeapon, uiData, atlasConfigs);
+                const isBlocked = !!blockInfo.reason;
+
                 const tier = config?.tier ?? config?.Tier ?? 1;
                 const tierColor = isLocked ? 0x888888 : UIHelpers.getTierColorHex(tier);
 
@@ -1841,14 +1884,41 @@ export class ShopUI {
                 const topDivider = this.scene.add.rectangle(0, -114, 200, 2, 0x3a4454).setOrigin(0.5);
 
                 singleCardContainer.add([tierTextObj, nameText, topDivider]);
-                if (icon) singleCardContainer.add(icon);
+                if (icon) {
+                    singleCardContainer.add(icon);
+                    if (isBlocked) icon.setAlpha(0.35);
+                }
+
+                // Ribbon over the icon explaining WHY this can't be bought right now. Deliberately
+                // different color/icon/wording per reason, and different from the 🔒 reroll-LOCK
+                // button below - that's a separate "keep this offer" feature, not a purchase block.
+                if (isBlocked) {
+                    const isFamily = blockInfo.reason === 'family';
+                    const ribbonColor = isFamily ? 0x5c3a00 : 0x4a1414;
+                    const ribbonBorder = isFamily ? 0xffb300 : 0xff5252;
+                    const ribbonIcon = isFamily ? '🚫' : '💰';
+
+                    const ribbonBg = this.scene.add.graphics();
+                    ribbonBg.fillStyle(ribbonColor, 0.95);
+                    ribbonBg.fillRoundedRect(-100, -148, 200, 24, 6);
+                    ribbonBg.lineStyle(1.5, ribbonBorder, 1);
+                    ribbonBg.strokeRoundedRect(-100, -148, 200, 24, 6);
+
+                    const ribbonText = this.scene.add.text(0, -136, `${ribbonIcon} ${blockInfo.label}`, {
+                        fontFamily: UIHelpers.FONT, fontSize: '11px', fontStyle: 'bold', color: '#ffffff', resolution: 3
+                    }).setOrigin(0.5);
+
+                    singleCardContainer.add([ribbonBg, ribbonText]);
+                }
 
                 // 6. FOOTER CONTENT & BUTTONS 
                 const buyBtnBg = this.scene.add.graphics();
-                buyBtnBg.fillStyle(0x2e7d32, 1);
+                buyBtnBg.fillStyle(isBlocked ? 0x3a3a3a : 0x2e7d32, 1);
                 buyBtnBg.fillRoundedRect(-90, 150, 180, 40, 20);
-                const buyText = this.scene.add.text(0, 170, `BUY 💰 ${item.price ?? item.Price}`, {
-                    fontFamily: UIHelpers.FONT, fontSize: '16px', fontStyle: 'bold', color: '#ffffff', resolution: 3
+                const buyLabel = isBlocked ? blockInfo.shortLabel : `BUY 💰 ${item.price ?? item.Price}`;
+                const buyText = this.scene.add.text(0, 170, buyLabel, {
+                    fontFamily: UIHelpers.FONT, fontSize: isBlocked ? '13px' : '16px', fontStyle: 'bold',
+                    color: isBlocked ? '#ff8a65' : '#ffffff', resolution: 3
                 }).setOrigin(0.5);
 
                 const buyHitbox = this.scene.add.rectangle(0, 170, 180, 40, 0x000000, 0)
@@ -1895,6 +1965,14 @@ export class ShopUI {
                         this.tooltip.hide();
                     },
                     onSelect: () => {
+                        if (isBlocked) {
+                            // We already know the server would reject this - give instant feedback
+                            // instead of a wasted round trip. ShopError still covers any case this
+                            // client-side check didn't catch.
+                            AudioManager.getInstance().playUiSfx('ui_error');
+                            this.scene.tweens.add({ targets: buyBtnBg, x: '+=6', duration: 40, yoyo: true, repeat: 3 });
+                            return;
+                        }
                         this.connection.invoke("BuyItem", configId).catch((err: any) => console.error(err));
                     }
                 };

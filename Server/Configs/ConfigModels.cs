@@ -250,7 +250,16 @@ public class WeaponConfig : BaseGearConfig
 {
     // --- Identity & Visuals ---
     public string WeaponFamily { get; set; } = string.Empty;
-    public bool DefaultFacingRight { get; set; } = true;
+
+    /// <summary>
+    /// The direction (in degrees) the weapon's sprite art naturally points when unrotated.
+    /// 0 = art drawn facing right (old DefaultFacingRight = true). 180 = art drawn facing
+    /// left (old DefaultFacingRight = false). Also supports any other direction the art was
+    /// drawn in, e.g. 90 = drawn facing down, -90/270 = drawn facing up. The client subtracts
+    /// this from the calculated aim angle so the sprite always visually points at its target
+    /// regardless of which way the source art was originally drawn.
+    /// </summary>
+    public float DefaultFacingAngle { get; set; } = 0f;
     public string AttackAnimType { get; set; } = "recoil"; // Can be: "recoil", "stab", "swing", or "none"
     public bool AutoShot { get; set; } = true;
 

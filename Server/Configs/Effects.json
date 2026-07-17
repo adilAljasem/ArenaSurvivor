@@ -173,5 +173,66 @@
     "isBuff": true,
     "Duration": 5.0,
     "ColorTint": "#00ccff"
+  },
+  "effect_boss_electric_overcharge": {
+    "id": "effect_boss_electric_overcharge",
+    "name": "Static Discharge",
+    "textureKey": "icons1",
+    "iconFrame": 61,
+    "isBuff": false,
+    "duration": 4.0,
+    "tickRate": 1.0,
+    "tickDamage": 4.0,
+    "statModifiers": {
+      "movementSpeed": -20
+    },
+    "colorTint": "0x00ffff"
+  },
+  "effect_boss_acid_corrosion": {
+    "id": "effect_boss_acid_corrosion",
+    "name": "Acid Melting",
+    "textureKey": "icons1",
+    "iconFrame": 1,
+    "isBuff": false,
+    "duration": 6.0,
+    "tickRate": 0.5,
+    "tickDamage": 2.0,
+    "statModifiers": {
+      "armor": -5
+    },
+    "colorTint": "0x00ff00"
+  },
+  "effect_boss_gravity_crush": {
+    "id": "effect_boss_gravity_crush",
+    "name": "Gravity Crushed",
+    "textureKey": "icons1",
+    "iconFrame": 3,
+    "isBuff": false,
+    "duration": 3.0,
+    "tickRate": 0.0,
+    "tickDamage": 0.0,
+    "statModifiers": {
+      "movementSpeed": -40,
+      "dodge": -0.10
+    },
+    "colorTint": "0x880088"
+  },
+  "effect_boss_sanguine_bleed": {
+    "id": "effect_boss_sanguine_bleed",
+    "name": "Exsanguinate",
+    "textureKey": "icons1",
+    "iconFrame": 288,
+    "isBuff": false,
+    "duration": 5.0,
+    "tickRate": 1.0,
+    "tickDamage": 8.0,
+    "colorTint": "0xff0000"
+  },
+  "effect_boss_nanite_shield": {
+    "id": "effect_boss_nanite_shield",
+    "name": "Nanite Repair Matrix",
+    "isBuff": true,
+    "grantedShield": 800,
+    "duration": 5.0
   }
 }

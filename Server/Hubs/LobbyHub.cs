@@ -174,6 +174,9 @@ public class LobbyHub : Hub
     {
         string playerId = GetPlayerId();
 
+        string username = GetUsername();
+
+
         // ─── ONE-ROOM RULE ────────────────────────────────────────────────────
         // If this player already owns a room, handle it:
         //   - Solo room (only they're in it): auto-delete and allow a fresh start
@@ -197,7 +200,7 @@ public class LobbyHub : Hub
         string roomId = Guid.NewGuid().ToString()[..6].ToUpper();
         var room = _roomManager.GetOrCreateRoom(roomId, _configManager);
 
-        room.RoomName = string.IsNullOrWhiteSpace(roomName) ? $"{playerName}'s Arena" : roomName;
+        room.RoomName = string.IsNullOrWhiteSpace(roomName) ? $"{username}'s Arena" : roomName;
         room.Password = password ?? string.Empty;
         room.HostConnectionId = Context.ConnectionId;
         room.State.CurrentDifficulty = string.IsNullOrWhiteSpace(difficulty) ? "normal" : difficulty;
@@ -206,12 +209,13 @@ public class LobbyHub : Hub
         _roomManager.RegisterPlayerInRoom(playerId, roomId);
 
         await Clients.All.SendAsync("LobbyListUpdated");
-        await InnerJoinRoom(room, playerId, playerName);
+        await InnerJoinRoom(room, playerId, username);
     }
 
     public async Task JoinRoom(string playerName, string roomId, string password)
     {
         string playerId = GetPlayerId();
+        string username = GetUsername();
 
         var room = _roomManager.GetRoom(roomId);
         if (room == null) { await Clients.Caller.SendAsync("LobbyError", "Room not found."); return; }
@@ -228,7 +232,7 @@ public class LobbyHub : Hub
         }
 
         _roomManager.RegisterPlayerInRoom(playerId, roomId);
-        await InnerJoinRoom(room, playerId, playerName);
+        await InnerJoinRoom(room, playerId, username);
     }
 
 

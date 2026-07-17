@@ -1,6 +1,7 @@
 {
   "pistol": {
     "id": "pistol",
+    "defaultFacingAngle": 0,
     "autoShot": true,
     "weaponFamily": "pistol_family",
     "name": "Pistol",
@@ -13,8 +14,7 @@
     "range": 400,
     "textureKey": "weapons_sheet",
     "scale": 0.45,
-    "iconFrame": 10,
-    "defaultFacingRight": true,
+    "iconFrame": 0,
     "attackAnimType": "recoil",
     "soundFire": "ball-shoot",
     "canDrop": true,
@@ -68,6 +68,7 @@
   },
   "pistol_t2": {
     "id": "pistol_t2",
+    "defaultFacingAngle": 0,
     "weaponFamily": "pistol_family",
     "name": "Pistol",
     "tier": 2,
@@ -79,8 +80,7 @@
     "range": 5000,
     "textureKey": "weapons_sheet",
     "scale": 0.45,
-    "iconFrame": 10,
-    "defaultFacingRight": true,
+    "iconFrame": 0,
     "attackAnimType": "recoil",
     "soundFire": "ball-shoot",
     "AllowDuplicates": true,
@@ -120,6 +120,7 @@
   },
   "smg": {
     "id": "smg",
+    "defaultFacingAngle": 0,
     "name": "SMG",
     "tier": 2,
     "price": 60,
@@ -130,8 +131,7 @@
     "range": 400,
     "textureKey": "weapons_sheet",
     "scale": 0.55,
-    "iconFrame": 11,
-    "defaultFacingRight": true,
+    "iconFrame": 1,
     "attackAnimType": "recoil",
     "soundFire": "ball-shoot",
     "AllowDuplicates": true,
@@ -173,6 +173,7 @@
   },
   "shotgun": {
     "id": "shotgun",
+    "defaultFacingAngle": -45,
     "name": "Shotgun",
     "tier": 2,
     "price": 65,
@@ -185,8 +186,7 @@
     "range": 300,
     "textureKey": "weapons_sheet",
     "scale": 0.55,
-    "iconFrame": 12,
-    "defaultFacingRight": true,
+    "iconFrame": 2,
     "attackAnimType": "recoil",
     "soundFire": "sfx_shotgun_fire",
     "statBonuses": {
@@ -223,6 +223,7 @@
   },
   "sniper": {
     "id": "sniper",
+    "defaultFacingAngle": -45,
     "name": "Sniper Rifle",
     "tier": 2,
     "price": 150,
@@ -233,8 +234,7 @@
     "range": 1000,
     "textureKey": "weapons_sheet",
     "scale": 0.50,
-    "iconFrame": 14,
-    "defaultFacingRight": true,
+    "iconFrame": 3,
     "attackAnimType": "recoil",
     "soundFire": "sfx_sniper_fire",
     "statBonuses": {
@@ -270,6 +270,7 @@
   },
   "rocket": {
     "id": "rocket",
+    "defaultFacingAngle": -45,
     "name": "Rocket Launcher",
     "tier": 4,
     "price": 175,
@@ -278,10 +279,9 @@
     "projectileSpeed": 400,
     "projectileId": "rocket_projectile",
     "range": 700,
-    "textureKey": "ammo_sheet2",
+    "textureKey": "weapons_sheet",
     "scale": 1.6,
-    "iconFrame": 20,
-    "defaultFacingRight": true,
+    "iconFrame": 4,
     "attackAnimType": "recoil",
     "soundFire": "sfx_rocket_fire",
     "maxlevel": 9,
@@ -320,6 +320,7 @@
   },
   "stick": {
     "id": "stick",
+    "defaultFacingAngle": -45,
     "name": "Wooden Stick",
     "tier": 1,
     "price": 15,
@@ -330,8 +331,7 @@
     "range": 120,
     "textureKey": "weapons_sheet",
     "scale": 0.45,
-    "iconFrame": 15,
-    "defaultFacingRight": true,
+    "iconFrame": 6,
     "attackAnimType": "stab",
     "soundFire": "sfx_stick_swing",
     "statBonuses": {
@@ -368,6 +368,7 @@
   },
   "sword": {
     "id": "sword",
+    "defaultFacingAngle": -45,
     "name": "Iron Sword",
     "tier": 1,
     "price": 50,
@@ -378,8 +379,7 @@
     "range": 150,
     "textureKey": "weapons_sheet",
     "scale": 0.45,
-    "iconFrame": 0,
-    "defaultFacingRight": true,
+    "iconFrame": 7,
     "attackAnimType": "swing",
     "soundFire": "sword-shoot",
     "statBonuses": {
@@ -416,6 +416,7 @@
   },
   "hammer": {
     "id": "hammer",
+    "defaultFacingAngle": -45,
     "name": "War Hammer",
     "tier": 3,
     "price": 110,
@@ -426,8 +427,7 @@
     "range": 160,
     "textureKey": "weapons_sheet",
     "scale": 0.45,
-    "iconFrame": 3,
-    "defaultFacingRight": true,
+    "iconFrame": 8,
     "attackAnimType": "swing",
     "soundFire": "sfx_hammer_swing",
     "AllowDuplicates": true,
@@ -466,6 +466,7 @@
   },
   "wand": {
     "id": "wand",
+    "defaultFacingAngle": -45,
     "name": "Magic Wand",
     "tier": 1,
     "price": 60,
@@ -476,8 +477,7 @@
     "range": 600,
     "textureKey": "weapons_sheet",
     "scale": 0.45,
-    "iconFrame": 15,
-    "defaultFacingRight": true,
+    "iconFrame": 9,
     "attackAnimType": "recoil",
     "soundFire": "sfx_wand_cast",
     "statBonuses": {
@@ -514,6 +514,7 @@
   },
   "tometo_thrower": {
     "id": "tometo_thrower",
+    "defaultFacingAngle": -45,
     "name": "Tometo Thrower",
     "tier": 3,
     "price": 95,
@@ -524,8 +525,7 @@
     "range": 500,
     "textureKey": "weapons_sheet",
     "scale": 0.50,
-    "iconFrame": 14,
-    "defaultFacingRight": true,
+    "iconFrame": 10,
     "attackAnimType": "recoil",
     "soundFire": "sfx_tometo_throw",
     "statBonuses": {
@@ -555,5 +555,459 @@
     "skillRollChance": 0.15,
     "maxRandomSkills": 0,
     "allowedRandomSkills": []
+  },
+  "skull_scepter": {
+    "id": "skull_scepter",
+    "defaultFacingAngle": -45,
+    "name": "Skull Scepter",
+    "tier": 2,
+    "price": 75,
+    "cooldownSeconds": 0.85,
+    "magicDamage": 14,
+    "projectileSpeed": 400,
+    "projectileId": "fireball",
+    "range": 550,
+    "textureKey": "weapons_sheet",
+    "scale": 0.45,
+    "iconFrame": 11,
+    "attackAnimType": "recoil",
+    "soundFire": "sfx_wand_cast",
+    "statBonuses": {
+      "magicDamage": 20
+    },
+    "damageScaling": {
+      "magicDamage": 0.5
+    },
+    "grantedSkills": [],
+    "allowedCharacters": [
+      "char_Warlock"
+    ],
+    "statRollChance": 0.5,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "magicDamage": {
+        "min": 5.0,
+        "max": 15.0
+      },
+      "haste": {
+        "min": 3.0,
+        "max": 10.0
+      }
+    },
+    "skillRollChance": 0.1,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "tome_of_ruin": {
+    "id": "tome_of_ruin",
+    "defaultFacingAngle": 0,
+    "name": "Tome of Ruin",
+    "tier": 3,
+    "price": 115,
+    "cooldownSeconds": 1.0,
+    "magicDamage": 10,
+    "projectileSpeed": 380,
+    "projectileId": "fireball",
+    "range": 550,
+    "textureKey": "weapons_sheet",
+    "scale": 0.45,
+    "iconFrame": 12,
+    "attackAnimType": "recoil",
+    "soundFire": "sfx_wand_cast",
+    "statBonuses": {
+      "magicDamage": 15,
+      "maxHp": 10
+    },
+    "damageScaling": {
+      "magicDamage": 0.6
+    },
+    "applyEffectsOnHit": [
+      "effect_debuff_curse_t1"
+    ],
+    "grantedSkills": [],
+    "allowedCharacters": [
+      "char_Warlock"
+    ],
+    "statRollChance": 0.6,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "magicDamage": {
+        "min": 8.0,
+        "max": 20.0
+      }
+    },
+    "skillRollChance": 0.1,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "recurve_shortbow": {
+    "id": "recurve_shortbow",
+    "defaultFacingAngle": -45,
+    "name": "Recurve Shortbow",
+    "tier": 1,
+    "price": 40,
+    "cooldownSeconds": 0.45,
+    "rangedDamage": 12,
+    "projectileSpeed": 750,
+    "projectileId": "9mm_bullet",
+    "range": 500,
+    "textureKey": "weapons_sheet",
+    "scale": 0.45,
+    "iconFrame": 5,
+    "attackAnimType": "recoil",
+    "soundFire": "sfx_sniper_fire",
+    "statBonuses": {
+      "movementSpeed": 5
+    },
+    "damageScaling": {
+      "rangedDamage": 0.4
+    },
+    "grantedSkills": [],
+    "allowedCharacters": [
+      "char_forest_ranger"
+    ],
+    "statRollChance": 0.4,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "rangedDamage": {
+        "min": 3.0,
+        "max": 8.0
+      }
+    },
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "falcon_crossbow": {
+    "id": "falcon_crossbow",
+    "defaultFacingAngle": -45,
+    "name": "Falcon Crossbow",
+    "tier": 3,
+    "price": 120,
+    "cooldownSeconds": 0.9,
+    "rangedDamage": 28,
+    "projectileSpeed": 1100,
+    "projectileId": "sniper_round",
+    "range": 850,
+    "textureKey": "weapons_sheet",
+    "scale": 0.5,
+    "iconFrame": 13,
+    "attackAnimType": "recoil",
+    "soundFire": "sfx_sniper_fire",
+    "statBonuses": {
+      "rangedDamage": 20,
+      "critChance": 0.05
+    },
+    "damageScaling": {
+      "rangedDamage": 0.5
+    },
+    "grantedSkills": [],
+    "allowedCharacters": [
+      "char_forest_ranger"
+    ],
+    "statRollChance": 0.65,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "rangedDamage": {
+        "min": 10.0,
+        "max": 25.0
+      },
+      "critChance": {
+        "min": 0.03,
+        "max": 0.08
+      }
+    },
+    "skillRollChance": 0.15,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "blessed_tome": {
+    "id": "blessed_tome",
+    "defaultFacingAngle": 0,
+    "name": "Blessed Tome",
+    "tier": 1,
+    "price": 45,
+    "cooldownSeconds": 0.75,
+    "magicDamage": 7,
+    "projectileSpeed": 380,
+    "projectileId": "fireball",
+    "range": 500,
+    "textureKey": "weapons_sheet",
+    "scale": 0.45,
+    "iconFrame": 14,
+    "attackAnimType": "recoil",
+    "soundFire": "sfx_wand_cast",
+    "statBonuses": {
+      "magicDamage": 10,
+      "healPower": 5
+    },
+    "damageScaling": {
+      "magicDamage": 0.4,
+      "healPower": 0.1
+    },
+    "grantedSkills": [],
+    "allowedCharacters": [
+      "char_valkyrie"
+    ],
+    "statRollChance": 0.4,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "healPower": {
+        "min": 2.0,
+        "max": 6.0
+      }
+    },
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "aegis_wand": {
+    "id": "aegis_wand",
+    "defaultFacingAngle": -45,
+    "name": "Aegis Wand",
+    "tier": 2,
+    "price": 70,
+    "cooldownSeconds": 0.8,
+    "magicDamage": 9,
+    "projectileSpeed": 400,
+    "projectileId": "fireball",
+    "range": 550,
+    "textureKey": "weapons_sheet",
+    "scale": 0.45,
+    "iconFrame": 15,
+    "attackAnimType": "recoil",
+    "soundFire": "sfx_wand_cast",
+    "statBonuses": {
+      "magicDamage": 12,
+      "shieldPower": 5
+    },
+    "damageScaling": {
+      "magicDamage": 0.5
+    },
+    "applyEffectsOnHit": [
+      "effect_shield_basic"
+    ],
+    "grantedSkills": [],
+    "allowedCharacters": [
+      "char_valkyrie"
+    ],
+    "statRollChance": 0.5,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "shieldPower": {
+        "min": 2.0,
+        "max": 6.0
+      }
+    },
+    "skillRollChance": 0.1,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "rusted_axe": {
+    "id": "rusted_axe",
+    "defaultFacingAngle": -45,
+    "name": "Rusted Axe",
+    "tier": 1,
+    "price": 35,
+    "cooldownSeconds": 0.9,
+    "meleeDamage": 16,
+    "projectileSpeed": 0,
+    "projectileId": "sword_swing",
+    "range": 130,
+    "textureKey": "weapons_sheet",
+    "scale": 0.45,
+    "iconFrame": 16,
+    "attackAnimType": "swing",
+    "soundFire": "sword-shoot",
+    "statBonuses": {
+      "maxHp": 10
+    },
+    "damageScaling": {
+      "meleeDamage": 0.5
+    },
+    "grantedSkills": [],
+    "allowedCharacters": [
+      "char_skeleton_warrior"
+    ],
+    "statRollChance": 0.4,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "meleeDamage": {
+        "min": 3.0,
+        "max": 8.0
+      }
+    },
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "ossuary_maul": {
+    "id": "ossuary_maul",
+    "defaultFacingAngle": -45,
+    "name": "Ossuary Maul",
+    "tier": 3,
+    "price": 125,
+    "cooldownSeconds": 1.4,
+    "meleeDamage": 40,
+    "projectileSpeed": 0,
+    "projectileId": "hammer_smash",
+    "range": 150,
+    "textureKey": "weapons_sheet",
+    "scale": 0.55,
+    "iconFrame": 17,
+    "attackAnimType": "swing",
+    "soundFire": "sfx_hammer_swing",
+    "statBonuses": {
+      "meleeDamage": 25,
+      "maxHp": 25
+    },
+    "damageScaling": {
+      "meleeDamage": 0.9
+    },
+    "applyEffectsOnHit": [
+      "effect_debuff_grave_rot_t1"
+    ],
+    "grantedSkills": [],
+    "allowedCharacters": [
+      "char_skeleton_warrior"
+    ],
+    "statRollChance": 0.65,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "meleeDamage": {
+        "min": 12.0,
+        "max": 28.0
+      }
+    },
+    "skillRollChance": 0.15,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "weapon_variant_sparker": {
+    "id": "weapon_variant_sparker",
+    "defaultFacingAngle": -45,
+    "name": "Static Sparker",
+    "tier": 1,
+    "cooldownSeconds": 2.5,
+    "rangedDamage": 5,
+    "range": 350,
+    "projectileId": "proj_lightning_spark",
+    "textureKey": "weapons_sheet",
+    "scale": 0.6,
+    "autoShot": true,
+    "canDrop": false,
+    "availableInShop": false
+  },
+  "weapon_variant_acid_spit": {
+    "id": "weapon_variant_acid_spit",
+    "defaultFacingAngle": -45,
+    "name": "Acid Spitter",
+    "tier": 2,
+    "cooldownSeconds": 3.5,
+    "rangedDamage": 8,
+    "range": 400,
+    "projectileId": "proj_acid_glob",
+    "textureKey": "weapons_sheet",
+    "scale": 0.7,
+    "autoShot": true,
+    "canDrop": false,
+    "availableInShop": false
+  },
+  "weapon_variant_void_shard": {
+    "id": "weapon_variant_void_shard",
+    "defaultFacingAngle": -45,
+    "name": "Void Shard",
+    "tier": 2,
+    "cooldownSeconds": 4.0,
+    "rangedDamage": 6,
+    "range": 400,
+    "projectileId": "proj_gravity_orb",
+    "textureKey": "weapons_sheet",
+    "scale": 0.6,
+    "canDrop": false,
+    "availableInShop": false
+  },
+  "weapon_variant_blood_claw": {
+    "id": "weapon_variant_blood_claw",
+    "defaultFacingAngle": -45,
+    "name": "Sanguine Claw",
+    "tier": 3,
+    "cooldownSeconds": 1.2,
+    "meleeDamage": 15,
+    "range": 80,
+    "projectileId": "proj_blood_wave",
+    "textureKey": "weapons_sheet",
+    "scale": 0.8,
+    "attackAnimType": "swing",
+    "canDrop": false,
+    "availableInShop": false
+  },
+  "weapon_boss_tesla_coil": {
+    "id": "weapon_boss_tesla_coil",
+    "defaultFacingAngle": -45,
+    "name": "Tesla Disruptor",
+    "tier": 3,
+    "cooldownSeconds": 1.2,
+    "rangedDamage": 20,
+    "range": 500,
+    "projectileId": "proj_lightning_spark",
+    "textureKey": "weapons_sheet",
+    "scale": 1.0,
+    "autoShot": true,
+    "canDrop": false,
+    "availableInShop": false,
+    "grantedSkills": [
+      "skill_boss_lightning_strike_t1"
+    ]
+  },
+  "weapon_boss_acid_mortar": {
+    "id": "weapon_boss_acid_mortar",
+    "defaultFacingAngle": -45,
+    "name": "Corrosive Mortar",
+    "tier": 3,
+    "cooldownSeconds": 2.5,
+    "rangedDamage": 30,
+    "range": 600,
+    "projectileId": "proj_acid_glob",
+    "textureKey": "weapons_sheet",
+    "scale": 1.2,
+    "autoShot": true,
+    "canDrop": false,
+    "availableInShop": false
+  },
+  "weapon_boss_void_lens": {
+    "id": "weapon_boss_void_lens",
+    "defaultFacingAngle": -45,
+    "name": "Gravitational Core Launcher",
+    "tier": 4,
+    "cooldownSeconds": 4.0,
+    "rangedDamage": 15,
+    "range": 700,
+    "projectileId": "proj_gravity_orb",
+    "textureKey": "weapons_sheet",
+    "scale": 1.0,
+    "canDrop": false,
+    "availableInShop": false,
+    "grantedSkills": [
+      "skill_boss_void_laser_sweep_t1"
+    ]
+  },
+  "weapon_boss_executioner_blades": {
+    "id": "weapon_boss_executioner_blades",
+    "defaultFacingAngle": -45,
+    "name": "Reaver Twinblades",
+    "tier": 4,
+    "cooldownSeconds": 0.8,
+    "meleeDamage": 45,
+    "range": 180,
+    "projectileId": "proj_blood_wave",
+    "textureKey": "weapons_sheet",
+    "scale": 1.1,
+    "attackAnimType": "swing",
+    "canDrop": false,
+    "availableInShop": false,
+    "grantedSkills": [
+      "skill_boss_sanguine_rupture_t1"
+    ]
   }
 }

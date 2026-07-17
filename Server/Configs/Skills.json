@@ -513,7 +513,7 @@
         "targetType": "Down",
         "range": 1500,
         "beamWidth": 80,
-        "baseDamage": 50,
+        "baseDamage": 10,
         "cooldownSeconds": 3.0,
         "castTimeSeconds": 0.5,
         "colorTint": "0xff0000"
@@ -543,7 +543,7 @@
         "castTimeSeconds": 0.0,
         "projectileCount": 10,
         "spreadAngle": 360.0,
-        "baseDamage": 20,
+        "baseDamage": 10,
         "projectileId": "fireball"
     },
     "skill_fier_boom_t2": {
@@ -678,5 +678,203 @@
         "cooldownSeconds": 1.0,
         "castTimeSeconds": 0.0,
         "baseDamage": 20
+    },
+    "skill_venom_pulse_t1": {
+        "id": "skill_venom_pulse_t1",
+        "name": "Venom Pulse",
+        "textureKey": "skill_icons",
+        "skillFamily": "venom_pulse",
+        "tier": 1,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "AoE",
+        "radius": 180,
+        "baseDamage": 3,
+        "cooldownSeconds": 8.0,
+        "castTimeSeconds": 0.0,
+        "applyEffects": [
+            "effect_debuff_poison_dot_t1"
+        ],
+        "soundCast": "sfx_curse_cast",
+        "colorTint": "0x00ff00"
+    },
+    "skill_ember_pulse_t1": {
+        "id": "skill_ember_pulse_t1",
+        "name": "Ember Pulse",
+        "textureKey": "skill_icons",
+        "skillFamily": "ember_pulse",
+        "tier": 1,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "AoE",
+        "radius": 160,
+        "baseDamage": 3,
+        "cooldownSeconds": 8.0,
+        "castTimeSeconds": 0.0,
+        "applyEffects": [
+            "effect_debuff_burning_t1"
+        ],
+        "soundCast": "sfx_fireball_impact",
+        "colorTint": "0xff4400"
+    },
+    "skill_frost_pulse_t1": {
+        "id": "skill_frost_pulse_t1",
+        "name": "Frost Pulse",
+        "textureKey": "skill_icons",
+        "skillFamily": "frost_pulse",
+        "tier": 1,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "AoE",
+        "radius": 180,
+        "baseDamage": 0,
+        "cooldownSeconds": 6.0,
+        "castTimeSeconds": 0.0,
+        "applyEffects": [
+            "effect_debuff_slow_t1"
+        ],
+        "soundCast": "sfx_frost_nova_cast",
+        "colorTint": "#00cfff"
+    },
+    "skill_mending_pulse_t1": {
+        "id": "skill_mending_pulse_t1",
+        "name": "Mending Pulse",
+        "textureKey": "skill_icons",
+        "skillFamily": "mending_pulse",
+        "tier": 1,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "AoE",
+        "radius": 180,
+        "baseDamage": -4,
+        "cooldownSeconds": 10.0,
+        "castTimeSeconds": 0.0,
+        "soundCast": "sfx_nature_pulse_cast",
+        "colorTint": "#cefad0"
+    },
+    "skill_minor_shield_pulse_t1": {
+        "id": "skill_minor_shield_pulse_t1",
+        "name": "Minor Ward",
+        "textureKey": "skill_icons",
+        "skillFamily": "minor_shield_pulse",
+        "tier": 1,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "AoE",
+        "radius": 180,
+        "baseDamage": -1,
+        "cooldownSeconds": 14.0,
+        "castTimeSeconds": 0.0,
+        "applyEffects": [
+            "effect_shield_basic"
+        ],
+        "soundCast": "sfx_curse_cast",
+        "colorTint": "#00ccff"
+    },
+    "skill_variant_acid_pool_t1": {
+        "id": "skill_variant_acid_pool_t1",
+        "name": "Minor Corrosive Spill",
+        "actionType": "AoE",
+        "targetType": "Self",
+        "vfxTextureKey": "explosion1",
+        "vfxBaseRadius": 30,
+        "radius": 60,
+        "baseDamage": 2,
+        "applyEffects": [
+            "effect_boss_acid_corrosion"
+        ]
+    },
+    "skill_boss_lightning_strike_t1": {
+        "id": "skill_boss_lightning_strike_t1",
+        "name": "Overcharged Burst",
+        "cooldownSeconds": 3.0,
+        "actionType": "Projectile",
+        "targetType": "ClosestEnemy",
+        "projectileId": "proj_lightning_spark",
+        "projectileCount": 3,
+        "spreadAngle": 25.0,
+        "baseDamage": 15
+    },
+    "skill_boss_summon_pylons_t1": {
+        "id": "skill_boss_summon_pylons_t1",
+        "name": "Deploy Lightning Node",
+        "cooldownSeconds": 12.0,
+        "actionType": "Summon",
+        "targetType": "Self",
+        "summonConfigId": "enemy_lightning_node",
+        "summonCount": 2,
+        "summonRadius": 300.0
+    },
+    "skill_boss_acid_pool_t1": {
+        "id": "skill_boss_acid_pool_t1",
+        "name": "Corrosive Spill",
+        "actionType": "AoE",
+        "targetType": "Self",
+        "vfxTextureKey": "explosion1",
+        "vfxBaseRadius": 60,
+        "radius": 120,
+        "baseDamage": 8,
+        "applyEffects": [
+            "effect_boss_acid_corrosion"
+        ]
+    },
+    "skill_boss_nanite_reboot_t1": {
+        "id": "skill_boss_nanite_reboot_t1",
+        "name": "Emergency Nanite Repair",
+        "cooldownSeconds": 999.0,
+        "actionType": "SelfBuff",
+        "targetType": "Self",
+        "applyEffects": [
+            "effect_boss_nanite_shield"
+        ],
+        "stopMoving": true,
+        "baseDamage": -150
+    },
+    "skill_boss_void_pulse_t1": {
+        "id": "skill_boss_void_pulse_t1",
+        "name": "Gravitational Draw",
+        "actionType": "AoE",
+        "targetType": "Self",
+        "radius": 150,
+        "baseDamage": 5,
+        "applyEffects": [
+            "effect_boss_gravity_crush"
+        ]
+    },
+    "skill_boss_void_laser_sweep_t1": {
+        "id": "skill_boss_void_laser_sweep_t1",
+        "name": "Singularity Eraser",
+        "actionType": "Beam",
+        "targetType": "Sweep",
+        "sweepAngleSpeed": 0.04,
+        "range": 650,
+        "beamWidth": 25,
+        "baseDamage": 35,
+        "cooldownSeconds": 15.0,
+        "castTimeSeconds": 2.0,
+        "channelDurationSeconds": 6.0,
+        "stopMoving": true,
+        "colorTint": "0x880088"
+    },
+    "skill_boss_sanguine_rupture_t1": {
+        "id": "skill_boss_sanguine_rupture_t1",
+        "name": "Sanguine Rupture",
+        "actionType": "AoE",
+        "targetType": "Self",
+        "radius": 250,
+        "baseDamage": 40,
+        "applyEffects": [
+            "effect_boss_sanguine_bleed"
+        ]
+    },
+    "skill_boss_frenzy_aura_t1": {
+        "id": "skill_boss_frenzy_aura_t1",
+        "name": "Blood Frenzy",
+        "cooldownSeconds": 20.0,
+        "actionType": "SelfBuff",
+        "targetType": "Self",
+        "applyEffects": [
+            "effect_buff_adrenaline_t2"
+        ]
     }
 }

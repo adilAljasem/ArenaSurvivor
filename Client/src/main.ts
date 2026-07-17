@@ -286,6 +286,12 @@ class GameScene extends Phaser.Scene {
     private currentCompressedKbps: string = "0.00";
     private currentUncompressedKbps: string = "0.00";
 
+
+    // Promoted from a local `const` inside create() so tryHideMatchLoader() can also force a
+    // recompute right before the loader drops - see the reconnect-camera fix.
+    private updateCamerasForFairPlay!: (gameSize?: Phaser.Structs.Size) => void;
+
+
     private handoffTimeout: ReturnType<typeof setTimeout> | null = null;
     // All three need to be true before the loading overlay disappears - whichever finishes
     // last is what actually triggers hiding it.
@@ -306,6 +312,17 @@ class GameScene extends Phaser.Scene {
 
     private tryHideMatchLoader() {
         if (!this.playersSynced || !this.isMapInitialized || !this.localPlayerRendered) return;
+
+        // Force one final, authoritative camera recompute right before reveal. This is the one
+        // moment the game guarantees the layout has fully settled - map built, camera following,
+        // loader about to drop - so it's a much stronger guarantee than any resize/visibility
+        // event timing. This is what actually fixes the letterboxed-camera-stuck-small bug on
+        // mid-match F5 reconnect: whatever updateCamerasForFairPlay computed way back at create()
+        // (before the multi-second reconnect handshake even finished) gets thrown away here and
+        // redone against the now-guaranteed-correct size.
+        this.scale.refresh();
+        this.updateCamerasForFairPlay();
+
         // Small buffer so the camera's follow-lerp has time to actually settle near the
         // player while still hidden, instead of revealing the tail end of that slide.
         setTimeout(() => hideAppLoader(), 200);
@@ -348,11 +365,12 @@ class GameScene extends Phaser.Scene {
 
     preload() {
         this.load.spritesheet('mushroomEnemy', '/assets/Enemies/mushroom.png', { frameWidth: 80, frameHeight: 64 });
-        this.load.spritesheet('weapons_sheet', '/assets/Weapons/weapons.png', { frameWidth: 176, frameHeight: 96 });
+        this.load.spritesheet('weapons_sheet', '/assets/Weapons/weapons3.png', { frameWidth: 170, frameHeight: 204 });
         this.load.spritesheet('tree', 'assets/obstacles/Tree Lights 02-Sheet.png', { frameWidth: 32, frameHeight: 64 });
         this.load.spritesheet('effects1', 'assets/Effects/effects1.png', { frameWidth: 64, frameHeight: 64 });
         this.load.spritesheet('characters_sheet1', 'assets/Characters/char1.png', { frameWidth: 32, frameHeight: 32 });
         this.load.spritesheet('characters', 'assets/Characters/charaters.png', { frameWidth: 450, frameHeight: 450 });
+        this.load.spritesheet('items_sheet', 'assets/Weapons/items.png', { frameWidth: 200, frameHeight: 187 });
 
         this.load.spritesheet('shaman', 'assets/Characters/shaman.png', { frameWidth: 61, frameHeight: 61 });
         this.load.spritesheet('rock', 'assets/Characters/Rock.png', { frameWidth: 61, frameHeight: 61 });
@@ -628,7 +646,7 @@ class GameScene extends Phaser.Scene {
         // =========================================================
         this.cameras.main.setBackgroundColor('#2d2d2d');
 
-        const updateCamerasForFairPlay = (gameSize?: Phaser.Structs.Size) => {
+        this.updateCamerasForFairPlay = (gameSize?: Phaser.Structs.Size) => {
             // Phaser passes the freshest size straight into the resize event — prefer that
             // over this.scale.width/height, which can lag a tick behind on some browsers.
             const width = gameSize?.width ?? this.scale.width;
@@ -691,11 +709,11 @@ class GameScene extends Phaser.Scene {
         // Hook the function up to Phaser's resize event safely. Remove any listener from a
         // prior create() first — otherwise a scene restart/reconnect stacks duplicate
         // handlers that keep firing on every future resize.
-        this.scale.off('resize', updateCamerasForFairPlay);
-        this.scale.on('resize', updateCamerasForFairPlay);
+        this.scale.off('resize', this.updateCamerasForFairPlay);
+        this.scale.on('resize', this.updateCamerasForFairPlay);
 
-        // Trigger math immediately on startup
-        updateCamerasForFairPlay();
+        this.updateCamerasForFairPlay();
+
 
         // Remove the old manual skillActionBar setPosition line right below this!
         // this.skillActionBar.setPosition(this.scale.width / 2, this.scale.height - 40);

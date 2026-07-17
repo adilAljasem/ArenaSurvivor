@@ -34,7 +34,7 @@
       },
       "critChance": {
         "min": 0.01,
-        "max": 0.03
+        "max": 0.01
       },
       "maxHp": {
         "min": 2.0,
@@ -43,9 +43,7 @@
     },
     "skillRollChance": 0.10,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": [
-      
-    ],
+    "allowedRandomSkills": [],
     "grantedSkills": []
   },
   "dragon_fang": {
@@ -56,7 +54,7 @@
     "price": 65,
     "textureKey": "items_sheet",
     "scale": 1.2,
-    "iconFrame": 0,
+    "iconFrame": 1,
     "traits": [],
     "effectsAtWaveEnd": [],
     "effectsOnPurchase": [],
@@ -71,15 +69,14 @@
         "conditionType": "MissingHealthPercent",
         "conditionThreshold": 0.15,
         "targetStat": "armor",
-        "amount": 1
+        "amount": 3
       }
     ],
     "statBonuses": {
       "meleeDamage": 10,
       "maxHp": 15,
       "movementSpeed": -5,
-      "armor":25,
-      "magicDefense": 10
+      "magicDefense": 15
     },
     "statRollChance": 0.75,
     "maxRandomStats": 2,
@@ -89,24 +86,21 @@
         "max": 10.0
       },
       "critChance": {
-        "min": 0.03,
-        "max": 0.07
+        "min": 0.01,
+        "max": 0.01
       },
       "armor": {
         "min": 1.0,
         "max": 3.0
       },
       "maxHp": {
-        "min": 10.0,
+        "min": 2.0,
         "max": 20.0
       }
     },
     "skillRollChance": 0.25,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": [
-      "boss_stomp",
-      "enrage"
-    ]
+    "allowedRandomSkills": []
   },
   "magical_leaf": {
     "id": "magical_leaf",
@@ -116,7 +110,7 @@
     "price": 40,
     "textureKey": "items_sheet",
     "scale": 1.0,
-    "iconFrame": 1,
+    "iconFrame": 2,
     "traits": [],
     "effectsAtWaveEnd": [
       {
@@ -127,7 +121,7 @@
     "effectsOnPurchase": [],
     "dynamicModifiers": [],
     "statBonuses": {
-      "hpRegen": 1
+      "hpRegen": -2
     },
     "statRollChance": 0.35,
     "maxRandomStats": 1,
@@ -142,7 +136,7 @@
       },
       "dodge": {
         "min": 0.01,
-        "max": 0.03
+        "max": 0.02
       }
     },
     "skillRollChance": 0.05,
@@ -159,18 +153,18 @@
     "price": 80,
     "textureKey": "items_sheet",
     "scale": 1.0,
-    "iconFrame": 1,
+    "iconFrame": 3,
     "traits": [],
     "effectsAtWaveEnd": [
       {
-        "statName": "maxHp",
-        "amount": 250
+        "statName": "hpRegen",
+        "amount": -1
       }
     ],
     "effectsOnPurchase": [],
     "dynamicModifiers": [],
     "statBonuses": {
-      "hpRegen": 50
+      "movementSpeed": 5
     },
     "statRollChance": 0.35,
     "maxRandomStats": 1,
@@ -179,21 +173,14 @@
         "min": 3.0,
         "max": 10.0
       },
-      "hpRegen": {
-        "min": 0.5,
-        "max": 1.5
-      },
       "dodge": {
         "min": 0.01,
-        "max": 0.03
+        "max": 0.02
       }
     },
     "skillRollChance": 0.05,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": [
-      "nature_pulse",
-      "rooted_power"
-    ]
+    "allowedRandomSkills": []
   },
   "world_tree_branch": {
     "id": "world_tree_branch",
@@ -203,7 +190,7 @@
     "price": 120,
     "textureKey": "items_sheet",
     "scale": 1.3,
-    "iconFrame": 1,
+    "iconFrame": 5,
     "traits": [
       "rooted_power"
     ],
@@ -214,7 +201,7 @@
       },
       {
         "statName": "hpRegen",
-        "amount": 2
+        "amount": 1
       }
     ],
     "effectsOnPurchase": [],
@@ -253,10 +240,7 @@
     },
     "skillRollChance": 0.40,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": [
-      "summon_trees",
-      "nature_pulse"
-    ]
+    "allowedRandomSkills": []
   },
   "cursed_skull": {
     "id": "cursed_skull",
@@ -266,18 +250,18 @@
     "price": 15,
     "textureKey": "items_sheet",
     "scale": 1.0,
-    "iconFrame": 7,
+    "iconFrame": 6,
     "traits": [
       "more_enemies"
     ],
     "effectsAtWaveEnd": [
       {
-        "statName": "maxHp",
+        "statName": "movementSpeed",
         "amount": -2
       },
       {
-        "statName": "damagePercent",
-        "amount": 0.05
+        "statName": "maxHp",
+        "amount": 5.0
       }
     ],
     "effectsOnPurchase": [],
@@ -304,9 +288,7 @@
     },
     "skillRollChance": 0.15,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": [
-      "poison_volley"
-    ]
+    "allowedRandomSkills": []
   },
   "demonic_pact": {
     "id": "demonic_pact",
@@ -328,7 +310,7 @@
       },
       {
         "statName": "damagePercent",
-        "amount": 0.15
+        "amount": 0.02
       },
       {
         "statName": "lifeStealPercent",
@@ -348,20 +330,20 @@
       "armor": -5,
       "lifeStealPercent": 0.05
     },
-    "statRollChance": 0.90,
+    "statRollChance": 0.30,
     "maxRandomStats": 3,
     "allowedRandomStats": {
       "damagePercent": {
         "min": 0.05,
-        "max": 0.20
+        "max": 0.1
       },
       "critChance": {
-        "min": 0.05,
-        "max": 0.12
+        "min": 0.01,
+        "max": 0.5
       },
       "lifeStealPercent": {
         "min": 0.01,
-        "max": 0.04
+        "max": 0.02
       },
       "movementSpeed": {
         "min": 5.0,
@@ -370,9 +352,7 @@
     },
     "skillRollChance": 0.50,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": [
-      "enrage"
-    ]
+    "allowedRandomSkills": []
   },
   "battery": {
     "id": "battery",
@@ -382,14 +362,13 @@
     "price": 35,
     "textureKey": "items_sheet",
     "scale": 1.0,
-    "iconFrame": 8,
+    "iconFrame": 9,
     "traits": [],
     "effectsAtWaveEnd": [],
     "effectsOnPurchase": [],
     "dynamicModifiers": [],
     "statBonuses": {
-      "magicDamage": 3,
-      "engineering": 1
+      "magicDamage": 3
     },
     "statRollChance": 0.35,
     "maxRandomStats": 1,
@@ -398,10 +377,6 @@
         "min": 2.0,
         "max": 5.0
       },
-      "engineering": {
-        "min": 1.0,
-        "max": 3.0
-      },
       "attackSpeedPercent": {
         "min": 0.02,
         "max": 0.06
@@ -409,9 +384,7 @@
     },
     "skillRollChance": 0.10,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": [
-      "magic_missile"
-    ]
+    "allowedRandomSkills": []
   },
   "plasma_core": {
     "id": "plasma_core",
@@ -421,20 +394,20 @@
     "price": 75,
     "textureKey": "items_sheet",
     "scale": 1.1,
-    "iconFrame": 8,
+    "iconFrame": 10,
     "traits": [],
     "effectsAtWaveEnd": [
       {
-        "statName": "engineering",
-        "amount": 2
+        "statName": "xpGainPercent",
+        "amount": 0.01
       }
     ],
     "effectsOnPurchase": [],
     "dynamicModifiers": [
       {
         "conditionType": "PerXStat",
-        "conditionStat": "engineering",
-        "conditionThreshold": 5.0,
+        "conditionStat": "magicDefense",
+        "conditionThreshold": 10.0,
         "targetStat": "magicDamage",
         "amount": 2.0
       }
@@ -465,10 +438,7 @@
     },
     "skillRollChance": 0.30,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": [
-      "frost_nova",
-      "magic_missile"
-    ]
+    "allowedRandomSkills": []
   },
   "coffee": {
     "id": "coffee",
@@ -478,7 +448,7 @@
     "price": 25,
     "textureKey": "items_sheet",
     "scale": 1.0,
-    "iconFrame": 9,
+    "iconFrame": 11,
     "traits": [],
     "effectsAtWaveEnd": [],
     "effectsOnPurchase": [],
@@ -509,9 +479,7 @@
     },
     "skillRollChance": 0.05,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": [
-      "adrenaline_surge"
-    ]
+    "allowedRandomSkills": []
   },
   "espresso_shot": {
     "id": "espresso_shot",
@@ -521,7 +489,7 @@
     "price": 55,
     "textureKey": "items_sheet",
     "scale": 1.0,
-    "iconFrame": 9,
+    "iconFrame": 12,
     "traits": [
       "neo_reflexes",
       "rushed"
@@ -564,9 +532,7 @@
     },
     "skillRollChance": 0.25,
     "maxRandomSkills": 1,
-    "allowedRandomSkills": [
-      "adrenaline_surge"
-    ]
+    "allowedRandomSkills": []
   },
   "mirror": {
     "id": "mirror",
@@ -576,7 +542,7 @@
     "price": 50,
     "textureKey": "items_sheet",
     "scale": 1.0,
-    "iconFrame": 2,
+    "iconFrame": 13,
     "traits": [],
     "effectsAtWaveEnd": [],
     "effectsOnPurchase": [
@@ -614,7 +580,7 @@
     "price": 40,
     "textureKey": "items_sheet",
     "scale": 1.0,
-    "iconFrame": 4,
+    "iconFrame": 14,
     "traits": [],
     "effectsAtWaveEnd": [
       {
@@ -647,5 +613,1862 @@
     "skillRollChance": 0.0,
     "maxRandomSkills": 0,
     "allowedRandomSkills": []
+  },
+  "warlocks_phylactery": {
+    "id": "warlocks_phylactery",
+    "name": "Warlock's Phylactery",
+    "itemFamily": "warlock_relic",
+    "tier": 2,
+    "price": 70,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 16,
+    "allowedCharacters": [
+      "char_Warlock"
+    ],
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [
+      {
+        "conditionType": "PerXStat",
+        "conditionStat": "magicDamage",
+        "conditionThreshold": 15.0,
+        "targetStat": "damagePercent",
+        "amount": 0.02
+      }
+    ],
+    "statBonuses": {
+      "magicDamage": 18,
+      "hpRegen": -2
+    },
+    "statRollChance": 0.6,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "magicDamage": {
+        "min": 5.0,
+        "max": 12.0
+      }
+    },
+    "skillRollChance": 0.1,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "grimoire_of_the_bound": {
+    "id": "grimoire_of_the_bound",
+    "name": "Grimoire of the Bound",
+    "itemFamily": "warlock_relic",
+    "tier": 3,
+    "price": 110,
+    "textureKey": "items_sheet",
+    "scale": 1.2,
+    "iconFrame": 17,
+    "allowedCharacters": [
+      "char_Warlock"
+    ],
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [
+      {
+        "conditionType": "MissingHealthPercent",
+        "conditionThreshold": 0.25,
+        "targetStat": "magicDamage",
+        "amount": 5
+      }
+    ],
+    "statBonuses": {
+      "magicDamage": 25,
+      "magicDefense": 5
+    },
+    "statRollChance": 0.8,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "magicDamage": {
+        "min": 10.0,
+        "max": 20.0
+      }
+    },
+    "skillRollChance": 0.2,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "hawk_feather_cloak": {
+    "id": "hawk_feather_cloak",
+    "name": "Hawk Feather Cloak",
+    "itemFamily": "ranger_relic",
+    "tier": 2,
+    "price": 65,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 18,
+    "allowedCharacters": [
+      "char_forest_ranger"
+    ],
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [
+      {
+        "conditionType": "PerXStat",
+        "conditionStat": "movementSpeed",
+        "conditionThreshold": 50.0,
+        "targetStat": "critChance",
+        "amount": 0.02
+      }
+    ],
+    "statBonuses": {
+      "rangedDamage": 12,
+      "movementSpeed": 5,
+      "dodge": 0.03
+    },
+    "statRollChance": 0.6,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "movementSpeed": {
+        "min": 5.0,
+        "max": 15.0
+      }
+    },
+    "skillRollChance": 0.1,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "quiver_of_the_endless_hunt": {
+    "id": "quiver_of_the_endless_hunt",
+    "name": "Quiver of the Endless Hunt",
+    "itemFamily": "ranger_relic",
+    "tier": 2,
+    "price": 100,
+    "textureKey": "items_sheet",
+    "scale": 1.2,
+    "iconFrame": 19,
+    "allowedCharacters": [
+      "char_forest_ranger"
+    ],
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [
+      {
+        "conditionType": "PerEnemyAlive",
+        "conditionThreshold": 1.0,
+        "targetStat": "rangedDamage",
+        "amount": 0.5
+      }
+    ],
+    "statBonuses": {
+      "rangedDamage": 20,
+      "range": 10
+    },
+    "statRollChance": 0.8,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "rangedDamage": {
+        "min": 5.0,
+        "max": 25.0
+      }
+    },
+    "skillRollChance": 0.2,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "halo_of_devotion": {
+    "id": "halo_of_devotion",
+    "name": "Halo of Devotion",
+    "itemFamily": "valkyrie_relic",
+    "tier": 2,
+    "price": 70,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 21,
+    "allowedCharacters": [
+      "char_valkyrie"
+    ],
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [
+      {
+        "conditionType": "PerXStat",
+        "conditionStat": "healPower",
+        "conditionThreshold": 20.0,
+        "targetStat": "magicDamage",
+        "amount": 2
+      }
+    ],
+    "statBonuses": {
+      "healPower": 15,
+      "magicDamage": 8
+    },
+    "statRollChance": 0.6,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "healPower": {
+        "min": 5.0,
+        "max": 12.0
+      }
+    },
+    "skillRollChance": 0.1,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "wings_of_the_guardian": {
+    "id": "wings_of_the_guardian",
+    "name": "Wings of the Guardian",
+    "itemFamily": "valkyrie_relic",
+    "tier": 2,
+    "price": 110,
+    "textureKey": "items_sheet",
+    "scale": 1.2,
+    "iconFrame": 22,
+    "allowedCharacters": [
+      "char_valkyrie"
+    ],
+    "traits": [],
+    "effectsAtWaveEnd": [
+      {
+        "statName": "healPower",
+        "amount": 2
+      }
+    ],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "healPower": 10,
+      "shieldPower": 8,
+      "movementSpeed": 10
+    },
+    "statRollChance": 0.8,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "healPower": {
+        "min": 5.0,
+        "max": 18.0
+      }
+    },
+    "skillRollChance": 0.2,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "grave_binding_chains": {
+    "id": "grave_binding_chains",
+    "name": "Grave Binding Chains",
+    "itemFamily": "skeleton_relic",
+    "tier": 2,
+    "price": 65,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 23,
+    "allowedCharacters": [
+      "char_skeleton_warrior"
+    ],
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [
+      {
+        "conditionType": "MissingHealthPercent",
+        "conditionThreshold": 0.20,
+        "targetStat": "lifeStealPercent",
+        "amount": 0.02
+      }
+    ],
+    "statBonuses": {
+      "meleeDamage": 15,
+      "armor": 8
+    },
+    "statRollChance": 0.6,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "meleeDamage": {
+        "min": 5.0,
+        "max": 15.0
+      }
+    },
+    "skillRollChance": 0.1,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "ossuary_heart": {
+    "id": "ossuary_heart",
+    "name": "Ossuary Heart",
+    "itemFamily": "skeleton_relic",
+    "tier": 3,
+    "price": 105,
+    "textureKey": "items_sheet",
+    "scale": 1.2,
+    "iconFrame": 24,
+    "allowedCharacters": [
+      "char_skeleton_warrior"
+    ],
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [
+      {
+        "conditionType": "PerXStat",
+        "conditionStat": "maxHp",
+        "conditionThreshold": 150.0,
+        "targetStat": "armor",
+        "amount": 5
+      }
+    ],
+    "statBonuses": {
+      "maxHp": 60,
+      "meleeDamage": 10,
+      "lifeStealPercent": 0.03
+    },
+    "statRollChance": 0.8,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "maxHp": {
+        "min": 20.0,
+        "max": 40.0
+      }
+    },
+    "skillRollChance": 0.2,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "thick_hide": {
+    "id": "thick_hide",
+    "name": "Thick Hide",
+    "itemFamily": "vitality",
+    "tier": 1,
+    "price": 20,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 25,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "armor": 5,
+      "maxHp": 10,
+      "movementSpeed": -2
+    },
+    "statRollChance": 0.35,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "maxHp": {
+        "min": 3.0,
+        "max": 8.0
+      }
+    },
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "iron_ration": {
+    "id": "iron_ration",
+    "name": "Iron Ration",
+    "itemFamily": "vitality",
+    "tier": 1,
+    "price": 25,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 26,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "hpRegen": 1.5,
+      "maxHp": 8
+    },
+    "statRollChance": 0.35,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "hpRegen": {
+        "min": 0.5,
+        "max": 1.5
+      }
+    },
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "turtle_shell": {
+    "id": "turtle_shell",
+    "name": "Turtle Shell",
+    "itemFamily": "vitality",
+    "tier": 2,
+    "price": 55,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 28,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "armor": 15,
+      "maxHp": 20,
+      "movementSpeed": -8
+    },
+    "statRollChance": 0.6,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "armor": {
+        "min": 3.0,
+        "max": 8.0
+      }
+    },
+    "skillRollChance": 0.1,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "mountain_heart": {
+    "id": "mountain_heart",
+    "name": "Mountain Heart",
+    "itemFamily": "vitality",
+    "tier": 3,
+    "price": 100,
+    "textureKey": "items_sheet",
+    "scale": 1.2,
+    "iconFrame": 29,
+    "traits": [],
+    "effectsAtWaveEnd": [
+      {
+        "statName": "maxHp",
+        "amount": 3
+      }
+    ],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "maxHp": 60,
+      "armor": 10,
+      "hpRegen": 2
+    },
+    "statRollChance": 0.8,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "maxHp": {
+        "min": 15.0,
+        "max": 30.0
+      }
+    },
+    "skillRollChance": 0.2,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "sharpened_edge": {
+    "id": "sharpened_edge",
+    "name": "Sharpened Edge",
+    "itemFamily": "glass_cannon",
+    "tier": 1,
+    "price": 25,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 30,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "critChance": 0.03,
+      "damagePercent": 0.02
+    },
+    "statRollChance": 0.35,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "critChance": {
+        "min": 0.01,
+        "max": 0.03
+      }
+    },
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "adrenal_gland": {
+    "id": "adrenal_gland",
+    "name": "Adrenal Gland",
+    "itemFamily": "glass_cannon",
+    "tier": 2,
+    "price": 60,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 31,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "damagePercent": 0.08,
+      "attackSpeedPercent": 0.05
+    },
+    "statRollChance": 0.6,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "damagePercent": {
+        "min": 0.03,
+        "max": 0.08
+      }
+    },
+    "skillRollChance": 0.15,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": [
+      "adrenaline_surge"
+    ]
+  },
+  "killers_instinct": {
+    "id": "killers_instinct",
+    "name": "Killer's Instinct",
+    "itemFamily": "glass_cannon",
+    "tier": 3,
+    "price": 100,
+    "textureKey": "items_sheet",
+    "scale": 1.2,
+    "iconFrame": 58,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [
+      {
+        "conditionType": "MissingHealthPercent",
+        "conditionThreshold": 0.30,
+        "targetStat": "critChance",
+        "amount": 0.05
+      }
+    ],
+    "statBonuses": {
+      "critChance": 0.08,
+      "damagePercent": 0.12
+    },
+    "statRollChance": 0.8,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "critChance": {
+        "min": 0.04,
+        "max": 0.10
+      }
+    },
+    "skillRollChance": 0.2,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "glass_dagger": {
+    "id": "glass_dagger",
+    "name": "Glass Dagger",
+    "itemFamily": "glass_cannon",
+    "tier": 1,
+    "price": 20,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 32,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "critChance": 0.05,
+      "maxHp": -5
+    },
+    "statRollChance": 0.4,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "critChance": {
+        "min": 0.02,
+        "max": 0.04
+      }
+    },
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "winged_boots": {
+    "id": "winged_boots",
+    "name": "Winged Boots",
+    "itemFamily": "mobility",
+    "tier": 1,
+    "price": 25,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 35,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "movementSpeed": 10
+    },
+    "statRollChance": 0.35,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "movementSpeed": {
+        "min": 5.0,
+        "max": 12.0
+      }
+    },
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "wind_charm": {
+    "id": "wind_charm",
+    "name": "Wind Charm",
+    "itemFamily": "mobility",
+    "tier": 2,
+    "price": 50,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 36,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "movementSpeed": 25,
+      "dodge": 0.04
+    },
+    "statRollChance": 0.55,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "dodge": {
+        "min": 0.01,
+        "max": 0.04
+      }
+    },
+    "skillRollChance": 0.1,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "featherweight_cloak": {
+    "id": "featherweight_cloak",
+    "name": "Featherweight Cloak",
+    "itemFamily": "mobility",
+    "tier": 2,
+    "price": 55,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 37,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "movementSpeed": 20,
+      "haste": 3
+    },
+    "statRollChance": 0.55,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "haste": {
+        "min": 1.0,
+        "max": 4.0
+      }
+    },
+    "skillRollChance": 0.1,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "stormrunner_greaves": {
+    "id": "stormrunner_greaves",
+    "name": "Stormrunner Greaves",
+    "itemFamily": "mobility",
+    "tier": 3,
+    "price": 95,
+    "textureKey": "items_sheet",
+    "scale": 1.2,
+    "iconFrame": 38,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "movementSpeed": 35,
+      "dodge": 0.06,
+      "haste": 5
+    },
+    "statRollChance": 0.75,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "movementSpeed": {
+        "min": 10.0,
+        "max": 25.0
+      }
+    },
+    "skillRollChance": 0.2,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "four_leaf_clover": {
+    "id": "four_leaf_clover",
+    "name": "Four-Leaf Clover",
+    "itemFamily": "luck",
+    "tier": 1,
+    "price": 30,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 40,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "luck": 8
+    },
+    "statRollChance": 0.35,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "luck": {
+        "min": 2.0,
+        "max": 6.0
+      }
+    },
+    "skillRollChance": 0.0,
+    "maxRandomSkills": 0,
+    "allowedRandomSkills": []
+  },
+  "prospectors_pick": {
+    "id": "prospectors_pick",
+    "name": "Prospector's Pick",
+    "itemFamily": "luck",
+    "tier": 1,
+    "price": 25,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 41,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "harvesting": 5
+    },
+    "statRollChance": 0.35,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "harvesting": {
+        "min": 2.0,
+        "max": 6.0
+      }
+    },
+    "skillRollChance": 0.0,
+    "maxRandomSkills": 0,
+    "allowedRandomSkills": []
+  },
+  "magnetic_core": {
+    "id": "magnetic_core",
+    "name": "Magnetic Core",
+    "itemFamily": "luck",
+    "tier": 2,
+    "price": 50,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 42,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "pickupRange": 30,
+      "luck": 3,
+      "maxHp": -5
+    },
+    "statRollChance": 0.5,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "pickupRange": {
+        "min": 5.0,
+        "max": 10.0
+      }
+    },
+    "skillRollChance": 0.0,
+    "maxRandomSkills": 0,
+    "allowedRandomSkills": []
+  },
+  "lucky_coin": {
+    "id": "lucky_coin",
+    "name": "Lucky Coin",
+    "itemFamily": "luck",
+    "tier": 2,
+    "price": 55,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 43,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "luck": 10,
+      "xpGainPercent": 0.05
+    },
+    "statRollChance": 0.5,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "xpGainPercent": {
+        "min": 0.02,
+        "max": 0.06
+      }
+    },
+    "skillRollChance": 0.0,
+    "maxRandomSkills": 0,
+    "allowedRandomSkills": []
+  },
+  "golden_compass": {
+    "id": "golden_compass",
+    "name": "Golden Compass",
+    "itemFamily": "luck",
+    "tier": 3,
+    "price": 95,
+    "textureKey": "items_sheet",
+    "scale": 1.2,
+    "iconFrame": 45,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "luck": 15,
+      "harvesting": 8,
+      "xpGainPercent": 0.08
+    },
+    "statRollChance": 0.7,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "luck": {
+        "min": 5.0,
+        "max": 12.0
+      }
+    },
+    "skillRollChance": 0.1,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "arcane_shard": {
+    "id": "arcane_shard",
+    "name": "Arcane Shard",
+    "itemFamily": "magic_tech",
+    "tier": 1,
+    "price": 30,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 46,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "magicDamage": 5
+    },
+    "statRollChance": 0.35,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "magicDamage": {
+        "min": 2.0,
+        "max": 5.0
+      }
+    },
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": [
+      "magic_missile"
+    ]
+  },
+  "mana_crystal": {
+    "id": "mana_crystal",
+    "name": "Mana Crystal",
+    "itemFamily": "magic_tech",
+    "tier": 2,
+    "price": 60,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 47,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "magicDamage": 10,
+      "haste": 3
+    },
+    "statRollChance": 0.6,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "magicDamage": {
+        "min": 5.0,
+        "max": 12.0
+      }
+    },
+    "skillRollChance": 0.15,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": [
+      "frost_nova"
+    ]
+  },
+  "overcharged_core": {
+    "id": "overcharged_core",
+    "name": "Overcharged Core",
+    "itemFamily": "magic_tech",
+    "tier": 4,
+    "price": 100,
+    "textureKey": "items_sheet",
+    "scale": 1.2,
+    "iconFrame": 48,
+    "traits": [],
+    "effectsAtWaveEnd": [
+      {
+        "statName": "haste",
+        "amount": 2
+      }
+    ],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [
+      {
+        "conditionType": "PerXStat",
+        "conditionStat": "maxHp",
+        "conditionThreshold": 10.0,
+        "targetStat": "magicDamage",
+        "amount": 2.0
+      }
+    ],
+    "statBonuses": {
+      "magicDamage": 20
+    },
+    "statRollChance": 0.75,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "magicDamage": {
+        "min": 8.0,
+        "max": 35.0
+      }
+    },
+    "skillRollChance": 0.2,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "eagle_eye_lens": {
+    "id": "eagle_eye_lens",
+    "name": "Eagle Eye Lens",
+    "itemFamily": "ranged_tools",
+    "tier": 1,
+    "price": 25,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 49,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "rangedDamage": 5,
+      "critChance": 0.02
+    },
+    "statRollChance": 0.35,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "rangedDamage": {
+        "min": 2.0,
+        "max": 5.0
+      }
+    },
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "steel_arrowhead": {
+    "id": "steel_arrowhead",
+    "name": "Steel Arrowhead",
+    "itemFamily": "ranged_tools",
+    "tier": 2,
+    "price": 55,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 50,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "rangedDamage": 12
+    },
+    "statRollChance": 0.55,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "rangedDamage": {
+        "min": 5.0,
+        "max": 12.0
+      }
+    },
+    "skillRollChance": 0.1,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "long_barrel": {
+    "id": "long_barrel",
+    "name": "Long Barrel",
+    "itemFamily": "ranged_tools",
+    "tier": 2,
+    "price": 60,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 39,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "range": 10,
+      "rangedDamage": 6
+    },
+    "statRollChance": 0.55,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "range": {
+        "min": 10.0,
+        "max": 30.0
+      }
+    },
+    "skillRollChance": 0.1,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "hawkshot_scope": {
+    "id": "hawkshot_scope",
+    "name": "Hawkshot Scope",
+    "itemFamily": "ranged_tools",
+    "tier": 3,
+    "price": 100,
+    "textureKey": "items_sheet",
+    "scale": 1.2,
+    "iconFrame": 53,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "rangedDamage": 18,
+      "critChance": 0.05,
+      "range": 20
+    },
+    "statRollChance": 0.75,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "rangedDamage": {
+        "min": 8.0,
+        "max": 20.0
+      }
+    },
+    "skillRollChance": 0.2,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "serrated_blade": {
+    "id": "serrated_blade",
+    "name": "Serrated Blade",
+    "itemFamily": "melee_tools",
+    "tier": 1,
+    "price": 25,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 51,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "meleeDamage": 6
+    },
+    "statRollChance": 0.35,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "meleeDamage": {
+        "min": 2.0,
+        "max": 6.0
+      }
+    },
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "brass_knuckles": {
+    "id": "brass_knuckles",
+    "name": "Brass Knuckles",
+    "itemFamily": "melee_tools",
+    "tier": 1,
+    "price": 20,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 77,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "meleeDamage": 4,
+      "attackSpeedPercent": 0.03
+    },
+    "statRollChance": 0.35,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "meleeDamage": {
+        "min": 1.0,
+        "max": 4.0
+      }
+    },
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "war_paint": {
+    "id": "war_paint",
+    "name": "War Paint",
+    "itemFamily": "melee_tools",
+    "tier": 2,
+    "price": 50,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 15,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "meleeDamage": 10,
+      "critChance": 0.03
+    },
+    "statRollChance": 0.55,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "meleeDamage": {
+        "min": 4.0,
+        "max": 10.0
+      }
+    },
+    "skillRollChance": 0.1,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": [
+      "boss_stomp"
+    ]
+  },
+  "berserkers_totem": {
+    "id": "berserkers_totem",
+    "name": "Berserker's Totem",
+    "itemFamily": "melee_tools",
+    "tier": 3,
+    "price": 95,
+    "textureKey": "items_sheet",
+    "scale": 1.2,
+    "iconFrame": 33,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [
+      {
+        "conditionType": "MissingHealthPercent",
+        "conditionThreshold": 0.20,
+        "targetStat": "meleeDamage",
+        "amount": 15
+      }
+    ],
+    "statBonuses": {
+      "meleeDamage": 18
+    },
+    "statRollChance": 0.75,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "meleeDamage": {
+        "min": 8.0,
+        "max": 18.0
+      }
+    },
+    "skillRollChance": 0.2,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": [
+      "enrage"
+    ]
+  },
+  "vampiric_ring": {
+    "id": "vampiric_ring",
+    "name": "Vampiric Ring",
+    "itemFamily": "sustain",
+    "tier": 1,
+    "price": 35,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 59,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "lifeStealPercent": 0.02
+    },
+    "statRollChance": 0.4,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "lifeStealPercent": {
+        "min": 0.01,
+        "max": 0.02
+      }
+    },
+    "skillRollChance": 0.0,
+    "maxRandomSkills": 0,
+    "allowedRandomSkills": []
+  },
+  "sanguine_charm": {
+    "id": "sanguine_charm",
+    "name": "Sanguine Charm",
+    "itemFamily": "sustain",
+    "tier": 2,
+    "price": 60,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 60,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "lifeStealPercent": 0.03,
+      "maxHp": 10
+    },
+    "statRollChance": 0.55,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "lifeStealPercent": {
+        "min": 0.01,
+        "max": 0.03
+      }
+    },
+    "skillRollChance": 0.1,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "mendicants_beads": {
+    "id": "mendicants_beads",
+    "name": "Mendicant's Beads",
+    "itemFamily": "sustain",
+    "tier": 2,
+    "price": 55,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 61,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "healPower": 8
+    },
+    "statRollChance": 0.5,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "healPower": {
+        "min": 2.0,
+        "max": 6.0
+      }
+    },
+    "skillRollChance": 0.1,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "guardian_angel_feather": {
+    "id": "guardian_angel_feather",
+    "name": "Guardian Angel Feather",
+    "itemFamily": "sustain",
+    "tier": 2,
+    "price": 60,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 62,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "shieldPower": 8
+    },
+    "statRollChance": 0.5,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "shieldPower": {
+        "min": 2.0,
+        "max": 6.0
+      }
+    },
+    "skillRollChance": 0.1,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "crimson_goblet": {
+    "id": "crimson_goblet",
+    "name": "Crimson Goblet",
+    "itemFamily": "sustain",
+    "tier": 3,
+    "price": 100,
+    "textureKey": "items_sheet",
+    "scale": 1.2,
+    "iconFrame": 64,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "lifeStealPercent": 0.05,
+      "maxHp": 20
+    },
+    "statRollChance": 0.75,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "lifeStealPercent": {
+        "min": 0.02,
+        "max": 0.05
+      }
+    },
+    "skillRollChance": 0.2,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "iron_plate": {
+    "id": "iron_plate",
+    "name": "Iron Plate",
+    "itemFamily": "defense",
+    "tier": 1,
+    "price": 25,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 65,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "armor": 8
+    },
+    "statRollChance": 0.35,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "armor": {
+        "min": 2.0,
+        "max": 6.0
+      }
+    },
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "runed_ward": {
+    "id": "runed_ward",
+    "name": "Runed Ward",
+    "itemFamily": "defense",
+    "tier": 1,
+    "price": 30,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 68,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "magicDefense": 8
+    },
+    "statRollChance": 0.35,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "magicDefense": {
+        "min": 2.0,
+        "max": 6.0
+      }
+    },
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "bulwark_core": {
+    "id": "bulwark_core",
+    "name": "Bulwark Core",
+    "itemFamily": "defense",
+    "tier": 2,
+    "price": 60,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 66,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "armor": 12,
+      "magicDefense": 12
+    },
+    "statRollChance": 0.6,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "armor": {
+        "min": 4.0,
+        "max": 10.0
+      }
+    },
+    "skillRollChance": 0.1,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "aegis_bastion": {
+    "id": "aegis_bastion",
+    "name": "Aegis Bastion",
+    "itemFamily": "defense",
+    "tier": 3,
+    "price": 105,
+    "textureKey": "items_sheet",
+    "scale": 1.2,
+    "iconFrame": 69,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "armor": 20,
+      "magicDefense": 20,
+      "defensePercent": 0.05
+    },
+    "statRollChance": 0.8,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "armor": {
+        "min": 8.0,
+        "max": 15.0
+      }
+    },
+    "skillRollChance": 0.2,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "vial_of_venom": {
+    "id": "vial_of_venom",
+    "name": "Vial of Venom",
+    "itemFamily": "active_proc",
+    "tier": 1,
+    "price": 35,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 70,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {},
+    "grantedSkills": [
+      "skill_venom_pulse_t1"
+    ],
+    "statRollChance": 0.2,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "damagePercent": {
+        "min": 0.01,
+        "max": 0.03
+      }
+    },
+    "skillRollChance": 0.0,
+    "maxRandomSkills": 0,
+    "allowedRandomSkills": []
+  },
+  "ember_stone": {
+    "id": "ember_stone",
+    "name": "Ember Stone",
+    "itemFamily": "active_proc",
+    "tier": 1,
+    "price": 35,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 71,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {},
+    "grantedSkills": [
+      "skill_ember_pulse_t1"
+    ],
+    "statRollChance": 0.2,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "magicDamage": {
+        "min": 1.0,
+        "max": 3.0
+      }
+    },
+    "skillRollChance": 0.0,
+    "maxRandomSkills": 0,
+    "allowedRandomSkills": []
+  },
+  "frost_charm": {
+    "id": "frost_charm",
+    "name": "Frost Charm",
+    "itemFamily": "active_proc",
+    "tier": 2,
+    "price": 55,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 72,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "armor": 3
+    },
+    "grantedSkills": [
+      "skill_frost_pulse_t1"
+    ],
+    "statRollChance": 0.3,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "armor": {
+        "min": 1.0,
+        "max": 8.0
+      }
+    },
+    "skillRollChance": 0.0,
+    "maxRandomSkills": 0,
+    "allowedRandomSkills": []
+  },
+  "mending_charm": {
+    "id": "mending_charm",
+    "name": "Mending Charm",
+    "itemFamily": "active_proc",
+    "tier": 2,
+    "price": 60,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 73,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "hpRegen": 1
+    },
+    "grantedSkills": [
+      "skill_mending_pulse_t1"
+    ],
+    "statRollChance": 0.3,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "hpRegen": {
+        "min": 0.5,
+        "max": 1.5
+      }
+    },
+    "skillRollChance": 0.0,
+    "maxRandomSkills": 0,
+    "allowedRandomSkills": []
+  },
+  "wardstone": {
+    "id": "wardstone",
+    "name": "Wardstone",
+    "itemFamily": "active_proc",
+    "tier": 2,
+    "price": 60,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 74,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "magicDefense": 5
+    },
+    "grantedSkills": [
+      "skill_minor_shield_pulse_t1"
+    ],
+    "statRollChance": 0.3,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "magicDefense": {
+        "min": 1.0,
+        "max": 3.0
+      }
+    },
+    "skillRollChance": 0.0,
+    "maxRandomSkills": 0,
+    "allowedRandomSkills": []
+  },
+  "tattered_map": {
+    "id": "tattered_map",
+    "name": "Tattered Map",
+    "itemFamily": "trinket",
+    "tier": 1,
+    "price": 15,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 75,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "harvesting": 2,
+      "luck": 2
+    },
+    "statRollChance": 0.25,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "luck": {
+        "min": 1.0,
+        "max": 5.0
+      }
+    },
+    "skillRollChance": 0.0,
+    "maxRandomSkills": 0,
+    "allowedRandomSkills": []
+  },
+  "rusty_gear": {
+    "id": "rusty_gear",
+    "name": "Rusty Gear",
+    "itemFamily": "trinket",
+    "tier": 1,
+    "price": 15,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 76,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "engineering": 2,
+      "attackSpeedPercent": 0.02
+    },
+    "statRollChance": 0.25,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "engineering": {
+        "min": 1.0,
+        "max": 3.0
+      }
+    },
+    "skillRollChance": 0.0,
+    "maxRandomSkills": 0,
+    "allowedRandomSkills": []
+  },
+  "dull_whetstone": {
+    "id": "dull_whetstone",
+    "name": "Dull Whetstone",
+    "itemFamily": "trinket",
+    "tier": 1,
+    "price": 15,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 78,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "meleeDamage": 2,
+      "rangedDamage": 2
+    },
+    "statRollChance": 0.25,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "meleeDamage": {
+        "min": 1.0,
+        "max": 3.0
+      }
+    },
+    "skillRollChance": 0.0,
+    "maxRandomSkills": 0,
+    "allowedRandomSkills": []
+  },
+  "cracked_lens": {
+    "id": "cracked_lens",
+    "name": "Cracked Lens",
+    "itemFamily": "trinket",
+    "tier": 1,
+    "price": 15,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 79,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "magicDamage": 2,
+      "critChance": 0.01
+    },
+    "statRollChance": 0.25,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "magicDamage": {
+        "min": 1.0,
+        "max": 3.0
+      }
+    },
+    "skillRollChance": 0.0,
+    "maxRandomSkills": 0,
+    "allowedRandomSkills": []
+  },
+  "worn_bandage": {
+    "id": "worn_bandage",
+    "name": "Worn Bandage",
+    "itemFamily": "trinket",
+    "tier": 1,
+    "price": 15,
+    "textureKey": "items_sheet",
+    "scale": 1.0,
+    "iconFrame": 80,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "hpRegen": 1
+    },
+    "statRollChance": 0.25,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "hpRegen": {
+        "min": 0.3,
+        "max": 1.0
+      }
+    },
+    "skillRollChance": 0.0,
+    "maxRandomSkills": 0,
+    "allowedRandomSkills": []
+  },
+  "tiny_hourglass": {
+    "id": "tiny_hourglass",
+    "name": "Tiny Hourglass",
+    "itemFamily": "trinket",
+    "tier": 2,
+    "price": 45,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 81,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "haste": 4
+    },
+    "statRollChance": 0.4,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "haste": {
+        "min": 1.0,
+        "max": 4.0
+      }
+    },
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "scavengers_satchel": {
+    "id": "scavengers_satchel",
+    "name": "Scavenger's Satchel",
+    "itemFamily": "trinket",
+    "tier": 2,
+    "price": 50,
+    "textureKey": "items_sheet",
+    "scale": 1.1,
+    "iconFrame": 82,
+    "traits": [],
+    "effectsAtWaveEnd": [],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "pickupRange": 10,
+      "harvesting": 5
+    },
+    "statRollChance": 0.45,
+    "maxRandomStats": 1,
+    "allowedRandomStats": {
+      "pickupRange": {
+        "min": 5.0,
+        "max": 25.0
+      }
+    },
+    "skillRollChance": 0.05,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "phoenix_ash": {
+    "id": "phoenix_ash",
+    "name": "Phoenix Ash",
+    "itemFamily": "trinket",
+    "tier": 3,
+    "price": 110,
+    "textureKey": "items_sheet",
+    "scale": 1.2,
+    "iconFrame": 83,
+    "traits": [],
+    "effectsAtWaveEnd": [
+      {
+        "statName": "maxHp",
+        "amount": 5
+      }
+    ],
+    "effectsOnPurchase": [],
+    "dynamicModifiers": [],
+    "statBonuses": {
+      "hpRegen": 3,
+      "maxHp": 30
+    },
+    "statRollChance": 0.7,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "maxHp": {
+        "min": 15.0,
+        "max": 30.0
+      }
+    },
+    "skillRollChance": 0.15,
+    "maxRandomSkills": 1,
+    "allowedRandomSkills": []
+  },
+  "item_boss_insulated_plating": {
+    "id": "item_boss_insulated_plating",
+    "name": "Insulated Shock Core",
+    "tier": 3,
+    "canDrop": false,
+    "availableInShop": false,
+    "statBonuses": {
+      "armor": 10,
+      "haste": 15
+    }
+  },
+  "item_boss_catalytic_converter": {
+    "id": "item_boss_catalytic_converter",
+    "name": "Toxic Over-Filter",
+    "tier": 3,
+    "canDrop": false,
+    "availableInShop": false,
+    "statBonuses": {
+      "maxHp": 400,
+      "hpRegen": 10
+    }
+  },
+  "item_boss_singularity_matrix": {
+    "id": "item_boss_singularity_matrix",
+    "name": "Dark Matter Harness",
+    "tier": 4,
+    "canDrop": false,
+    "availableInShop": false,
+    "statBonuses": {
+      "magicDefense": 40,
+      "range": 100
+    }
+  },
+  "item_boss_bloodstained_crest": {
+    "id": "item_boss_bloodstained_crest",
+    "name": "Butcher's Sigil",
+    "tier": 4,
+    "canDrop": false,
+    "availableInShop": false,
+    "statBonuses": {
+      "movementSpeed": 30,
+      "lifeStealPercent": 0.15
+    }
   }
 }

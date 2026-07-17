@@ -474,7 +474,6 @@ export class ActorRenderer {
           sprite = scene.add.sprite(wx, wy, wConfig.textureKey);
           if (wConfig.iconFrame !== undefined) sprite.setFrame(wConfig.iconFrame);
           sprite.setScale((wConfig.scale || 1.0) * weaponScaleFactor);
-          if (wConfig.defaultFacingRight === false) sprite.setFlipX(true);
           (sprite as any).__configId = wConfigId;
           weaponsContainer.add(sprite);
           refs.weaponSprites.set(slotIndex, sprite);
@@ -662,8 +661,22 @@ export class ActorRenderer {
           }
 
           const angle = Math.atan2(aimY - targetY, aimX - targetX);
-          sprite.rotation = angle;
-          sprite.setFlipY(Math.abs(angle) > Math.PI / 2);
+
+          // The art may not be drawn facing right - DefaultFacingAngle (degrees) tells us
+          // which way it points at rotation 0, so we offset the aim angle to compensate.
+          const facingOffset = Phaser.Math.DegToRad(wConfig.defaultFacingAngle ?? 0);
+
+          // Determine if we are aiming left based on the RAW aim angle, not the offset rotation
+          const isAimingLeft = Math.abs(angle) > Math.PI / 2;
+
+          // Flipping the sprite vertically also inverts its native diagonal angle 
+          // (e.g., pointing top-right natively becomes pointing bottom-right when flipped).
+          const currentFacingOffset = isAimingLeft ? -facingOffset : facingOffset;
+
+          const spriteRotation = Phaser.Math.Angle.Wrap(angle - currentFacingOffset);
+
+          sprite.rotation = spriteRotation;
+          sprite.setFlipY(isAimingLeft);
 
           // >>> FPS FIX 4: Avoid O(N) Scene Tween Lookups (Updated to use our isFiringThisFrame boolean) <
           if (isFiringThisFrame && !(sprite as any).__isAnimatingAttack) {
@@ -1104,10 +1117,12 @@ export class WorldRenderer {
             const pSize = Phaser.Math.Between(20, 32);
             p.setActive(true).setVisible(true);
             p.setPosition(startX, startY);
-            p.setDisplaySize(pSize, pSize); p.setTint(hitColor);
+            p.setScale(1); // Reset any lingering shrink from a previous tween FIRST...
+            p.setDisplaySize(pSize, pSize); // ...then size it, so this is the value that actually sticks
+            p.setTint(hitColor);
             p.setDepth(19);
-            p.setScale(1); // Reset scale in case a previous tween shrunk it
             p.setAlpha(1);
+
 
             // >>> THE FIX: Parse the string into a strict Number, and use setTintFill <
             const finalColor = parseColor(hitColor, 0xff0000);
@@ -1161,9 +1176,10 @@ export class WorldRenderer {
         textStr = `+${textStr}`;
       } else if (isCrit) {
         tintColor = 0xffeb3b; // Yellow
-        textStr = `💥 ${textStr}`;
+        textStr = `CRIT ${textStr}`;
         finalScale = 0.75;
       }
+
 
       // Create the fast BitmapText
       const floatingText = scene.add.bitmapText(startX, startY, 'damageFont', textStr, 20)
