@@ -1,10 +1,11 @@
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Options; // <-- Add this
+using Microsoft.Extensions.Options; 
 using StackExchange.Redis;
 using Server.Core;
-using Server.Configs; // <-- Add this
+using Server.Configs; 
 using System;
 using System.Diagnostics;
+using System.IO; // <-- Required for File.ReadLines
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -16,20 +17,46 @@ public class WorkerHeartbeatService : BackgroundService
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly RoomManager _roomManager;
-    private readonly ServerConfig _serverConfig; // <-- Add this
+    private readonly ServerConfig _serverConfig; 
 
     private readonly string _workerId = Guid.NewGuid().ToString();
 
-    // Used for CPU calculation
-    private TimeSpan _lastTotalProcessorTime = new TimeSpan();
+    // State tracker for Linux system CPU calculation
+    private (long Idle, long Total) _lastCpuTicks = (0, 0);
     private DateTime _lastCheckTime = DateTime.UtcNow;
 
-    // Update the constructor to accept IOptions<ServerConfig>
     public WorkerHeartbeatService(IConnectionMultiplexer redis, RoomManager roomManager, IOptions<ServerConfig> serverConfig)
     {
         _redis = redis;
         _roomManager = roomManager;
-        _serverConfig = serverConfig.Value; // <-- Store the config
+        _serverConfig = serverConfig.Value; 
+    }
+
+    private double GetHostSystemCpuUsage()
+    {
+        try
+        {
+            // /proc/stat is mapped from the host into the Docker container by default
+            var lines = File.ReadLines("/proc/stat").First().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var times = lines.Skip(1).Select(long.Parse).ToArray();
+            
+            long idle = times[3] + times[4]; // idle + iowait
+            long total = times.Sum();
+
+            long idleDelta = idle - _lastCpuTicks.Idle;
+            long totalDelta = total - _lastCpuTicks.Total;
+
+            _lastCpuTicks = (idle, total);
+
+            if (totalDelta == 0) return 0;
+            
+            return Math.Round((1.0 - ((double)idleDelta / totalDelta)) * 100, 2);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[WARNING] Failed to read /proc/stat: {ex.Message}");
+            return 0.0;
+        }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -42,23 +69,19 @@ public class WorkerHeartbeatService : BackgroundService
             currentProcess.Refresh();
             long ramUsageMB = currentProcess.WorkingSet64 / (1024 * 1024);
 
-            var currentTotalProcessorTime = currentProcess.TotalProcessorTime;
             var currentTime = DateTime.UtcNow;
-
-            double cpuUsedMs = (currentTotalProcessorTime - _lastTotalProcessorTime).TotalMilliseconds;
+            
+            // We still need timePassedMs to calculate Network Mbps correctly
             double timePassedMs = (currentTime - _lastCheckTime).TotalMilliseconds;
-            double intervalSeconds = timePassedMs / 1000.0; // real elapsed time, not an assumed 5s
-
-            double cpuUsagePercent = (cpuUsedMs / (Environment.ProcessorCount * timePassedMs)) * 100;
-
-            _lastTotalProcessorTime = currentTotalProcessorTime;
+            double intervalSeconds = timePassedMs / 1000.0; 
             _lastCheckTime = currentTime;
 
-            var allRooms = _roomManager.GetAllRooms().ToList(); // was enumerated twice before; now once
+            // Fetch the true host CPU usage using our new Linux helper
+            double cpuUsagePercent = GetHostSystemCpuUsage();
+
+            var allRooms = _roomManager.GetAllRooms().ToList(); 
             int roomCount = allRooms.Count;
 
-            // Each room's bandwidth counter resets on read, so consume it exactly ONCE here
-            // and reuse the value for both the per-room stat and the worker-level total.
             double workerTotalNetworkMbps = 0;
 
             foreach (var room in allRooms)
@@ -89,7 +112,7 @@ public class WorkerHeartbeatService : BackgroundService
                 WorkerId = _workerId,
                 Url = _serverConfig.PublicUrl,
                 ActiveRooms = roomCount,
-                CpuUsage = Math.Round(cpuUsagePercent, 2),
+                CpuUsage = cpuUsagePercent,
                 RamUsageMB = ramUsageMB,
                 NetworkMbps = Math.Round(workerTotalNetworkMbps, 3),
                 LastUpdated = DateTime.UtcNow
@@ -100,5 +123,4 @@ public class WorkerHeartbeatService : BackgroundService
             await Task.Delay(5000, stoppingToken);
         }
     }
-
 }
