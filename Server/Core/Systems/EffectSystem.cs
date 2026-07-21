@@ -43,16 +43,19 @@ public class EffectSystem : IGameSystem
                 shieldToGrant = Math.Max(0f, shieldToGrant * (1f + shieldPower / 100f)); // same "100 = 1 unit" convention as healPower
             }
 
-            // Matching on ConfigId + SourceId (caster) instead of just ConfigId: player A and
-            // player B applying the same debuff to the same target get two separate instances,
-            // each with its own timer and stack count, instead of overwriting each other.
-            var existing = target.ActiveEffects.FirstOrDefault(e => e.ConfigId == ev.EffectConfigId && e.SourceId == casterId);
+            // Match purely on ConfigId so that multiple actors applying the same effect 
+            // share a single instance/stack limit instead of spamming separate effects.
+            var existing = target.ActiveEffects.FirstOrDefault(e => e.ConfigId == ev.EffectConfigId);
             int maxStack = Math.Max(1, effectConfig.MaxStack);
 
             if (existing != null)
             {
                 existing.TimeRemaining = effectConfig.Duration;
                 existing.StackCount = Math.Min(maxStack, existing.StackCount + ev.StackAmount);
+
+                // Overwrite the source/caster so the most recent attacker gets tick-damage credit
+                existing.SourceId = casterId;
+                existing.Caster = casterEntity;
 
                 if (shieldToGrant > 0)
                 {

@@ -8,7 +8,7 @@
     "duration": 7.0,
     "tickRate": 2.0,
     "tickDamage": 2.0,
-    "maxStack": 1,
+    "maxStack": 4,
     "statModifiers": {},
     "colorTint": "0x00ff00"
   },

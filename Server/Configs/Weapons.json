@@ -318,6 +318,50 @@
       "frost_nova"
     ]
   },
+  "tometo_thrower": {
+    "id": "tometo_thrower",
+    "defaultFacingAngle": -45,
+    "name": "Tometo Thrower",
+    "tier": 3,
+    "price": 95,
+    "cooldownSeconds": 0.3,
+    "rangedDamage": 14,
+    "projectileSpeed": 450,
+    "projectileId": "9mm_bullet",
+    "range": 500,
+    "textureKey": "weapons_sheet",
+    "scale": 0.50,
+    "iconFrame": 5,
+    "attackAnimType": "recoil",
+    "soundFire": "sfx_tometo_throw",
+    "statBonuses": {
+      "hpRegen": 2
+    },
+    "damageScaling": {
+      "rangedDamage": 0.4,
+      "maxHp": 0.05
+    },
+    "grantedSkills": [],
+    "statRollChance": 0.60,
+    "maxRandomStats": 2,
+    "allowedRandomStats": {
+      "rangedDamage": {
+        "min": 3.0,
+        "max": 8.0
+      },
+      "hpRegen": {
+        "min": 0.5,
+        "max": 2.0
+      },
+      "maxHp": {
+        "min": 10.0,
+        "max": 25.0
+      }
+    },
+    "skillRollChance": 0.15,
+    "maxRandomSkills": 0,
+    "allowedRandomSkills": []
+  },
   "stick": {
     "id": "stick",
     "defaultFacingAngle": -45,
@@ -512,50 +556,6 @@
       "nature_pulse"
     ]
   },
-  "tometo_thrower": {
-    "id": "tometo_thrower",
-    "defaultFacingAngle": -45,
-    "name": "Tometo Thrower",
-    "tier": 3,
-    "price": 95,
-    "cooldownSeconds": 0.3,
-    "rangedDamage": 14,
-    "projectileSpeed": 450,
-    "projectileId": "9mm_bullet",
-    "range": 500,
-    "textureKey": "weapons_sheet",
-    "scale": 0.50,
-    "iconFrame": 10,
-    "attackAnimType": "recoil",
-    "soundFire": "sfx_tometo_throw",
-    "statBonuses": {
-      "hpRegen": 2
-    },
-    "damageScaling": {
-      "rangedDamage": 0.4,
-      "maxHp": 0.05
-    },
-    "grantedSkills": [],
-    "statRollChance": 0.60,
-    "maxRandomStats": 2,
-    "allowedRandomStats": {
-      "rangedDamage": {
-        "min": 3.0,
-        "max": 8.0
-      },
-      "hpRegen": {
-        "min": 0.5,
-        "max": 2.0
-      },
-      "maxHp": {
-        "min": 10.0,
-        "max": 25.0
-      }
-    },
-    "skillRollChance": 0.15,
-    "maxRandomSkills": 0,
-    "allowedRandomSkills": []
-  },
   "skull_scepter": {
     "id": "skull_scepter",
     "defaultFacingAngle": -45,
@@ -569,7 +569,7 @@
     "range": 550,
     "textureKey": "weapons_sheet",
     "scale": 0.45,
-    "iconFrame": 11,
+    "iconFrame": 10,
     "attackAnimType": "recoil",
     "soundFire": "sfx_wand_cast",
     "statBonuses": {
@@ -611,7 +611,7 @@
     "range": 550,
     "textureKey": "weapons_sheet",
     "scale": 0.45,
-    "iconFrame": 12,
+    "iconFrame": 11,
     "attackAnimType": "recoil",
     "soundFire": "sfx_wand_cast",
     "statBonuses": {
@@ -653,7 +653,7 @@
     "range": 500,
     "textureKey": "weapons_sheet",
     "scale": 0.45,
-    "iconFrame": 5,
+    "iconFrame": 12,
     "attackAnimType": "recoil",
     "soundFire": "sfx_sniper_fire",
     "statBonuses": {
@@ -893,7 +893,8 @@
     "range": 350,
     "projectileId": "proj_lightning_spark",
     "textureKey": "weapons_sheet",
-    "scale": 0.6,
+    "scale": 0.4,
+    "iconFrame": 18,
     "autoShot": true,
     "canDrop": false,
     "availableInShop": false
@@ -909,6 +910,7 @@
     "projectileId": "proj_acid_glob",
     "textureKey": "weapons_sheet",
     "scale": 0.7,
+    "iconFrame": 19,
     "autoShot": true,
     "canDrop": false,
     "availableInShop": false
@@ -924,6 +926,7 @@
     "projectileId": "proj_gravity_orb",
     "textureKey": "weapons_sheet",
     "scale": 0.6,
+    "iconFrame": 20,
     "canDrop": false,
     "availableInShop": false
   },
@@ -938,6 +941,7 @@
     "projectileId": "proj_blood_wave",
     "textureKey": "weapons_sheet",
     "scale": 0.8,
+    "iconFrame": 21,
     "attackAnimType": "swing",
     "canDrop": false,
     "availableInShop": false
@@ -953,6 +957,7 @@
     "projectileId": "proj_lightning_spark",
     "textureKey": "weapons_sheet",
     "scale": 1.0,
+    "iconFrame": 22,
     "autoShot": true,
     "canDrop": false,
     "availableInShop": false,
@@ -970,7 +975,8 @@
     "range": 600,
     "projectileId": "proj_acid_glob",
     "textureKey": "weapons_sheet",
-    "scale": 1.2,
+    "scale": 1.0,
+    "iconFrame": 23,
     "autoShot": true,
     "canDrop": false,
     "availableInShop": false
@@ -986,6 +992,7 @@
     "projectileId": "proj_gravity_orb",
     "textureKey": "weapons_sheet",
     "scale": 1.0,
+    "iconFrame": 24,
     "canDrop": false,
     "availableInShop": false,
     "grantedSkills": [
@@ -1002,7 +1009,8 @@
     "range": 180,
     "projectileId": "proj_blood_wave",
     "textureKey": "weapons_sheet",
-    "scale": 1.1,
+    "scale": 1.0,
+    "iconFrame": 25,
     "attackAnimType": "swing",
     "canDrop": false,
     "availableInShop": false,
