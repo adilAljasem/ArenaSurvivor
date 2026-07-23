@@ -209,17 +209,16 @@ sub.Subscribe("force_logout", async (channel, message) =>
     var lobbyHub = app.Services.GetService<IHubContext<LobbyHub>>();
     if (lobbyHub != null)
     {
-        await lobbyHub.Clients.User(playerId).SendAsync("LobbyError", "Logged in from another location.");
+        await lobbyHub.Clients.User(playerId).SendAsync("ForceDisconnect", "Logged in from another location.");
     }
 
     // Kick from MatchHub (Worker Nodes)
     var matchHub = app.Services.GetService<IHubContext<MatchHub>>();
     if (matchHub != null)
     {
-        await matchHub.Clients.User(playerId).SendAsync("MatchError", "Logged in from another location.");
+        await matchHub.Clients.User(playerId).SendAsync("ForceDisconnect", "Logged in from another location.");
     }
 });
-
 
 app.Run();
 

@@ -761,15 +761,17 @@ class GameScene extends Phaser.Scene {
         lobbyConnection.on("LobbyError", (msg: string) => {
             console.warn("Lobby Error Intercepted:", msg);
 
-            // >>> NEW: Wipe credentials if hijacked
-            if (msg.includes("location")) {
-                wipeStoredCredentials();
-            }
-
-            if (msg.includes("expired") || msg.includes("not exist") || msg.includes("location")) {
+            if (msg.includes("expired") || msg.includes("not exist")) {
                 localStorage.removeItem('currentRoomId');
                 redirectToCleanUrl();
             }
+        });
+
+        lobbyConnection.on("ForceDisconnect", (msg: string) => {
+            console.warn("Force Disconnect Intercepted:", msg);
+            wipeStoredCredentials();
+            alert(msg);
+            redirectToCleanUrl();
         });
 
         // Initial Boot Sequence (Start the Master Node!)
@@ -1292,16 +1294,20 @@ class GameScene extends Phaser.Scene {
         matchConnection.off("MatchError");
         matchConnection.on("MatchError", (msg: string) => {
             console.warn("[MatchHub] MatchError:", msg);
-
-            // >>> NEW: Wipe credentials if hijacked mid-game
-            if (msg.includes("location")) {
-                wipeStoredCredentials();
-            }
-
             localStorage.removeItem('currentRoomId');
             hideAppLoader();
             redirectToCleanUrl();
         });
+
+        matchConnection.off("ForceDisconnect");
+        matchConnection.on("ForceDisconnect", (msg: string) => {
+            console.warn("[MatchHub] ForceDisconnect:", msg);
+            wipeStoredCredentials();
+            hideAppLoader();
+            alert(msg);
+            redirectToCleanUrl();
+        });
+        
         matchConnection.off("AllPlayersSynced");
         matchConnection.on("AllPlayersSynced", () => {
             // FIX: Previously inline inside MatchStarted — moved here for the same reason.

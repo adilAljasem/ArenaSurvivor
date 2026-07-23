@@ -132,7 +132,7 @@ public class LobbyHub : Hub
         // If the JWT's session doesn't match the database, kill the connection immediately.
         if (string.IsNullOrEmpty(jwtSessionId) || jwtSessionId != activeSessionId)
         {
-            await Clients.Caller.SendAsync("LobbyError", "Logged in from another location.");
+            await Clients.Caller.SendAsync("ForceDisconnect", "Logged in from another location.");
             Context.Abort();
             return;
         }

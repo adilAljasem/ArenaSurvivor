@@ -45,10 +45,9 @@ public class MatchHub : Hub
         {
             string? jwtSessionId = Context.User?.FindFirst("SessionId")?.Value;
             string? activeSessionId = await _redisService.GetActiveSession(playerId);
-
             if (string.IsNullOrEmpty(jwtSessionId) || jwtSessionId != activeSessionId)
             {
-                await Clients.Caller.SendAsync("MatchError", "Logged in from another location.");
+                await Clients.Caller.SendAsync("ForceDisconnect", "Logged in from another location.");
                 Context.Abort();
                 return;
             }

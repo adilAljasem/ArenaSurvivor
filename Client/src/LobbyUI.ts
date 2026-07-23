@@ -2399,6 +2399,16 @@ export class LobbyUI {
             }
         });
 
+        // >>> NEW: Securely handle ForceDisconnect from the server
+        this.connection.off("ForceDisconnect");
+        this.connection.on("ForceDisconnect", (msg: string) => {
+            alert(msg);
+            localStorage.removeItem('arena_jwt');
+            localStorage.removeItem('arena_username');
+            localStorage.removeItem('arena_playerId');
+            window.location.reload();
+        });
+
         this.connection.off("ReceiveChatMessage");
         this.connection.on("ReceiveChatMessage", (sender: string, msg: string) => {
             const history = document.getElementById('lobby-chat-history')!;
