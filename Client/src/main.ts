@@ -125,7 +125,9 @@ function hideAppLoader() {
 // see the comment on returnToLobby() for why that matters.
 function redirectToCleanUrl(): void {
     const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-    window.location.href = cleanUrl;
+    // Quietly strip any query parameters from the URL, then force a hard refresh
+    window.history.replaceState({}, document.title, cleanUrl);
+    window.location.reload();
 }
 
 // Was copy-pasted identically in the LobbyError and MatchError handlers.
@@ -133,6 +135,36 @@ function wipeStoredCredentials(): void {
     localStorage.removeItem('arena_jwt');
     localStorage.removeItem('arena_username');
     localStorage.removeItem('arena_playerId');
+}
+
+export function showDisconnectScreen(msg: string) {
+    // Hide the loading spinner if it's active
+    hideAppLoader();
+
+    // Clear out the background UI to focus entirely on the modal
+    removeAllLobbyWrappers();
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 9999999; display: flex; align-items: center; justify-content: center; font-family: 'Segoe UI', Tahoma, sans-serif;`;
+
+    overlay.innerHTML = `
+        <div style="background: rgba(0,0,0,0.8); border: 2px solid ${LOBBY_ASSETS.colorPrimary}; border-radius: 8px; padding: 40px; width: 400px; max-width: 90vw; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,0.8);">
+            <div style="font-size: 48px; margin-bottom: 15px; text-shadow: 0 0 15px rgba(229,179,92,0.5);">⚠️</div>
+            <h2 style="color: ${LOBBY_ASSETS.colorPrimary}; margin: 0 0 15px 0; font-size: 24px; text-transform: uppercase; letter-spacing: 2px; border: none; text-shadow: none;">Session Ended</h2>
+            <p style="color: #fff; font-size: 16px; margin: 0 0 30px 0; line-height: 1.5;">${msg}</p>
+            <button id="btn-force-reload" style="width: 100%; padding: 14px; background: linear-gradient(180deg, ${LOBBY_ASSETS.colorBtnBgTop} 0%, ${LOBBY_ASSETS.colorBtnBgBot} 100%); border: 2px solid ${LOBBY_ASSETS.colorPrimary}; border-radius: 8px; font-size: 16px; font-weight: bold; color: white; cursor: pointer; text-transform: uppercase; letter-spacing: 2px; box-shadow: 0 6px 15px rgba(0,0,0,0.5); transition: 0.2s;">RETURN TO LOGIN</button>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const btn = document.getElementById('btn-force-reload') as HTMLButtonElement;
+    btn.addEventListener('mouseenter', () => { btn.style.transform = 'translateY(-2px)'; });
+    btn.addEventListener('mouseleave', () => { btn.style.transform = 'none'; });
+    btn.addEventListener('click', () => {
+        wipeStoredCredentials();
+        redirectToCleanUrl();
+    });
 }
 
 // Belt-and-suspenders: removes every element matching this id, not just the first. IDs are
@@ -769,9 +801,7 @@ class GameScene extends Phaser.Scene {
 
         lobbyConnection.on("ForceDisconnect", (msg: string) => {
             console.warn("Force Disconnect Intercepted:", msg);
-            wipeStoredCredentials();
-            alert(msg);
-            redirectToCleanUrl();
+            showDisconnectScreen(msg);
         });
 
         // Initial Boot Sequence (Start the Master Node!)
@@ -1302,12 +1332,9 @@ class GameScene extends Phaser.Scene {
         matchConnection.off("ForceDisconnect");
         matchConnection.on("ForceDisconnect", (msg: string) => {
             console.warn("[MatchHub] ForceDisconnect:", msg);
-            wipeStoredCredentials();
-            hideAppLoader();
-            alert(msg);
-            redirectToCleanUrl();
+            showDisconnectScreen(msg);
         });
-        
+
         matchConnection.off("AllPlayersSynced");
         matchConnection.on("AllPlayersSynced", () => {
             // FIX: Previously inline inside MatchStarted — moved here for the same reason.

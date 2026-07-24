@@ -2402,7 +2402,6 @@ export class LobbyUI {
         // >>> NEW: Securely handle ForceDisconnect from the server
         this.connection.off("ForceDisconnect");
         this.connection.on("ForceDisconnect", (msg: string) => {
-            alert(msg);
             localStorage.removeItem('arena_jwt');
             localStorage.removeItem('arena_username');
             localStorage.removeItem('arena_playerId');
