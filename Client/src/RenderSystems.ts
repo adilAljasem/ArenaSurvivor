@@ -660,7 +660,12 @@ export class ActorRenderer {
             aimY = sprite.getData('cachedAimY');
           }
 
-          const angle = Math.atan2(aimY - targetY, aimX - targetX);
+          // >>> THE PARALLAX FIX <<<
+          // Calculate the angle from the WEAPON's actual offset position, not the actor's center.
+          // This ensures the barrel points perfectly down the bullet's trajectory at any distance.
+          const weaponWorldX = targetX + wx;
+          const weaponWorldY = targetY + wy;
+          const angle = Math.atan2(aimY - weaponWorldY, aimX - weaponWorldX);
 
           // The art may not be drawn facing right - DefaultFacingAngle (degrees) tells us
           // which way it points at rotation 0, so we offset the aim angle to compensate.
@@ -779,12 +784,11 @@ export class ActorRenderer {
 
         if (actionState === "Dead" && config.animDeath) {
           targetAnim = `${config.id}_death`;
-        } else if (!hasWeapons && config.animAttack && (actionState === "Attacking" || (actionState === "Casting" && inMeleeRange && !stopMoving))) {
-          // 2. Force attack if Server says Attacking OR they are doing a mobile cast right in your face
+        } else if (!isPlayer && !hasWeapons && config.animAttack && (actionState === "Attacking" || (actionState === "Casting" && inMeleeRange && !stopMoving))) {
+          // 2. Force attack if Server says Attacking OR they are doing a mobile cast right in your face (ENEMIES ONLY)
           targetAnim = `${config.id}_attack`;
-        } else if (isCurrentlyAttacking) {
-          // 3. If they are already in the middle of swinging, LET IT FINISH!
-          // >>> TS FIX: Added optional chaining and a fallback! <
+        } else if (!isPlayer && isCurrentlyAttacking) {
+          // 3. If they are already in the middle of swinging, LET IT FINISH! (ENEMIES ONLY)
           targetAnim = body.anims?.currentAnim?.key ?? `${config.id}_attack`;
         } else if (isActuallyMoving && config.animMove) {
           // 4. Move: They are moving

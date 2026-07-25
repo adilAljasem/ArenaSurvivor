@@ -486,15 +486,37 @@
   "boss_volt_overlord": {
     "id": "boss_volt_overlord",
     "name": "Baron von Shock (Boss)",
-    "tier": 3,
+    "tier": 1,
     "isBoss": true,
     "spawnOnWaves": [
-      10,
-      50,
-      90
+      1
     ],
-    "textureKey": "enemies_sheet",
-    "scale": 2.8,
+    "textureKey": "bosses",
+    "iconframe": 15,
+    "animIdle": [
+      15,
+      32
+    ],
+    "animIdleFrameRate": 20,
+    "animMove": [
+      33,
+      44
+    ],
+    "animMoveFrameRate": 15,
+    "animAttack": [
+      45,
+      56
+    ],
+    "animAttackFrameRate": 15,
+    "animDeath": [
+      0,
+      14
+    ],
+    "animDeathFrameRate": 15,
+    "scale": 0.5,
+    "VisualHeight": 500,
+    "WeaponOffset": 320,
+    "WeaponScaleOverride": 0.9,
     "AttackRadius": 500,
     "baseStats": {
       "maxHp": 6500,
@@ -522,14 +544,35 @@
   "boss_corrosive_titan": {
     "id": "boss_corrosive_titan",
     "name": "Golem of Rust (Boss)",
-    "tier": 3,
+    "tier": 2,
     "isBoss": true,
     "spawnOnWaves": [
       20,
       60,
       100
     ],
-    "textureKey": "spike_enemy",
+    "textureKey": "bosses",
+    "iconframe": 72,
+    "animIdle": [
+      72,
+      89
+    ],
+    "animIdleFrameRate": 20,
+    "animMove": [
+      90,
+      101
+    ],
+    "animMoveFrameRate": 15,
+    "animAttack": [
+      102,
+      113
+    ],
+    "animAttackFrameRate": 15,
+    "animDeath": [
+      57,
+      71
+    ],
+    "animDeathFrameRate": 15,
     "scale": 3.2,
     "AttackRadius": 450,
     "baseStats": {
@@ -556,14 +599,35 @@
   "boss_void_weaver": {
     "id": "boss_void_weaver",
     "name": "The Singularity Construct (Boss)",
-    "tier": 4,
+    "tier": 3,
     "isBoss": true,
     "spawnOnWaves": [
       30,
       70,
       110
     ],
-    "textureKey": "Enemies1_sheet",
+    "textureKey": "bosses",
+    "iconframe": 129,
+    "animIdle": [
+      129,
+      146
+    ],
+    "animIdleFrameRate": 20,
+    "animMove": [
+      147,
+      158
+    ],
+    "animMoveFrameRate": 15,
+    "animAttack": [
+      159,
+      170
+    ],
+    "animAttackFrameRate": 15,
+    "animDeath": [
+      114,
+      128
+    ],
+    "animDeathFrameRate": 15,
     "scale": 2.6,
     "AttackRadius": 600,
     "baseStats": {
@@ -596,7 +660,28 @@
       80,
       120
     ],
-    "textureKey": "enemies_sheet",
+    "textureKey": "bosses",
+    "iconframe": 186,
+    "animIdle": [
+      186,
+      203
+    ],
+    "animIdleFrameRate": 20,
+    "animMove": [
+      204,
+      215
+    ],
+    "animMoveFrameRate": 15,
+    "animAttack": [
+      216,
+      227
+    ],
+    "animAttackFrameRate": 15,
+    "animDeath": [
+      171,
+      185
+    ],
+    "animDeathFrameRate": 15,
     "scale": 3.0,
     "AttackRadius": 150,
     "baseStats": {
@@ -617,6 +702,60 @@
         "skillId": "skill_boss_frenzy_aura_t1",
         "cooldown": 30.0,
         "overrideCastTime": 0.0
+      }
+    ]
+  },
+  "boss_plague_bringer": {
+    "id": "boss_plague_bringer",
+    "name": "Plague Bringer (Boss)",
+    "tier": 4,
+    "isBoss": true,
+    "spawnOnWaves": [
+      50,
+      100,
+      150
+    ],
+    "textureKey": "bosses",
+    "iconframe": 243,
+    "animIdle": [
+      243,
+      260
+    ],
+    "animIdleFrameRate": 20,
+    "animMove": [
+      261,
+      272
+    ],
+    "animMoveFrameRate": 15,
+    "animAttack": [
+      273,
+      284
+    ],
+    "animAttackFrameRate": 15,
+    "animDeath": [
+      228,
+      242
+    ],
+    "animDeathFrameRate": 15,
+    "scale": 3.0,
+    "AttackRadius": 200,
+    "baseStats": {
+      "maxHp": 15000,
+      "movementSpeed": 95,
+      "armor": 30
+    },
+    "startingWeapons": [
+      "weapon_boss_plague_scythe"
+    ],
+    "startingItems": [
+      "item_boss_infected_blood"
+    ],
+    "dynamicModifiers": [
+      {
+        "conditionType": "MissingHealthPercent",
+        "conditionThreshold": 0.25,
+        "targetStat": "movementSpeed",
+        "amount": 50
       }
     ]
   }

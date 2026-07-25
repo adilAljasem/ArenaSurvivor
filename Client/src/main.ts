@@ -403,6 +403,8 @@ class GameScene extends Phaser.Scene {
         this.load.spritesheet('characters_sheet1', 'assets/Characters/char1.png', { frameWidth: 32, frameHeight: 32 });
         this.load.spritesheet('characters', 'assets/Characters/charaters.png', { frameWidth: 450, frameHeight: 450 });
         this.load.spritesheet('items_sheet', 'assets/Weapons/items.png', { frameWidth: 200, frameHeight: 187 });
+        this.load.spritesheet('bosses', 'assets/Enemies/bosses.png', { frameWidth: 900, frameHeight: 900 });
+
 
         this.load.spritesheet('shaman', 'assets/Characters/shaman.png', { frameWidth: 61, frameHeight: 61 });
         this.load.spritesheet('rock', 'assets/Characters/Rock.png', { frameWidth: 61, frameHeight: 61 });
