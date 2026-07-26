@@ -267,11 +267,15 @@ public class CombatSystem : IGameSystem
 
     private void HandleProjectileDeath(ProjectileEntity p, GameState state)
     {
-        if (!string.IsNullOrEmpty(p.TickSkillId) && _configs.Skills.TryGetValue(p.TickSkillId, out var tickSkillCfg) && tickSkillCfg.ActionType == SkillActionType.Beam)
-            _eventBus.Publish(new BeamEndedEvent { CasterId = p.Id, SkillId = p.TickSkillId });
+        // Read directly from the config instead of the entity so we never miss the triggers!
+        if (_configs.Projectiles.TryGetValue(p.ConfigId, out var projConfig))
+        {
+            if (!string.IsNullOrEmpty(projConfig.TickSkillId) && _configs.Skills.TryGetValue(projConfig.TickSkillId, out var tickSkillCfg) && tickSkillCfg.ActionType == SkillActionType.Beam)
+                _eventBus.Publish(new BeamEndedEvent { CasterId = p.Id, SkillId = projConfig.TickSkillId });
 
-        if (!string.IsNullOrEmpty(p.OnDeathSkillId) && _configs.Skills.TryGetValue(p.OnDeathSkillId, out var deathSkill))
-            _eventBus.Publish(new RequestSkillCastEvent { Skill = deathSkill, CasterId = p.OwnerId, StartX = p.X, StartY = p.Y, Team = p.Team });
+            if (!string.IsNullOrEmpty(projConfig.OnDeathSkillId) && _configs.Skills.TryGetValue(projConfig.OnDeathSkillId, out var deathSkill))
+                _eventBus.Publish(new RequestSkillCastEvent { Skill = deathSkill, CasterId = p.OwnerId, StartX = p.X, StartY = p.Y, Team = p.Team });
+        }
     }
 
 
@@ -307,10 +311,21 @@ public class CombatSystem : IGameSystem
             }
             proj.Lifespan -= dt;
 
+            // --- READ TICK DATA DIRECTLY FROM CONFIG ---
+            string actualTickSkillId = proj.TickSkillId;
+            float actualTickRate = proj.TickRate;
+
+            // FIX: Renamed 'pCfg' to 'tickProjCfg' to avoid scope collision!
+            if (_configs.Projectiles.TryGetValue(proj.ConfigId, out var tickProjCfg))
+            {
+                if (!string.IsNullOrEmpty(tickProjCfg.TickSkillId)) actualTickSkillId = tickProjCfg.TickSkillId;
+                if (tickProjCfg.TickRate > 0) actualTickRate = tickProjCfg.TickRate;
+            }
+
             SkillConfig? tickSkill = null;
             bool hasTickSkill = false;
-            if (!string.IsNullOrEmpty(proj.TickSkillId)) hasTickSkill = _configs.Skills.TryGetValue(proj.TickSkillId, out tickSkill);
-            float effectiveTickRate = proj.TickRate > 0 ? proj.TickRate : (hasTickSkill && tickSkill != null ? tickSkill.CooldownSeconds : 0f);
+            if (!string.IsNullOrEmpty(actualTickSkillId)) hasTickSkill = _configs.Skills.TryGetValue(actualTickSkillId, out tickSkill);
+            float effectiveTickRate = actualTickRate > 0 ? actualTickRate : (hasTickSkill && tickSkill != null ? tickSkill.CooldownSeconds : 0f);
 
             if (effectiveTickRate > 0)
             {

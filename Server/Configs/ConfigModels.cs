@@ -438,6 +438,8 @@ public class SkillConfig
     public float Radius { get; set; } = 0f;
     public float BaseDamage { get; set; } = 0f;
     public float TickRate { get; set; } = 0f;
+    public float PullSpeed { get; set; } = 300f;
+
 
     public float Lifespan { get; set; } = 0f;
     public List<string> ApplyEffects { get; set; } = new();

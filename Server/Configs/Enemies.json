@@ -517,21 +517,20 @@
     "VisualHeight": 500,
     "WeaponOffset": 320,
     "WeaponScaleOverride": 2.0,
-    "AttackRadius": 500,
-    "HitRadius":200,
+    "AttackRadius": 150,
+    "HitRadius":150,
     "baseStats": {
       "maxHp": 25500,
       "movementSpeed": 85,
-      "armor": 25
+      "armor": 25,
+      "meleeDamage":50
     },
     "startingWeapons": [
-      "weapon_boss_tesla_coil","sword"
     ],
     "startingItems": [
       "item_boss_insulated_plating"
     ],
     "startingSkills": [
-      "skill_boss_summon_pylons_t1"
     ],
     "dynamicModifiers": [
       {

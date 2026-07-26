@@ -130,7 +130,12 @@ public class MovementSystem : IGameSystem
 
             if (foundTarget)
             {
-                enemy.AimX = targetX; enemy.AimY = targetY;
+                // Lock the aim direction while casting so the player can dodge it![cite: 13]
+                if (enemy.ActionState != "Casting")
+                {
+                    enemy.AimX = targetX;
+                    enemy.AimY = targetY;
+                }
 
                 // --- DYNAMIC ATTACK RADIUS CALCULATION ---
                 float effectiveAttackRadius = config.AttackRadius;

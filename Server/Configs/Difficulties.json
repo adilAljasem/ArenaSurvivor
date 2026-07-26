@@ -8,7 +8,7 @@
     "InitialSpawnDelay": 1.5,
     "DelayDecreasePerWave": 0.1,
     "MinimumSpawnDelay": 0.5,
-    "MaxActiveEnemies": 100,
+    "MaxActiveEnemies": 1,
 
     "GoldMultiplier": 1.2,
     "XpMultiplier": 1.5,

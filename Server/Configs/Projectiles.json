@@ -225,5 +225,48 @@
         "applyEffectsOnHit": [
             "effect_boss_sanguine_bleed"
         ]
+    },
+    "proj_fire_puddle": {
+        "id": "proj_fire_puddle",
+        "name": "fie",
+        "textureKey": "explosion2",
+        "animFly": [
+            0,
+            13
+        ],
+        "animFlyFrameRate": 15,
+        "baseSpeed": 0.0,
+        "lifespan": 5.0,
+        "hitRadius": 50.0,
+        "pierceCount": 999,
+        "tickRate": 0.5
+    },
+    "proj_drone_bomber": {
+        "id": "proj_drone_bomber",
+        "textureKey": "ammo_sheet2",
+        "iconFrame": 0,
+        "movementBehavior": "Linear",
+        "baseSpeed": 300.0,
+        "lifespan": 4.0,
+        "pierceCount": 999,
+        "tickRate": 0.5,
+        "tickSkillId": "skill_drone_explosion"
+    },
+    "proj_grenade_main": {
+        "id": "proj_grenade_main",
+        "textureKey": "ammo_sheet2",
+        "iconFrame": 10,
+        "baseSpeed": 400.0,
+        "lifespan": 1.0,
+        "pierceCount": 0,
+        "onDeathSkillId": "skill_grenade_shrapnel"
+    },
+    "proj_shrapnel_piece": {
+        "id": "proj_shrapnel_piece",
+        "textureKey": "ammo_sheet2",
+        "iconFrame": 8,
+        "baseSpeed": 600.0,
+        "lifespan": 0.5,
+        "pierceCount": 1
     }
 }

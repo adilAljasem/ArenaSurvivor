@@ -21,6 +21,125 @@
         "soundHit": "sfx_stomp_hit",
         "colorTint": "0xff0000"
     },
+    "skill_dash_t1": {
+        "id": "skill_dash_t1",
+        "name": "Skill dash",
+        "skillFamily": "skill_dash",
+        "tier": 1,
+        "cooldownSeconds": 2.0,
+        "castTimeSeconds": 1.0,
+        "lifespan": 1.0,
+        "triggerType": "Auto",
+        "targetType": "AimDirection",
+        "actionType": "Dash",
+        "ProjectileId": "skill_dash_child_t1",
+        "projectileCount": 0,
+        "Range": 800,
+        "BeamWidth": 80,
+        "soundCast": "sfx_magic_missile_cast"
+    },
+    "skill_dash_child_t1": {
+        "id": "skill_dash_child_t1",
+        "name": "Skill dash child",
+        "actionType": "AoE",
+        "targetType": "Ground",
+        "baseDamage": 50,
+        "radius": 50.0,
+        "lifespan": 5.0,
+        "tickRate": 0.5,
+        "colorTint": "#ff4400",
+        "vfxTextureKey": "explosion2",
+        "vfxAnimFrames": [
+            0,
+            13
+        ],
+        "vfxBaseRadius": 50
+    },
+    "skill_boss_blink": {
+        "id": "skill_boss_blink",
+        "name": "Blink Strike",
+        "actionType": "Teleport",
+        "targetType": "ClosestEnemy",
+        "projectileId": "skill_blink_slash",
+        "cooldownSeconds": 2.0,
+        "castTimeSeconds": 1.0,
+        "soundCast": "sfx_teleport_whoosh"
+    },
+    "skill_blink_slash": {
+        "id": "skill_blink_slash",
+        "name": "Blink Slash AoE",
+        "actionType": "AoE",
+        "targetType": "Self",
+        "radius": 120.0,
+        "baseDamage": 150.0,
+        "colorTint": "#ff0000",
+        "vfxTextureKey": "explosion1",
+        "vfxAnimFrames": [
+            0,
+            8
+        ],
+        "vfxBaseRadius": 64
+    },
+    "skill_black_hole": {
+        "id": "skill_black_hole",
+        "name": "Gravity Vortex",
+        "actionType": "Vacuum",
+        "targetType": "Ground",
+        "range": 500.0,
+        "radius": 250.0,
+        "beamWidth": 80.0,
+        "baseDamage": 10.0,
+        "cooldownSeconds": 30.0,
+        "castTimeSeconds": 1.0,
+        "lifespan": 15.0,
+        "tickRate": 2.5,
+        "colorTint": "#800080",
+        "vfxTextureKey": "explosion2",
+        "vfxAnimFrames": [
+            0,
+            13
+        ],
+        "vfxBaseRadius": 50
+    },
+    "skill_carpet_bomber": {
+        "id": "skill_carpet_bomber",
+        "name": "Carpet Bomber",
+        "actionType": "Projectile",
+        "targetType": "AimDirection",
+        "projectileId": "proj_drone_bomber",
+        "cooldownSeconds": 5.0
+    },
+    "skill_drone_explosion": {
+        "id": "skill_drone_explosion",
+        "actionType": "AoE",
+        "targetType": "Ground",
+        "baseDamage": 75.0,
+        "radius": 120.0,
+        "lifespan": 0,
+        "colorTint": "#ffaa00",
+        "vfxTextureKey": "explosion1",
+        "vfxAnimFrames": [
+            0,
+            8
+        ]
+    },
+    "skill_throw_grenade": {
+        "id": "skill_throw_grenade",
+        "name": "Cluster Grenade",
+        "actionType": "Projectile",
+        "targetType": "ClosestEnemy",
+        "projectileId": "proj_grenade_main",
+        "cooldownSeconds": 4.0
+    },
+    "skill_grenade_shrapnel": {
+        "id": "skill_grenade_shrapnel",
+        "actionType": "Projectile",
+        "targetType": "Ground",
+        "projectileId": "proj_shrapnel_piece",
+        "projectileCount": 8,
+        "spreadAngle": 360.0,
+        "baseDamage": 30.0
+    },
     "skill_magic_missile_t1": {
         "id": "skill_magic_missile_t1",
         "textureKey": "skill_icons",

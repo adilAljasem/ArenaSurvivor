@@ -2104,6 +2104,11 @@ class GameScene extends Phaser.Scene {
                         const textureKey = entity.vfxTextureKey || entity.VfxTextureKey;
                         const frameRate = entity.vfxFrameRate || entity.VfxFrameRate || 15;
 
+                        // Check if the skill has a lifespan or channel duration so we know to loop it!
+                        const channelDuration = entity.channelDurationSeconds ?? entity.ChannelDurationSeconds ?? 0;
+                        const lifespan = entity.lifespan ?? entity.Lifespan ?? 0;
+                        const isRepeated = (entity.isRepeated ?? entity.IsRepeated ?? true) && (channelDuration > 0 || lifespan > 0);
+
                         if (textureKey) {
                             this.anims.create({
                                 key: animKey,
@@ -2112,7 +2117,7 @@ class GameScene extends Phaser.Scene {
                                     end: entity[key][1]
                                 }),
                                 frameRate: frameRate,
-                                repeat: 0
+                                repeat: isRepeated ? -1 : 0
                             });
                         }
                     }

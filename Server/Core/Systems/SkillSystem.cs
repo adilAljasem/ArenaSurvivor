@@ -12,6 +12,22 @@ public class SkillSystem : IGameSystem
     private EventBus _eventBus = null!;
     private ConfigManager _configs = null!;
 
+    // --- NEW: Persistent Ground & Aura Tracker ---
+    private class PersistentSkill
+    {
+        public string UniqueId { get; set; } = Guid.NewGuid().ToString(); // Solves the visual overwrite bug!
+        public SkillConfig Config { get; set; } = null!;
+        public string CasterId { get; set; } = string.Empty;
+        public float X { get; set; }
+        public float Y { get; set; }
+        public string Team { get; set; } = string.Empty;
+        public float TimeRemaining { get; set; }
+        public float TimeSinceLastTick { get; set; }
+        public bool StickToCaster { get; set; }
+        public float PrecalculatedDamage { get; set; }
+    }
+    private List<PersistentSkill> _persistentSkills = new();
+
     public void Initialize(EventBus eventBus, ConfigManager configs)
     {
         _eventBus = eventBus;
@@ -308,6 +324,199 @@ public class SkillSystem : IGameSystem
                 }
             }
         }
+        if (config.ActionType == SkillActionType.Dash)
+        {
+            float targetX = startX;
+            float targetY = startY;
+            bool hasValidTarget = false;
+
+            // 1. Find the target to dash towards[cite: 6]
+            if (config.TargetType == SkillTargetType.ClosestEnemy)
+            {
+                var hostileTargets = TargetingHelper.GetHostileTargets(state, team);
+                var closest = TargetingHelper.FindClosestTarget(startX, startY, float.MaxValue, hostileTargets);
+                if (closest != null)
+                {
+                    targetX = closest.X;
+                    targetY = closest.Y;
+                    hasValidTarget = true;
+                }
+            }
+            else if (config.TargetType == SkillTargetType.AimDirection)
+            {
+                if (caster is PlayerEntity p) { targetX = p.AimX; targetY = p.AimY; hasValidTarget = true; }
+                else if (caster is EnemyEntity e) { targetX = e.AimX; targetY = e.AimY; hasValidTarget = true; }
+            }
+            if (hasValidTarget && caster != null)
+            {
+                float dx = targetX - startX;
+                float dy = targetY - startY;
+                float length = (float)Math.Sqrt(dx * dx + dy * dy);
+
+                if (length > 0)
+                {
+                    // ALWAYS travel the full dash distance! 
+                    // This ensures the boss bulldozes through the player and overshoots them, 
+                    // instead of stopping directly on top of their exact coordinate.[cite: 6]
+                    float dashDist = config.Range;
+                    float dirX = dx / length;
+                    float dirY = dy / length;
+
+                    float endX = startX + (dirX * dashDist);
+                    float endY = startY + (dirY * dashDist);
+
+                    float mapW = _configs.Maps != null && _configs.Maps.TryGetValue("map_forest", out var currentMap) ? currentMap.Width : 4000f;
+                    float mapH = _configs.Maps != null && _configs.Maps.TryGetValue("map_forest", out var currentMapH) ? currentMapH.Height : 4000f;
+                    endX = Math.Clamp(endX, 35, mapW - 35);
+                    endY = Math.Clamp(endY, 35, mapH - 35);
+
+                    // 2. Snap the Caster. (The client's interpolation smoothly slides them here at high speed!)[cite: 2]
+                    caster.SetPosition(endX, endY);
+
+                    // 3. Visual Effect: Draw a beam connecting start and end so players see the charge path[cite: 6]
+                    _eventBus.Publish(new BeamVisualEvent
+                    {
+                        Dto = new BeamEventDto { StartX = startX, StartY = startY, TargetX = endX, TargetY = endY, Width = config.BeamWidth > 0 ? config.BeamWidth : 60f, ColorTint = config.ColorTint },
+                        CasterId = casterId,
+                        SkillId = config.Id
+                    });
+
+                    // 4. Collision: Hit everything along the path using your existing Beam math[cite: 6]
+                    var enemiesToHit = team == "Player"
+                        ? state.Enemies.Values.Where(e => e.Team != "Player").Cast<BaseActorEntity>()
+                        : state.Players.Values.Cast<BaseActorEntity>().Concat(state.Enemies.Values.Where(e => e.Team != "Enemy"));
+
+                    foreach (var target in enemiesToHit)
+                    {
+                        if (target.ActionState == "Dead") continue;
+                        float fx = target.X - startX; float fy = target.Y - startY;
+                        float rx = endX - startX; float ry = endY - startY;
+                        float rayLenSq = rx * rx + ry * ry;
+                        float t = rayLenSq == 0 ? 0 : Math.Max(0, Math.Min(1, (fx * rx + fy * ry) / rayLenSq));
+
+                        float closestX = startX + t * rx; float closestY = startY + t * ry;
+                        float distX = closestX - target.X; float distY = closestY - target.Y;
+                        float distSqToSegment = (distX * distX) + (distY * distY);
+
+                        float targetHitRadius = target is EnemyEntity e
+                                            ? (_configs.Enemies.TryGetValue(e.ConfigId, out var eCfg) ? eCfg.HitRadius : 15f)
+                                            : (_configs.Characters.TryGetValue(((PlayerEntity)target).ConfigId, out var pCfg) ? pCfg.HitRadius : 15f);
+
+                        float effectiveRadius = (config.BeamWidth > 0 ? config.BeamWidth / 2f : 30f) + targetHitRadius;
+
+                        if (distSqToSegment <= (effectiveRadius * effectiveRadius))
+                        {
+                            float mitigatedDamage = CombatSystem.CalculateMitigatedDamage(0f, Math.Abs(finalSpellDamage), target, _configs);
+                            _eventBus.Publish(new DamageAppliedEvent { TargetId = EntityResolver.GetId(target), AttackerId = casterId, Amount = mitigatedDamage, IsCritical = false, IsDodge = false, IsBlock = false });
+
+                            if (config.ApplyEffects != null)
+                            {
+                                foreach (var effectId in config.ApplyEffects)
+                                    _eventBus.Publish(new ApplyEffectEvent { TargetId = EntityResolver.GetId(target), EffectConfigId = effectId, CasterId = casterId });
+                            }
+                        }
+                    }
+
+                    // 5. Fire Trail (Data-Driven Payload): Drop a secondary skill along the path[cite: 6]
+                    if (!string.IsNullOrEmpty(config.ProjectileId) && _configs.Skills.TryGetValue(config.ProjectileId, out var trailSkill))
+                    {
+                        // Fallback: If ProjectileCount is 1 (the default) or 0, calculate 1 puddle per 100 pixels.
+                        // Otherwise, use the exact ProjectileCount requested from the JSON.[cite: 10]
+                        int totalPuddles = config.ProjectileCount > 1
+                            ? config.ProjectileCount
+                            : Math.Max(1, (int)(dashDist / 100f) + 1);
+
+                        for (int i = 0; i < totalPuddles; i++)
+                        {
+                            // If only 1 puddle, drop it in the middle. Otherwise, space them evenly from start to end.[cite: 6]
+                            float t = (totalPuddles == 1) ? 0.5f : (float)i / (totalPuddles - 1);
+                            float puddleX = startX + (dirX * dashDist * t);
+                            float puddleY = startY + (dirY * dashDist * t);
+
+                            _eventBus.Publish(new RequestSkillCastEvent
+                            {
+                                Skill = trailSkill,
+                                CasterId = casterId,
+                                StartX = puddleX,
+                                StartY = puddleY,
+                                Team = team
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+
+        if (config.ActionType == SkillActionType.Teleport)
+        {
+            float targetX = startX;
+            float targetY = startY;
+            bool hasValidTarget = false;
+
+            // 1. Find the target to teleport behind[cite: 6]
+            if (config.TargetType == SkillTargetType.ClosestEnemy)
+            {
+                var hostileTargets = TargetingHelper.GetHostileTargets(state, team);
+                var closest = TargetingHelper.FindClosestTarget(startX, startY, float.MaxValue, hostileTargets);
+                if (closest != null)
+                {
+                    targetX = closest.X;
+                    targetY = closest.Y;
+                    hasValidTarget = true;
+                }
+            }
+            else if (config.TargetType == SkillTargetType.AimDirection)
+            {
+                if (caster is PlayerEntity p) { targetX = p.AimX; targetY = p.AimY; hasValidTarget = true; }
+                else if (caster is EnemyEntity e) { targetX = e.AimX; targetY = e.AimY; hasValidTarget = true; }
+            }
+
+            if (hasValidTarget && caster != null)
+            {
+                float dx = targetX - startX;
+                float dy = targetY - startY;
+                float length = (float)Math.Sqrt(dx * dx + dy * dy);
+
+                float endX = targetX;
+                float endY = targetY;
+
+                if (length > 0)
+                {
+                    // Teleport slightly behind the target (overshoot by 100 pixels)[cite: 6]
+                    float dirX = dx / length;
+                    float dirY = dy / length;
+                    endX = targetX + (dirX * 100f);
+                    endY = targetY + (dirY * 100f);
+                }
+
+                // Keep inside map bounds[cite: 6]
+                float mapW = _configs.Maps != null && _configs.Maps.TryGetValue("map_forest", out var currentMap) ? currentMap.Width : 4000f;
+                float mapH = _configs.Maps != null && _configs.Maps.TryGetValue("map_forest", out var currentMapH) ? currentMapH.Height : 4000f;
+                endX = Math.Clamp(endX, 35, mapW - 35);
+                endY = Math.Clamp(endY, 35, mapH - 35);
+
+                // 2. Instantly snap the caster to the new position[cite: 15]
+                caster.SetPosition(endX, endY);
+
+                // 3. Payload: Cast the secondary skill at the new location[cite: 6, 10]
+                if (!string.IsNullOrEmpty(config.ProjectileId) && _configs.Skills.TryGetValue(config.ProjectileId, out var payloadSkill))
+                {
+                    _eventBus.Publish(new RequestSkillCastEvent
+                    {
+                        Skill = payloadSkill,
+                        CasterId = casterId,
+                        StartX = endX,
+                        StartY = endY,
+                        Team = team
+                    });
+                }
+            }
+        }
+
+
+
+
 
         if (config.ActionType == SkillActionType.Summon)
         {
@@ -331,67 +540,204 @@ public class SkillSystem : IGameSystem
             return;
         }
 
-        if (config.ActionType == SkillActionType.AoE)
+        if (config.ActionType == SkillActionType.AoE || config.ActionType == SkillActionType.Vacuum)
         {
-            bool isHeal = config.BaseDamage < 0;
-            float actualDamage = isHeal ? -Math.Abs(finalSpellDamage) : finalSpellDamage;
-            bool isPlayerTeam = string.IsNullOrEmpty(team) || team == "Player";
+            float targetX = startX;
+            float targetY = startY;
 
-            _eventBus.Publish(new AoeVisualEvent
+            if (config.TargetType == SkillTargetType.ClosestEnemy)
             {
-                Dto = new AoeEventDto { X = startX, Y = startY, Radius = config.Radius, IsFriendly = isPlayerTeam, ConfigId = config.Id },
-                CasterId = casterId,
-                SkillId = config.Id
-            });
-
-            float radiusSq = config.Radius * config.Radius;
-
-            void ApplyAoeEffects(BaseActorEntity target)
+                var hostileTargets = TargetingHelper.GetHostileTargets(state, team);
+                var closest = TargetingHelper.FindClosestTarget(startX, startY, config.Range > 0 ? config.Range * config.Range : float.MaxValue, hostileTargets);
+                if (closest != null) { targetX = closest.X; targetY = closest.Y; }
+            }
+            else if (config.TargetType == SkillTargetType.AimDirection || config.TargetType == SkillTargetType.Ground)
             {
-                if (config.ApplyEffects != null)
+                float aimX = startX, aimY = startY;
+                if (caster is PlayerEntity p) { aimX = p.AimX; aimY = p.AimY; }
+                else if (caster is EnemyEntity e) { aimX = e.AimX; aimY = e.AimY; }
+
+                if (config.TargetType == SkillTargetType.Ground)
                 {
-                    foreach (var effectId in config.ApplyEffects)
-                        _eventBus.Publish(new ApplyEffectEvent { TargetId = EntityResolver.GetId(target), EffectConfigId = effectId, CasterId = casterId });
+                    // Ground drops exactly at the caster's feet and stays there
+                    targetX = startX;
+                    targetY = startY;
+                }
+                else // AimDirection
+                {
+                    float dx = aimX - startX;
+                    float dy = aimY - startY;
+                    float length = (float)Math.Sqrt(dx * dx + dy * dy);
+                    if (length > 0)
+                    {
+                        float dist = config.Range > 0 ? config.Range : 300f;
+                        targetX = startX + (dx / length) * dist;
+                        targetY = startY + (dy / length) * dist;
+                    }
                 }
             }
 
-            // Same "hit everyone within radius" shape regardless of team/heal - only the candidate
-            // set and whether damage is mitigated differ (heals are never mitigated).
-            void ApplyAoeToCandidates(IEnumerable<BaseActorEntity> candidates, bool mitigate)
-            {
-                foreach (var target in candidates)
-                {
-                    float distSq = (target.X - startX) * (target.X - startX) + (target.Y - startY) * (target.Y - startY);
-                    if (distSq > radiusSq) continue;
+            // Keep inside bounds
+            float mapW = _configs.Maps != null && _configs.Maps.TryGetValue("map_forest", out var currentMap) ? currentMap.Width : 4000f;
+            float mapH = _configs.Maps != null && _configs.Maps.TryGetValue("map_forest", out var currentMapH) ? currentMapH.Height : 4000f;
+            targetX = Math.Clamp(targetX, 35, mapW - 35);
+            targetY = Math.Clamp(targetY, 35, mapH - 35);
 
-                    float appliedAmount = mitigate ? CombatSystem.CalculateMitigatedDamage(0f, actualDamage, target, _configs) : actualDamage;
-                    _eventBus.Publish(new DamageAppliedEvent { TargetId = EntityResolver.GetId(target), AttackerId = casterId, Amount = appliedAmount, IsCritical = false, IsDodge = false, IsBlock = false });
-                    ApplyAoeEffects(target);
-                }
-            }
-
-            if (isPlayerTeam)
+            if (config.Lifespan > 0)
             {
-                if (!isHeal)
-                    ApplyAoeToCandidates(state.Enemies.Values.Where(e => e.ActionState != "Dead" && e.Team != "Player"), mitigate: true);
-                else
+                // Register as a persistent ground effect / aura
+                var ps = new PersistentSkill
                 {
-                    ApplyAoeToCandidates(state.Players.Values, mitigate: false);
-                    ApplyAoeToCandidates(state.Enemies.Values.Where(e => e.ActionState != "Dead" && e.Team == "Player"), mitigate: false);
-                }
+                    Config = config,
+                    CasterId = casterId,
+                    X = targetX,
+                    Y = targetY,
+                    Team = team,
+                    TimeRemaining = config.Lifespan,
+                    TimeSinceLastTick = config.TickRate > 0 ? config.TickRate : 0.5f, // Force immediate first tick
+                    StickToCaster = (config.TargetType == SkillTargetType.Self),
+                    PrecalculatedDamage = finalSpellDamage
+                };
+                _persistentSkills.Add(ps);
+                return;
             }
             else
             {
-                if (!isHeal)
+                // Instant cast (Explosions, instant pulls)
+                var ps = new PersistentSkill
                 {
-                    ApplyAoeToCandidates(state.Players.Values, mitigate: true);
-                    ApplyAoeToCandidates(state.Enemies.Values.Where(e => e.ActionState != "Dead" && e.Team != "Enemy"), mitigate: true);
-                }
-                else
-                    ApplyAoeToCandidates(state.Enemies.Values.Where(e => e.ActionState != "Dead" && e.Team == "Enemy"), mitigate: false);
+                    UniqueId = casterId,
+                    Config = config,
+                    CasterId = casterId,
+                    X = targetX,
+                    Y = targetY,
+                    Team = team,
+                    PrecalculatedDamage = finalSpellDamage
+                };
+                if (config.ActionType == SkillActionType.AoE) ExecuteAoE(ps, state);
+                else if (config.ActionType == SkillActionType.Vacuum) ExecuteVacuum(ps, state);
             }
         }
 
+
+
+    }
+
+    private void ExecuteAoE(PersistentSkill ps, GameState state)
+    {
+        bool isHeal = ps.Config.BaseDamage < 0;
+        float actualDamage = isHeal ? -Math.Abs(ps.PrecalculatedDamage) : ps.PrecalculatedDamage;
+        bool isPlayerTeam = string.IsNullOrEmpty(ps.Team) || ps.Team == "Player";
+
+        _eventBus.Publish(new AoeVisualEvent
+        {
+            Dto = new AoeEventDto { X = ps.X, Y = ps.Y, Radius = ps.Config.Radius, IsFriendly = isPlayerTeam, ConfigId = ps.Config.Id },
+            CasterId = ps.UniqueId, // Hijack with unique ID so client draws independent visual loops[cite: 8]
+            SkillId = ps.Config.Id
+        });
+
+        float radiusSq = ps.Config.Radius * ps.Config.Radius;
+
+        void ApplyAoeToCandidates(IEnumerable<BaseActorEntity> candidates, bool mitigate)
+        {
+            foreach (var target in candidates)
+            {
+                float distSq = (target.X - ps.X) * (target.X - ps.X) + (target.Y - ps.Y) * (target.Y - ps.Y);
+                if (distSq > radiusSq) continue;
+
+                float appliedAmount = mitigate ? CombatSystem.CalculateMitigatedDamage(0f, actualDamage, target, _configs) : actualDamage;
+                _eventBus.Publish(new DamageAppliedEvent { TargetId = EntityResolver.GetId(target), AttackerId = ps.CasterId, Amount = appliedAmount, IsCritical = false, IsDodge = false, IsBlock = false });
+
+                if (ps.Config.ApplyEffects != null)
+                {
+                    foreach (var effectId in ps.Config.ApplyEffects)
+                        _eventBus.Publish(new ApplyEffectEvent { TargetId = EntityResolver.GetId(target), EffectConfigId = effectId, CasterId = ps.CasterId });
+                }
+            }
+        }
+
+        if (isPlayerTeam)
+        {
+            if (!isHeal) ApplyAoeToCandidates(state.Enemies.Values.Where(e => e.ActionState != "Dead" && e.Team != "Player"), mitigate: true);
+            else
+            {
+                ApplyAoeToCandidates(state.Players.Values, mitigate: false);
+                ApplyAoeToCandidates(state.Enemies.Values.Where(e => e.ActionState != "Dead" && e.Team == "Player"), mitigate: false);
+            }
+        }
+        else
+        {
+            if (!isHeal)
+            {
+                ApplyAoeToCandidates(state.Players.Values, mitigate: true);
+                ApplyAoeToCandidates(state.Enemies.Values.Where(e => e.ActionState != "Dead" && e.Team != "Enemy"), mitigate: true);
+            }
+            else ApplyAoeToCandidates(state.Enemies.Values.Where(e => e.ActionState != "Dead" && e.Team == "Enemy"), mitigate: false);
+        }
+    }
+
+    private void ExecuteVacuum(PersistentSkill ps, GameState state, bool applyPull = true)
+    {
+        bool isPlayerTeam = string.IsNullOrEmpty(ps.Team) || ps.Team == "Player";
+
+        // Only publish for instant casts. Persistent skills publish continuously in ProcessPersistentSkills!
+        if (applyPull)
+        {
+            _eventBus.Publish(new AoeVisualEvent
+            {
+                Dto = new AoeEventDto { X = ps.X, Y = ps.Y, Radius = ps.Config.Radius, IsFriendly = isPlayerTeam, ConfigId = ps.Config.Id },
+                CasterId = ps.UniqueId,
+                SkillId = ps.Config.Id
+            });
+        }
+
+        float radiusSq = ps.Config.Radius * ps.Config.Radius;
+        var enemiesToHit = ps.Team == "Player"
+            ? state.Enemies.Values.Where(e => e.Team != "Player").Cast<BaseActorEntity>()
+            : state.Players.Values.Cast<BaseActorEntity>().Concat(state.Enemies.Values.Where(e => e.Team != "Enemy"));
+
+        float pullStrength = ps.Config.BeamWidth > 0 ? ps.Config.BeamWidth : 100f;
+
+        foreach (var target in enemiesToHit)
+        {
+            if (target.ActionState == "Dead") continue;
+
+            float dx = ps.X - target.X;
+            float dy = ps.Y - target.Y;
+            float distSq = (dx * dx) + (dy * dy);
+
+            if (distSq <= radiusSq)
+            {
+                float dist = (float)Math.Sqrt(distSq);
+
+                // Only snap the player for instant casts. Persistent casts handle smooth pull externally!
+                if (dist > 0 && applyPull)
+                {
+                    float actualPull = Math.Min(pullStrength, dist);
+                    float newX = target.X + (dx / dist) * actualPull;
+                    float newY = target.Y + (dy / dist) * actualPull;
+
+                    float mapW = _configs.Maps != null && _configs.Maps.TryGetValue("map_forest", out var currentMap) ? currentMap.Width : 4000f;
+                    float mapH = _configs.Maps != null && _configs.Maps.TryGetValue("map_forest", out var currentMapH) ? currentMapH.Height : 4000f;
+                    newX = Math.Clamp(newX, 35, mapW - 35);
+                    newY = Math.Clamp(newY, 35, mapH - 35);
+
+                    target.SetPosition(newX, newY);
+                }
+
+                if (Math.Abs(ps.PrecalculatedDamage) > 0)
+                {
+                    float mitigatedDamage = CombatSystem.CalculateMitigatedDamage(0f, Math.Abs(ps.PrecalculatedDamage), target, _configs);
+                    _eventBus.Publish(new DamageAppliedEvent { TargetId = EntityResolver.GetId(target), AttackerId = ps.CasterId, Amount = mitigatedDamage, IsCritical = false, IsDodge = false, IsBlock = false });
+                }
+
+                if (ps.Config.ApplyEffects != null)
+                {
+                    foreach (var effectId in ps.Config.ApplyEffects)
+                        _eventBus.Publish(new ApplyEffectEvent { TargetId = EntityResolver.GetId(target), EffectConfigId = effectId, CasterId = ps.CasterId });
+                }
+            }
+        }
     }
 
     private void OnTriggerDeathSkills(TriggerDeathSkillsEvent ev, GameState state)
@@ -425,8 +771,95 @@ public class SkillSystem : IGameSystem
 
     public void Update(float dt, GameState state)
     {
+        ProcessPersistentSkills(dt, state); // <--- Process all ground AoEs and Auras[cite: 6]
         ProcessEnemySkills(dt, state);
         ProcessPlayerSkills(dt, state);
+    }
+
+    private void ProcessPersistentSkills(float dt, GameState state)
+    {
+        for (int i = _persistentSkills.Count - 1; i >= 0; i--)
+        {
+            var ps = _persistentSkills[i];
+            ps.TimeRemaining -= dt;
+            ps.TimeSinceLastTick += dt;
+
+            // If it's an aura (TargetType == Self), stick to the caster's movement
+            if (ps.StickToCaster)
+            {
+                var caster = EntityResolver.ResolveActor(state, ps.CasterId);
+                if (caster == null || caster.ActionState == "Dead")
+                {
+                    _eventBus.Publish(new BeamEndedEvent { CasterId = ps.UniqueId, SkillId = ps.Config.Id });
+                    _persistentSkills.RemoveAt(i);
+                    continue;
+                }
+                ps.X = caster.X;
+                ps.Y = caster.Y;
+            }
+
+            // 1. PUBLISH VISUAL EVERY FRAME: Prevents the client from destroying the animation between ticks!
+            bool isPlayerTeam = string.IsNullOrEmpty(ps.Team) || ps.Team == "Player";
+            _eventBus.Publish(new AoeVisualEvent
+            {
+                Dto = new AoeEventDto { X = ps.X, Y = ps.Y, Radius = ps.Config.Radius, IsFriendly = isPlayerTeam, ConfigId = ps.Config.Id },
+                CasterId = ps.UniqueId,
+                SkillId = ps.Config.Id
+            });
+
+            // 2. CONTINUOUS PULL FOR VACUUMS: Smoothly pulls targets using dt so players can escape!
+            if (ps.Config.ActionType == SkillActionType.Vacuum)
+            {
+                float pullSpeed = ps.Config.BeamWidth > 0 ? ps.Config.BeamWidth : 100f; // Treat BeamWidth as Speed
+                float radiusSq = ps.Config.Radius * ps.Config.Radius;
+                var enemiesToHit = ps.Team == "Player"
+                    ? state.Enemies.Values.Where(e => e.Team != "Player").Cast<BaseActorEntity>()
+                    : state.Players.Values.Cast<BaseActorEntity>().Concat(state.Enemies.Values.Where(e => e.Team != "Enemy"));
+
+                foreach (var target in enemiesToHit)
+                {
+                    if (target.ActionState == "Dead") continue;
+
+                    float dx = ps.X - target.X;
+                    float dy = ps.Y - target.Y;
+                    float distSq = (dx * dx) + (dy * dy);
+
+                    if (distSq <= radiusSq)
+                    {
+                        float dist = (float)Math.Sqrt(distSq);
+                        if (dist > 0)
+                        {
+                            float actualPull = Math.Min(pullSpeed * dt, dist);
+                            float newX = target.X + (dx / dist) * actualPull;
+                            float newY = target.Y + (dy / dist) * actualPull;
+
+                            float mapW = _configs.Maps != null && _configs.Maps.TryGetValue("map_forest", out var currentMap) ? currentMap.Width : 4000f;
+                            float mapH = _configs.Maps != null && _configs.Maps.TryGetValue("map_forest", out var currentMapH) ? currentMapH.Height : 4000f;
+                            newX = Math.Clamp(newX, 35, mapW - 35);
+                            newY = Math.Clamp(newY, 35, mapH - 35);
+
+                            target.SetPosition(newX, newY);
+                        }
+                    }
+                }
+            }
+
+            float tickRate = ps.Config.TickRate > 0 ? ps.Config.TickRate : 0.5f;
+            if (ps.TimeSinceLastTick >= tickRate)
+            {
+                ps.TimeSinceLastTick %= tickRate;
+                if (ps.Config.ActionType == SkillActionType.AoE) ExecuteAoE(ps, state);
+                // Disable the instant-snap pull when applying tick damage
+                else if (ps.Config.ActionType == SkillActionType.Vacuum) ExecuteVacuum(ps, state, false);
+            }
+
+            // Cleanup when the lifespan expires
+            if (ps.TimeRemaining <= 0)
+            {
+                _eventBus.Publish(new BeamEndedEvent { CasterId = ps.UniqueId, SkillId = ps.Config.Id });
+                _persistentSkills.RemoveAt(i);
+            }
+        }
     }
 
     private void ProcessEnemySkills(float dt, GameState state)

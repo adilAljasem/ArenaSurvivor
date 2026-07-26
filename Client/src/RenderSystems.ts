@@ -39,6 +39,7 @@ interface ActorRefs {
   weaponsContainer: Phaser.GameObjects.Container;
   weaponSprites: Map<number, Phaser.GameObjects.Sprite>;
   castCircle: Phaser.GameObjects.Ellipse;
+  telegraphLine: Phaser.GameObjects.Rectangle; // <--- NEW Telegraph Laser[cite: 2]
   wasDead: boolean;
 
   // Nameplate (players only — null for enemies, so enemies pay zero extra cost).
@@ -225,12 +226,17 @@ export class ActorRenderer {
 
         // >>> ADD THIS LINE SO DEBUG MODE CAN READ THE CORRECT RADIUS <<<
         container.setData('configId', configId);
-
         const castCircle = scene.add.ellipse(0, isPlayer ? 16 : 0, 40, 15, castColor, 0.4);
         castCircle.setStrokeStyle(2, castColor, 1);
         castCircle.setVisible(false);
 
+        // Create a longer, thicker, and glowing red laser pointer[cite: 2]
+        const telegraphLine = scene.add.rectangle(0, isPlayer ? 16 : 0, 2000, 12, 0xff0000, 0.7);
+        telegraphLine.setOrigin(0, 0.5).setVisible(false).setDepth(14);
+        telegraphLine.setBlendMode(Phaser.BlendModes.ADD); // Makes it glow brightly[cite: 2]
+
         let bodySprite;
+
         if (config && config.textureKey && scene.textures.exists(config.textureKey)) {
           bodySprite = scene.add.sprite(0, 0, config.textureKey);
           bodySprite.setScale(scale);
@@ -266,7 +272,7 @@ export class ActorRenderer {
 
         const weaponsContainer = scene.add.container(0, 0);
 
-        const containerChildren: Phaser.GameObjects.GameObject[] = [castCircle, bodySprite, hpText, weaponsContainer];
+        const containerChildren: Phaser.GameObjects.GameObject[] = [castCircle, telegraphLine, bodySprite, hpText, weaponsContainer]; // <--- Added telegraphLine here
         if (nameShadow) containerChildren.push(nameShadow);
         if (nameText) containerChildren.push(nameText);
         if (levelShadow) containerChildren.push(levelShadow);
@@ -275,7 +281,7 @@ export class ActorRenderer {
 
         const refs: ActorRefs = {
           bodySprite, hpText, baseWidth: uiWidth, weaponsContainer,
-          weaponSprites: new Map(), castCircle, wasDead: false,
+          weaponSprites: new Map(), castCircle, telegraphLine, wasDead: false, // <--- Added telegraphLine here
           nameText, levelText, nameShadow, levelShadow, lastRosterName: '', lastRosterLevel: -1,
           prevActionState: undefined, prevCastSkillId: undefined, prevHp: undefined,
           flashTimer: 0, lastFxActionState: '', lastFxCastSkillId: '', lastFxEffectsKey: '', wasFlashing: false,
@@ -388,12 +394,32 @@ export class ActorRenderer {
         }
       }
 
-      // 2. EXTRACT CAST BAR LOGIC
+      // 2. EXTRACT CAST BAR LOGIC[cite: 2]
       const castingSkillId = comp.currentCastingSkillId;
       const skillCfg = castingSkillId ? ((configs.skills || configs.Skills)?.[castingSkillId]) : null;
       const showCastBar = skillCfg ? (skillCfg.showCastBar !== false && skillCfg.ShowCastBar !== false) : true;
 
-      // 3. SAVE ALL DATA FOR MAIN.TS TO DRAW AT 60FPS
+      // 2.5 TELEGRAPH LASER LOGIC[cite: 2]
+      const isAimDirection = skillCfg && (skillCfg.targetType === "AimDirection" || skillCfg.TargetType === "AimDirection");
+      const isTelegraphSkill = skillCfg && (skillCfg.actionType === "Dash" || skillCfg.ActionType === "Dash" || skillCfg.actionType === "Beam" || skillCfg.ActionType === "Beam");
+
+      if (actionState === "Casting" && isTelegraphSkill && isAimDirection) {
+        // Only calculate the rotation ONCE when the laser first turns on.
+        // This completely stops it from wiggling or shifting![cite: 2]
+        if (!refs.telegraphLine.visible) {
+          refs.telegraphLine.setVisible(true);
+
+          const safeAimX = comp.aimX ?? targetX;
+          const safeAimY = comp.aimY ?? targetY;
+          const angle = Math.atan2(safeAimY - targetY, safeAimX - targetX);
+
+          refs.telegraphLine.setRotation(angle);
+        }
+      } else if (refs.telegraphLine.visible) {
+        refs.telegraphLine.setVisible(false);
+      }
+
+      // 3. SAVE ALL DATA FOR MAIN.TS TO DRAW AT 60FPS[cite: 2]
       refs.currentHp = currentHp;
       refs.maxHp = maxHp;
       refs.currentShield = currentShield;
@@ -1390,8 +1416,9 @@ export class VfxRenderer {
           const vfxTex = config.vfxTextureKey || config.VfxTextureKey;
           const vfxFrames = config.vfxAnimFrames || config.VfxAnimFrames;
           const channelDuration = config.channelDurationSeconds ?? config.ChannelDurationSeconds ?? 0;
-          const isRepeated = (config.isRepeated ?? config.IsRepeated ?? false) && channelDuration > 0;
-
+          const lifespan = config.lifespan ?? config.Lifespan ?? 0; // <--- Read Lifespan
+          // Loop the animation if it has EITHER a channel duration or a lifespan![cite: 2]
+          const isRepeated = (config.isRepeated ?? config.IsRepeated ?? false) && (channelDuration > 0 || lifespan > 0);
           // --- OPTION A: PLAY SPRITE BURST/LOOP ---
           if (vfxTex && vfxFrames) {
             const animKey = `${configId}_vfx`;
@@ -1412,15 +1439,20 @@ export class VfxRenderer {
             }
 
             if (isRepeated && casterId) {
-              // Persistent loop: one sprite per (caster, skill), repositioned every tick,
-              // destroyed precisely on the matching BeamEndedEvent via endAoeLoop below.
+              // Persistent loop: one sprite per (caster, skill), repositioned every tick
               const key = `${casterId}:${skillId}`;
               let entry = activeAoeLoops.get(key);
 
               if (!entry) {
                 const sprite = scene.add.sprite(x, y, vfxTex).setDepth(300);
                 sprite.setScale(finalScale);
-                sprite.play(animKey);
+
+                // REPLACE this line:
+                // sprite.play(animKey);
+
+                // WITH this line to force infinite looping, ignoring the cache!
+                sprite.play({ key: animKey, repeat: -1 });
+
                 entry = { sprite };
                 activeAoeLoops.set(key, entry);
               } else {
@@ -1432,7 +1464,11 @@ export class VfxRenderer {
               // One-shot burst - exactly the old behavior.
               const sprite = scene.add.sprite(x, y, vfxTex).setDepth(300);
               sprite.setScale(finalScale);
-              sprite.play(animKey);
+
+
+              // WITH this line to force it to play only once, ignoring the cache!
+              sprite.play({ key: animKey, repeat: 0 });
+
               sprite.once('animationcomplete', () => sprite.destroy());
             }
           }
