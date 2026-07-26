@@ -296,8 +296,11 @@ public class SkillSystem : IGameSystem
                 float closestX = startX + t * rx; float closestY = startY + t * ry;
                 float distX = closestX - target.X; float distY = closestY - target.Y;
                 float distSqToSegment = (distX * distX) + (distY * distY);
-                float effectiveRadius = (config.BeamWidth / 2) + 15f;
+                float targetHitRadius = target is EnemyEntity e
+                                    ? (_configs.Enemies.TryGetValue(e.ConfigId, out var eCfg) ? eCfg.HitRadius : 15f)
+                                    : (_configs.Characters.TryGetValue(((PlayerEntity)target).ConfigId, out var pCfg) ? pCfg.HitRadius : 15f);
 
+                float effectiveRadius = (config.BeamWidth / 2) + targetHitRadius;
                 if (distSqToSegment <= (effectiveRadius * effectiveRadius))
                 {
                     float mitigatedDamage = CombatSystem.CalculateMitigatedDamage(0f, finalSpellDamage, target, _configs);

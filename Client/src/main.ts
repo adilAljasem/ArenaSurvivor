@@ -42,6 +42,8 @@ export const masterUrl = isDev ? "http://localhost:5000/lobbyHub" : "/lobbyHub";
 export let activeWorkerUrl = "Waiting for match...";
 
 const SKIP_LOBBY_IN_DEV = isDev && false; // <-- Set to true to skip the lobby and go straight into a match for faster dev iteration
+const DISABLE_FULLSCREEN_IN_DEV = isDev && true;
+
 
 // Mobile detection: touch device without a fine (mouse) pointer.
 // This correctly distinguishes phones/tablets from touch-screen laptops (Surface, etc.).
@@ -1355,7 +1357,7 @@ class GameScene extends Phaser.Scene {
             lobbyConnection.stop().then(() => console.log("Safely dropped Master connection. Game On!"));
 
             // >>> NEW: AUTO-FULLSCREEN ON LAUNCH <<<
-            if (!SKIP_LOBBY_IN_DEV && !document.fullscreenElement) {
+            if (!SKIP_LOBBY_IN_DEV && !DISABLE_FULLSCREEN_IN_DEV && !document.fullscreenElement) {
                 const requestFS = () => {
                     document.documentElement.requestFullscreen()
                         .then(() => lockEscapeKey())

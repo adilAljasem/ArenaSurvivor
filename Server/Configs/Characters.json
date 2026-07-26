@@ -7,8 +7,8 @@
     "VisualHeight": 350.0,
     "scale": 0.25,
     "defaultFacingRight": true,
-    "WeaponOffset":200,
-    "WeaponScaleOverride":0.9,
+    "WeaponOffset": 200,
+    "WeaponScaleOverride": 0.9,
     "animIdle": [
       72,
       89
@@ -59,6 +59,7 @@
     "iconFrame": 15,
     "VisualHeight": 350.0,
     "WeaponOffset": 170,
+    "WeaponScaleInfluence": 0.1,
     "scale": 0.25,
     "defaultFacingRight": true,
     "animIdle": [

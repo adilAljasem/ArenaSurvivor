@@ -81,13 +81,22 @@ public class CombatSystem : IGameSystem
                 if (config.AutoShot)
                 {
                     float finalRange = config.Range + player.GetTotalStat("range", _configs);
-                    float bestDistSq = finalRange * finalRange;
+                    float bestDist = float.MaxValue;
                     EnemyEntity? target = null;
 
                     foreach (var enemy in enemyTeam)
                     {
-                        float distSq = (enemy.X - spawnX) * (enemy.X - spawnX) + (enemy.Y - spawnY) * (enemy.Y - spawnY);
-                        if (distSq <= bestDistSq) { bestDistSq = distSq; target = enemy; }
+                        // Get the enemy's radius and calculate distance to its EDGE
+                        float targetHitRadius = _configs.Enemies.TryGetValue(enemy.ConfigId, out var eCfg) ? eCfg.HitRadius : 15f;
+                        float dist = (float)Math.Sqrt((enemy.X - spawnX) * (enemy.X - spawnX) + (enemy.Y - spawnY) * (enemy.Y - spawnY));
+                        float distToEdge = dist - targetHitRadius;
+
+                        // Check if the EDGE is within range
+                        if (distToEdge <= finalRange && distToEdge < bestDist)
+                        {
+                            bestDist = distToEdge;
+                            target = enemy;
+                        }
                     }
                     if (target != null) { dirX = target.X - spawnX; dirY = target.Y - spawnY; shouldFire = true; }
                 }
@@ -116,11 +125,14 @@ public class CombatSystem : IGameSystem
                         if (_configs.Projectiles.TryGetValue(projId, out var projConfig))
                         {
                             float finalSpeed = projConfig.BaseSpeed * (1f + player.GetTotalStat("projectileSpeedPercent", _configs));
-                            float rangeBasedLifespan = projConfig.BaseSpeed > 0 ? ((config.Range + player.GetTotalStat("range", _configs)) / finalSpeed) : 0.15f;
+
+                            // Add 'offset' to the lifespan calculation so bullets fired from the opposite side 
+                            // of the body still reach the full intended Range from the player's center.
+                            float rangeBasedLifespan = projConfig.BaseSpeed > 0 ? ((config.Range + player.GetTotalStat("range", _configs) + offset) / finalSpeed) : 0.15f;
+
                             float computedLifespan = rangeBasedLifespan;
                             if (projConfig.Lifespan > 0) computedLifespan = projConfig.Lifespan;
                             if (config.Lifespan > 0) computedLifespan = config.Lifespan;
-
                             // FLOOR: a flat Lifespan configured on the projectile or weapon should extend flight time,
                             // never cut it short of the weapon's own stated Range - otherwise shots fired near max range
                             // die mid-flight before they can possibly reach the target.
@@ -226,12 +238,13 @@ public class CombatSystem : IGameSystem
                 // off to one side can end up genuinely farther from the target than Range would suggest, even
                 // while the enemy itself is "in range." Floor against the REAL muzzle-to-target distance
                 // instead of the configured Range, so this can never come up short regardless of offset.
+                // We add an extra overshoot buffer (+100f) so the bullet fully pierces the player instead 
+                // of expiring perfectly on their center pixel right before the collision check runs.
                 float actualDistance = (float)Math.Sqrt(summonDistSq);
                 float rangeBasedLifespan = pCfg2.BaseSpeed > 0
-                    ? (Math.Max(actualDistance, wCfgS.Range + enemy.GetTotalStat("range", _configs)) / pCfg2.BaseSpeed)
+                    ? (Math.Max(actualDistance + 100f, wCfgS.Range + enemy.GetTotalStat("range", _configs) + offset) / pCfg2.BaseSpeed)
                     : 0.15f;
-                float computedLifespan = rangeBasedLifespan;
-                if (pCfg2.Lifespan > 0) computedLifespan = pCfg2.Lifespan;
+                float computedLifespan = rangeBasedLifespan; if (pCfg2.Lifespan > 0) computedLifespan = pCfg2.Lifespan;
                 if (wCfgS.Lifespan > 0) computedLifespan = wCfgS.Lifespan;
                 computedLifespan = Math.Max(computedLifespan, rangeBasedLifespan);
 
@@ -341,8 +354,9 @@ public class CombatSystem : IGameSystem
                 }
                 else if (proj.HitEnemies.Contains(tId)) continue;
 
-                float targetHitRadius = target is EnemyEntity e ? e.HitRadius : (_configs.Characters.TryGetValue(((PlayerEntity)target).ConfigId, out var pCfg) ? pCfg.HitRadius : 15f);
-                float hitThresholdSq = (proj.HitRadius + targetHitRadius) * (proj.HitRadius + targetHitRadius);
+                float targetHitRadius = target is EnemyEntity e
+                                    ? (_configs.Enemies.TryGetValue(e.ConfigId, out var eCfg) ? eCfg.HitRadius : 15f)
+                                    : (_configs.Characters.TryGetValue(((PlayerEntity)target).ConfigId, out var pCfg) ? pCfg.HitRadius : 15f); float hitThresholdSq = (proj.HitRadius + targetHitRadius) * (proj.HitRadius + targetHitRadius);
                 bool isHit = false;
 
                 if (proj.MovementBehavior == "Orbital") isHit = ((proj.X - target.X) * (proj.X - target.X) + (proj.Y - target.Y) * (proj.Y - target.Y)) <= hitThresholdSq;

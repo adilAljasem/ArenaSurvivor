@@ -211,52 +211,20 @@ export class ActorRenderer {
         ? (explicitOffset * scale)
         : (isPlayer ? (10 * scale) + 15 : (40 * scale) + 30);
 
-      // >>> DYNAMIC WEAPON SCALING <<<
-      // A weapon's own `scale` (WeaponConfig.Scale) is an *art* scale — tuned once so the
-      // weapon looks correct on a reference actor. The bug: `config.Scale` on its own is NOT
-      // a reliable measure of how big an actor actually looks on screen. `bodySprite.setScale(scale)`
-      // is applied on top of each texture's own native frame size, and those native sizes vary
-      // per character/enemy. A visually huge boss might be drawn on a big canvas and use a LOW
-      // Scale (e.g. 0.6) to bring it down to the intended in-world size, while a visually small
-      // character might use a HIGHER Scale (e.g. 1.4) because its source art is compact. Basing
-      // weapon size on raw Scale was exactly backwards for cases like that — a bigger-looking
-      // sprite could have a smaller Scale number and end up with a smaller weapon.
-      //
-      // `realHeight` (visualHeight * scale, just above) doesn't have that problem — it's the
-      // same value already used to correctly position health bars/cast bars above every actor,
-      // meaning VisualHeight has already been hand-tuned per config to reflect true apparent
-      // size regardless of the underlying texture's native resolution. So we drive weapon size
-      // off realHeight relative to a normal-sized reference actor (32px), not off raw scale.
-      //
-      // We still blend rather than scale 1:1 via WeaponScaleInfluence (0-1, default 0.5): at
-      // 0.5, an actor rendering at 2x the reference height holds weapons at ~1.5x their design
-      // size, not the full 2x — noticeably bigger on big actors without looking obese. Give
-      // bosses a lower influence (e.g. 0.25-0.35) if their realHeight is very large.
-      // NOTE: the blend goes toward 1.0 (design size), not toward actorSizeRatio — a LOW
-      // influence means the weapon stays close to full size regardless of actor size. For an
-      // actor that should shrink its weapon to match a small sprite, use a HIGH influence
-      // (close to 1.0), not a low one.
-      // The clamp is a safety net against extreme/mistuned config combinations. Floor lowered
-      // from 0.5 to 0.2 so very small actors (high influence + small actorSizeRatio) can
-      // actually shrink their weapons down instead of being floored at half design size.
-      const REFERENCE_ACTOR_HEIGHT = 32; // matches default VisualHeight/uiWidth for a "normal" actor
-      const actorSizeRatio = realHeight / REFERENCE_ACTOR_HEIGHT;
-      const weaponScaleInfluence = config?.weaponScaleInfluence ?? config?.WeaponScaleInfluence ?? 0.5;
-      const computedWeaponScaleFactor = Phaser.Math.Clamp(1 + (actorSizeRatio - 1) * weaponScaleInfluence, 0.2, 2.0);
-
-      // Direct escape hatch: if set, this actor's weapons render at exactly this fraction of
-      // their own designed scale (e.g. 0.25 = always 25%), completely bypassing VisualHeight/
-      // actorSizeRatio/WeaponScaleInfluence above. Use this when the ratio math isn't landing
-      // where you want and you'd rather just state the final weapon size for this actor.
+      // >>> WEAPON SCALING <<<
       const weaponScaleOverride = config?.weaponScaleOverride ?? config?.WeaponScaleOverride;
+
+      // If WeaponScaleOverride is explicitly set on the actor, use it. Otherwise default to 1.0 (normal design size).
       const weaponScaleFactor = (weaponScaleOverride !== undefined && weaponScaleOverride !== null)
         ? weaponScaleOverride
-        : computedWeaponScaleFactor;
-
+        : 1.0;
 
       // 2. CREATE CONTAINER
       if (!sprites.has(safeId)) {
         const container = scene.add.container(targetX, targetY);
+
+        // >>> ADD THIS LINE SO DEBUG MODE CAN READ THE CORRECT RADIUS <<<
+        container.setData('configId', configId);
 
         const castCircle = scene.add.ellipse(0, isPlayer ? 16 : 0, 40, 15, castColor, 0.4);
         castCircle.setStrokeStyle(2, castColor, 1);
@@ -584,53 +552,54 @@ export class ActorRenderer {
               const latestStats = scene.data.get('latestPlayerStats');
               const rangeBonus = latestStats?.range ?? 0;
               const finalRange = baseRange + rangeBonus;
-              const rangeSq = finalRange * finalRange;
 
               const weaponWorldX = targetX + wx;
               const weaponWorldY = targetY + wy;
 
-              let bestInRangeDistSq = rangeSq;
+              let bestInRangeDist = finalRange;
               let bestInRangeX = 0, bestInRangeY = 0, foundInRange = false;
 
-              let bestAnyDistSq = Number.MAX_VALUE;
+              let bestAnyDist = Number.MAX_VALUE;
               let bestAnyX = 0, bestAnyY = 0, foundAny = false;
 
-              // We expand the cull box to ~1200 pixels (roughly screen size).
-              // This allows weapons to track incoming enemies smoothly before they get in range,
-              // while still saving CPU by skipping the 2000+ enemies way off the map.
               const searchRadius = Math.max(finalRange, 1200);
 
               for (let ei = 0; ei < enemyList.length; ei++) {
                 const enemy = enemyList[ei];
 
-                // Skip dead enemies
                 const eState = enemy.actionState || enemy.ActionState || "Idle";
                 if (eState === "Dead") continue;
 
-                // Skip friendly targets
                 const eTeam = enemy.team || enemy.Team || "Enemy";
                 if (eTeam !== "Enemy") continue;
 
                 const ex = enemy.x ?? enemy.X ?? 0;
-                const dx = ex - weaponWorldX;
-                if (Math.abs(dx) > searchRadius) continue; // Fast horizontal cull
-
                 const ey = enemy.y ?? enemy.Y ?? 0;
+
+                // >>> GET HIT RADIUS TO MEASURE TO THE EDGE <<<
+                const eCfgId = enemy.configId || enemy.ConfigId;
+                const eCfg = configs.enemies?.[eCfgId] || configs.Enemies?.[eCfgId];
+                const hitRadius = eCfg?.hitRadius ?? eCfg?.HitRadius ?? 15;
+
+                const dx = ex - weaponWorldX;
                 const dy = ey - weaponWorldY;
-                if (Math.abs(dy) > searchRadius) continue; // Fast vertical cull
 
-                const distSq = dx * dx + dy * dy;
+                if (Math.abs(dx) - hitRadius > searchRadius) continue;
+                if (Math.abs(dy) - hitRadius > searchRadius) continue;
 
-                if (distSq <= rangeSq) {
-                  if (distSq < bestInRangeDistSq) {
-                    bestInRangeDistSq = distSq;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const distToEdge = dist - hitRadius;
+
+                if (distToEdge <= finalRange) {
+                  if (distToEdge < bestInRangeDist) {
+                    bestInRangeDist = distToEdge;
                     bestInRangeX = ex; bestInRangeY = ey;
                     foundInRange = true;
                   }
                 }
 
-                if (distSq < bestAnyDistSq) {
-                  bestAnyDistSq = distSq;
+                if (distToEdge < bestAnyDist) {
+                  bestAnyDist = distToEdge;
                   bestAnyX = ex; bestAnyY = ey;
                   foundAny = true;
                 }
@@ -695,11 +664,27 @@ export class ActorRenderer {
             } else if (animType === 'recoil') {
               scene.tweens.add({ targets: sprite, x: wx + Math.cos(angle) * -15, y: wy + Math.sin(angle) * -15, yoyo: true, duration: 80, ease: 'Cubic.easeOut', onComplete: cleanupTween });
             } else if (animType === 'swing') {
-              scene.tweens.add({ targets: sprite, angle: sprite.angle + 360, duration: 150, ease: 'Linear', onComplete: cleanupTween });
+
+              // --- NEW REALISTIC HALF-SWING ANIMATION ---
+              // Determine direction to swing so it arcs forward based on aim
+              const swingArc = isAimingLeft ? -130 : 130;
+
+              // Slight wind-up pullback before the strike
+              sprite.angle -= (swingArc * 0.25);
+
+              scene.tweens.add({
+                targets: sprite,
+                angle: sprite.angle + swingArc,
+                duration: 150,
+                ease: 'Sine.easeInOut',
+                yoyo: true, // Brings the sword back smoothly after the strike[cite: 2]
+                onComplete: cleanupTween
+              });
+
             } else {
               cleanupTween();
             }
-            if (isPlayer && wConfig.soundFire) AudioManager.getInstance().playSfx(wConfig.soundFire);
+            if (isPlayer && wConfig.soundFire) AudioManager.getInstance().playSfx(wConfig.soundFire); //[cite: 2]
           }
 
           if (!(sprite as any).__isAnimatingAttack) { sprite.x = wx; sprite.y = wy; }
