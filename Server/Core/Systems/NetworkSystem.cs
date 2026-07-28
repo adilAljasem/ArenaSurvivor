@@ -233,7 +233,8 @@ public class NetworkSystem : IGameSystem
                 p.SynergizedSkills.ToList().Select(s => new object[] { s.ConfigId, Math.Round(Math.Max(0, s.CurrentCooldown), 1) }).ToList(),
                 p.PendingStatDiff.Count > 0 ? (object)p.PendingStatDiff : null,
                 (int)p.CurrentShield,
-                p.ConfigId
+                p.ConfigId,
+                p.Team 
             }).ToList(),
 
 
@@ -255,7 +256,7 @@ public class NetworkSystem : IGameSystem
             Projectiles = gameState.Projectiles.Values.Select(proj => proj.MovementBehavior == "Orbital"
                             ? new object[] { proj.Id, proj.ConfigId, (int)proj.X, (int)proj.Y, proj.OrbitSpeed, 0f, 1, proj.OwnerId, (int)proj.OrbitRadius, proj.OrbitAngleOffset }
                             : new object[] { proj.Id, proj.ConfigId, (int)proj.X, (int)proj.Y, (int)proj.VelX, (int)proj.VelY }
-            ).ToList(),
+                    ).ToList(),
 
             Pickups = gameState.Pickups.Values.Where(pk => InBounds(pk.X, pk.Y)).Select(pk => new object[] {
                 pk.Id, (int)pk.X, (int)pk.Y, pk.Value, (int)pk.Type,
@@ -339,12 +340,13 @@ public class NetworkSystem : IGameSystem
 
         var fullEnemies = visibleEnemies.Where(e => newIds.Contains((string)e[EnemyIdx.Id])).ToList();
         var miniEnemies = visibleEnemies
-                          .Where(e => existingIds.Contains((string)e[EnemyIdx.Id]))
-                          .Select(e => new object[] {
+                                  .Where(e => existingIds.Contains((string)e[EnemyIdx.Id]))
+                                  .Select(e => new object[] {
                     e[EnemyIdx.Id], e[EnemyIdx.X], e[EnemyIdx.Y], e[EnemyIdx.CurrentHp], e[EnemyIdx.MaxHp], e[EnemyIdx.AimX], e[EnemyIdx.AimY], e[EnemyIdx.StateId],
                     e[EnemyIdx.CastingSkillId], e[EnemyIdx.CastTimer], e[EnemyIdx.MaxCastTimer], e[EnemyIdx.ActiveEffects], e[EnemyIdx.FiredWeapons],
-                    e[16]
-                          }).ToList();
+                    e[16],
+                    e[EnemyIdx.Weapons] // <<< ADD WEAPONS TO THE MINI UPDATE
+                                  }).ToList();
 
         return (fullEnemies, miniEnemies, destroyedIds);
     }

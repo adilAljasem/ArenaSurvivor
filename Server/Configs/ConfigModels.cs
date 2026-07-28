@@ -353,6 +353,11 @@ public class EffectConfig
     // Unlike StatMultipliers, which can only scale a distance+cooldown-driven trigger down to a
     // floor, never fully block it, this directly prevents the entity from acting while active.
     public bool PreventsActions { get; set; } = false;
+    public List<string> GrantedWeapons { get; set; } = new();
+    public List<string> GrantedItems { get; set; } = new();
+    public List<string> GrantedSkills { get; set; } = new();
+    // >>> NEW: Team Switch Mechanic <<<
+    public string OverrideTeam { get; set; } = string.Empty;
 }
 
 

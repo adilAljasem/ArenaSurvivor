@@ -1,4 +1,32 @@
 {
+  "effect_debuff_charm_t1": {
+    "id": "effect_debuff_charm_t1",
+    "name": "Charmed",
+    "textureKey": "icons1",
+    "iconFrame": 42,
+    "isBuff": false,
+    "duration": 5.0,
+    "maxStack": 1,
+    "overrideTeam": "Enemy",
+    "statModifiers": {},
+    "colorTint": "0xff1493"
+  },
+  "effect_boss_desperation_phase": {
+    "id": "effect_boss_desperation_phase",
+    "name": "Overdrive Protocol",
+    "isBuff": true,
+    "duration": 10.0,
+    "colorTint": "0xff0000",
+    "grantedWeapons": [
+      "pistol"
+    ],
+    "grantedItems": [
+      "runed_ward"
+    ],
+    "grantedSkills": [
+      ""
+    ]
+  },
   "effect_debuff_poison_dot_t1": {
     "id": "effect_debuff_poison_dot_t1",
     "name": "Poisoned",

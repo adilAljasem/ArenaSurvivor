@@ -74,8 +74,19 @@ public abstract class BaseActorEntity
 
     // --- Team & State ---
     public string Team { get; private set; } = string.Empty;
-    public void SetTeam(string team) => Team = team;
+    public string OriginalTeam { get; private set; } = string.Empty; // <<< NEW: Always remember the true loyalty
+    public void SetTeam(string team)
+    {
+        // Snapshot the original team the very first time it is assigned (e.g., during Initialize)
+        if (string.IsNullOrEmpty(OriginalTeam)) OriginalTeam = team;
+        Team = team;
+    }
 
+    // <<< NEW: Clean reset helper for the EffectSystem
+    public void RevertTeam()
+    {
+        if (!string.IsNullOrEmpty(OriginalTeam)) Team = OriginalTeam;
+    }
     public string ActionState { get; private set; } = "Idle";
     public void SetActionState(string newState) => ActionState = newState;
 
@@ -154,6 +165,8 @@ public abstract class BaseEquippedGear
     public List<string> MergedConfigIds { get; set; } = new();
     public Dictionary<string, float> TotalBaseStats { get; set; } = new();
     public Dictionary<string, float> RolledStats { get; set; } = new();
+    // >>> NEW: Tracks if this gear was granted by a temporary status effect
+    public string SourceEffectId { get; set; } = string.Empty;
 
     // Lets shared generator/merge logic reach "this gear's skill list" generically.
     // WeaponSkills / ItemSkills stay as the existing named properties everywhere else in the
@@ -181,6 +194,8 @@ public class ActiveEffect
     public string SourceId { get; set; } = string.Empty;
     public float GrantedShieldAmount { get; set; }
     public int StackCount { get; set; } = 1;
+    // >>> NEW: Flags this specific instance as the active team-switcher
+    public bool IsTeamSwitcher { get; set; } = false;
 
     [JsonIgnore]
     public BaseActorEntity? Caster { get; set; }
@@ -195,6 +210,10 @@ public class ActiveSkill
     public float CurrentCastTimer { get; set; }
     public float CurrentChannelTimer { get; set; }
     public float TimeSinceLastTick { get; set; }
+    // >>> NEW: Tracks if this skill was granted by a temporary status effect
+    public string SourceEffectId { get; set; } = string.Empty;
+    // >>> NEW: Flag to hide this skill from the normal auto-attack AI
+    public bool IsDynamic { get; set; } = false;
 
 }
 
@@ -862,6 +881,7 @@ public class ProjectileEntity
     public float HitRadius { get; set; } = 15f;
     public float Lifespan { get; set; } = 1f;
     public int PierceCount { get; set; } = 0;
+    public int BounceCount { get; set; } = 0;
     public float SweepAngle { get; set; } = (float)(Random.Shared.NextDouble() * Math.PI * 2);
     // >>> NEW: Orbit & Death Mechanics <<<
     public string MovementBehavior { get; set; } = "Linear";

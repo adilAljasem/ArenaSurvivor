@@ -1,4 +1,15 @@
 {
+    "skill_trigger_desperation": {
+        "id": "skill_trigger_desperation",
+        "name": "Trigger Desperation Phase",
+        "actionType": "SelfBuff",
+        "targetType": "Self",
+        "cooldownSeconds": 0,
+        "castTimeSeconds": 0,
+        "applyEffects": [
+            "effect_boss_desperation_phase"
+        ]
+    },
     "skill_boss_stomp_t1": {
         "id": "skill_boss_stomp_t1",
         "name": "Ground Stomp",
@@ -86,7 +97,7 @@
         "actionType": "Vacuum",
         "targetType": "Ground",
         "range": 500.0,
-        "radius": 250.0,
+        "radius": 600.0,
         "beamWidth": 80.0,
         "baseDamage": 10.0,
         "cooldownSeconds": 30.0,
@@ -94,12 +105,12 @@
         "lifespan": 15.0,
         "tickRate": 2.5,
         "colorTint": "#800080",
-        "vfxTextureKey": "explosion2",
+        "vfxTextureKey": "effects6",
         "vfxAnimFrames": [
-            0,
-            13
+            20,
+            29
         ],
-        "vfxBaseRadius": 50
+        "vfxBaseRadius": 150
     },
     "skill_carpet_bomber": {
         "id": "skill_carpet_bomber",
@@ -528,7 +539,7 @@
         "skillFamily": "orbital_fireballs",
         "tier": 1,
         "actionType": "Projectile",
-        "projectileId": "test_orbital_fireball",
+        "projectileId": "proj_orbital_fireball_t1",
         "castTimeSeconds": 1.5,
         "channelDurationSeconds": 3.0,
         "cooldownSeconds": 2.0,
@@ -544,9 +555,10 @@
         "skillFamily": "orbital_fireballs",
         "tier": 2,
         "actionType": "Projectile",
-        "projectileId": "test_orbital_fireball",
+        "projectileId": "proj_orbital_fireball_t2",
         "castTimeSeconds": 1.0,
-        "cooldownSeconds": 10.0,
+        "channelDurationSeconds": 8.0,
+        "cooldownSeconds": 1.0,
         "projectileCount": 45,
         "isRepeated": false,
         "baseDamage": 25,

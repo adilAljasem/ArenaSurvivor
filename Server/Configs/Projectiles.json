@@ -7,7 +7,9 @@
         "scale": 0.6,
         "baseSpeed": 800,
         "hitRadius": 10,
-        "pierceCount": 0,
+        "lifespan":20,
+        "pierceCount": 500,
+        "BounceCount":10,
         "soundHit": "ball-hit"
     },
     "sniper_round": {
@@ -114,11 +116,31 @@
         "lifespan": 2.0,
         "onDeathSkillId": "test_rocket_explosion"
     },
-    "test_orbital_fireball": {
-        "id": "test_orbital_fireball",
+    "proj_orbital_fireball_t1": {
+        "id": "proj_orbital_fireball_t1",
         "name": "Orbital Fireball",
-        "textureKey": "ammo_sheet",
-        "iconFrame": 26,
+        "textureKey": "effects5",
+        "animFly": [
+            72,
+            79
+        ],
+        "scale": 1.5,
+        "baseSpeed": 3.0,
+        "hitRadius": 15,
+        "pierceCount": 999,
+        "movementBehavior": "Orbital",
+        "orbitRadius": 220,
+        "orbitSpeed": 60
+    },
+    "proj_orbital_fireball_t2": {
+        "id": "proj_orbital_fireball_t2",
+        "name": "Orbital Fireball",
+        "textureKey": "effects5",
+        "animFly": [
+            252,
+            260
+        ],
+        "animFlyFrameRate": 10,
         "scale": 1.5,
         "baseSpeed": 3.0,
         "hitRadius": 15,

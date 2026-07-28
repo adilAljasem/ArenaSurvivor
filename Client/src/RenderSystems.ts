@@ -113,8 +113,9 @@ export class ActorRenderer {
     configs: any,
     targets: Map<string, { x: number, y: number }>,
     isPlayer: boolean,
+    localPlayerTeam: string, // <--- ADD THIS PARAMETER
     enemyList?: any[],
-    hpGraphics?: Phaser.GameObjects.Graphics // <--- ADD THIS HERE
+    hpGraphics?: Phaser.GameObjects.Graphics
   ): Set<string> {
     const activeIds = new Set<string>();
 
@@ -131,13 +132,13 @@ export class ActorRenderer {
     // Grab camera bounds for culling (zoom-aware — cam.width is screen pixels and no
     // longer matches world-space width once the fair-view letterbox zoom is applied,
     // so derive the cull box from cam.worldView, same fix as smoothInterpolateSprites)
+
     const cam = scene.cameras.main;
     const view = cam.worldView;
     const viewLeft = view.x - 100;
     const viewRight = view.right + 100;
     const viewTop = view.y - 100;
     const viewBottom = view.bottom + 100;
-
 
     actorList.forEach((actor: any) => {
       // 1. Identify Identity & Configs
@@ -169,17 +170,16 @@ export class ActorRenderer {
       const scale = config?.scale || 1.0;
       const isBoss = !isPlayer && config?.isBoss;
 
-      // Actual apparent on-screen size, hoisted up here (originally computed further down,
-      // right before topY/bottomY) because the weapon-scaling block below needs it too —
-      // see the comment there for why this is used instead of raw `scale`.
       const visualHeight = config?.visualHeight ?? config?.VisualHeight ?? 32;
       const realHeight = visualHeight * scale;
 
       // Variables specific to actor type
       const castColor = isPlayer ? 0x00ffff : 0xffa500;
       const uiWidth = isPlayer ? 32 : (isBoss ? 80 : 32);
-      const isFriendly = isPlayer || (actor.team || actor.Team) === 'Player';
-      const hpColor = isFriendly ? 0x00ff00 : 0xff0000;
+
+      // >>> THE DYNAMIC TEAM FIX <<<
+      const actorTeam = actor.team || actor.Team || (isPlayer ? 'Player' : 'Enemy');
+      const isFriendly = actorTeam === localPlayerTeam; // Checks their team against YOUR team!      const hpColor = isFriendly ? 0x00ff00 : 0xff0000;
 
       // --- ECS INGEST ---
       // Normalize this tick's network data into a real component ONCE,

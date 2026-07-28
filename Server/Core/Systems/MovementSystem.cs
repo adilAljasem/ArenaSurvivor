@@ -113,17 +113,18 @@ public class MovementSystem : IGameSystem
             float closestDistSq = float.MaxValue, targetX = 0, targetY = 0;
             bool foundTarget = false;
 
-            var targetPlayers = enemy.Team == "Enemy" ? activePlayers : new List<PlayerEntity>();
-            foreach (var player in targetPlayers)
+            // Check ALL active players that do not share this enemy's team
+            foreach (var p in activePlayers)
             {
-                float distSq = (player.X - enemy.X) * (player.X - enemy.X) + (player.Y - enemy.Y) * (player.Y - enemy.Y);
-                if (distSq < closestDistSq) { closestDistSq = distSq; targetX = player.X; targetY = player.Y; foundTarget = true; }
+                if (p.Team == enemy.Team) continue;
+                float distSq = (p.X - enemy.X) * (p.X - enemy.X) + (p.Y - enemy.Y) * (p.Y - enemy.Y);
+                if (distSq < closestDistSq) { closestDistSq = distSq; targetX = p.X; targetY = p.Y; foundTarget = true; }
             }
 
-            var opposingTeam = enemy.Team == "Enemy" ? nonEnemyTeam : enemyTeam;
-            foreach (var otherEnemy in opposingTeam)
+            // Check ALL active enemies that do not share this enemy's team
+            foreach (var otherEnemy in allActiveEnemies)
             {
-                if (otherEnemy.Id == enemy.Id) continue;
+                if (otherEnemy.Id == enemy.Id || otherEnemy.Team == enemy.Team) continue;
                 float distSq = (otherEnemy.X - enemy.X) * (otherEnemy.X - enemy.X) + (otherEnemy.Y - enemy.Y) * (otherEnemy.Y - enemy.Y);
                 if (distSq < closestDistSq) { closestDistSq = distSq; targetX = otherEnemy.X; targetY = otherEnemy.Y; foundTarget = true; }
             }

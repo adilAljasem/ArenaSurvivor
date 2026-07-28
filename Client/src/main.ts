@@ -222,6 +222,7 @@ interface ServerPlayer {
     synergizedSkills: { configId: string, currentCooldown: number }[];
     statDiff?: Record<string, number>;
     currentShield: number;
+    team: string;
 }
 interface ServerEnemy {
     id: string; configId: string; x: number; y: number; velX?: number;
@@ -424,6 +425,7 @@ class GameScene extends Phaser.Scene {
         this.load.spritesheet('effects3', '/assets/Effects/Bullet 24x24 Free Part 3A.png', { frameWidth: 24, frameHeight: 24 });
         this.load.spritesheet('effects4', '/assets/Effects/Bullet 24x24 Part 7B Free.png', { frameWidth: 24, frameHeight: 24 });
         this.load.spritesheet('effects5', '/assets/Effects/Bullet 24x24 Free Part 4A.png', { frameWidth: 24, frameHeight: 24 });
+        this.load.spritesheet('effects6', '/assets/Effects/56.png', { frameWidth: 64, frameHeight: 96 });
 
 
         this.load.spritesheet('ui_achievements', '/assets/menu/ui_achievements.png', { frameWidth: 234, frameHeight: 219 });
@@ -927,18 +929,38 @@ class GameScene extends Phaser.Scene {
             this.versionText.setText(payload.version || 'v?.?.?');
         }
 
-        // Guard: nothing to do if configs are empty or map already built.
+        // Guard: nothing to do if configs are empty.
         if (!masterConfigs || Object.keys(masterConfigs).length === 0) return;
 
-        // Warm the scoreboard's icon cache now, in the background, so the first TAB press
-        // doesn't have to pay for it mid-match. Safe to call repeatedly (reconnect) - already
-        // cached icons are skipped.
+        // Warm the scoreboard's icon cache now.
         if (this.scoreboardUI) this.scoreboardUI.prewarmIcons(masterConfigs);
 
-        if (this.isMapInitialized) return;
+        // ====================================================================
+        // >>> HOT RELOAD FIX: Must be placed BEFORE the isMapInitialized check
+        // ====================================================================
+        if (this.anims) {
+            this.createAnimations(masterConfigs);
 
-        // Rebuild animations from fresh config data.
-        if (this.anims) this.createAnimations(masterConfigs);
+            // Force projectiles already alive on the screen to instantly update 
+            // to the new animation frames you just saved in your JSON!
+            if (this.projectileSprites) {
+                this.projectileSprites.forEach((sprite) => {
+                    const pdata = (sprite as any).__pdata;
+                    if (pdata && pdata.configId && sprite.type === 'Sprite') {
+                        const animKey = `${pdata.configId}_fly`;
+                        if (this.anims.exists(animKey)) {
+                            // The 'true' flag tells Phaser to ignore if it's already playing 
+                            // and force a restart with the newly cached frames.
+                            (sprite as Phaser.GameObjects.Sprite).play(animKey, true);
+                        }
+                    }
+                });
+            }
+        }
+        // ====================================================================
+
+        // If the map is already built, stop here. 
+        if (this.isMapInitialized) return;
 
         const mapIdToUse =
             masterConfigs.currentMapId ||
@@ -1150,6 +1172,13 @@ class GameScene extends Phaser.Scene {
                         cached.aimX = m[5]; cached.aimY = m[6]; cached.actionState = StateMap[m[7]];
                         cached.currentCastingSkillId = m[8]; cached.currentCastTimer = m[9]; cached.maxCastTimer = m[10];
                         cached.activeEffects = m[11] || []; cached.firedWeapons = m[12] || []; cached.currentShield = m[13] || 0;
+
+                        // <<< NEW: Read the dynamic weapon updates from the mini payload
+                        if (m[14]) {
+                            cached.weapons = m[14].map((w: any[]) => ({
+                                configId: w[0], slotIndex: w[1], level: w[2], rolledStats: w[3] || {}, totalBaseStats: w[4] || {}
+                            }));
+                        }
                     }
                 });
             }
@@ -1184,11 +1213,12 @@ class GameScene extends Phaser.Scene {
                     statDiff: p[16],
                     currentShield: p[17] || 0,
                     configId: p[18],
+                    team: p[19] || "Player",
                     currentShop: [], stats: {}, ownedItems: {}
                 })) || [],
 
 
-                enemies: this.activeEnemiesArray, // <--- Using the fast cached array!
+                enemies: this.activeEnemiesArray,
                 projectiles: [],
 
                 damageEvents: rawState.dmg?.map((d: any[]) => ({
@@ -1306,10 +1336,13 @@ class GameScene extends Phaser.Scene {
             // ==========================================
             // 9. RENDER ACTORS & WORLD
             // ==========================================
-            const activePlayers = ActorRenderer.render(this, state.players, this.playerSprites, masterConfigs, this.targetPositions, true, state.enemies, this.hpGraphics);
-            const activeEnemies = ActorRenderer.render(this, state.enemies, this.enemySprites, masterConfigs, this.targetPositions, false, undefined, this.hpGraphics);
-            const dummyMap = new Map();
-            const { activePickups } = WorldRenderer.render(this, state, dummyMap, this.pickupSprites, masterConfigs, this.targetPositions) as any;
+            const myTeam = myPlayer ? myPlayer.team : "Player";
+
+            // Pass myTeam into both render calls!
+            const activePlayers = ActorRenderer.render(this, state.players, this.playerSprites, masterConfigs, this.targetPositions, true, myTeam, state.enemies, this.hpGraphics);
+            const activeEnemies = ActorRenderer.render(this, state.enemies, this.enemySprites, masterConfigs, this.targetPositions, false, myTeam, undefined, this.hpGraphics);
+
+            const dummyMap = new Map(); const { activePickups } = WorldRenderer.render(this, state, dummyMap, this.pickupSprites, masterConfigs, this.targetPositions) as any;
 
             const mySprite = this.playerSprites.get(matchConnection.connectionId || "");
             if (mySprite && !this.isCameraFollowing) {
@@ -2100,56 +2133,64 @@ class GameScene extends Phaser.Scene {
                     const id = entity.id || entity.Id;
                     const animKey = `${id}_vfx`;
 
-                    if (!this.anims.exists(animKey)) {
-                        const textureKey = entity.vfxTextureKey || entity.VfxTextureKey;
-                        const frameRate = entity.vfxFrameRate || entity.VfxFrameRate || 15;
-
-                        // Check if the skill has a lifespan or channel duration so we know to loop it!
-                        const channelDuration = entity.channelDurationSeconds ?? entity.ChannelDurationSeconds ?? 0;
-                        const lifespan = entity.lifespan ?? entity.Lifespan ?? 0;
-                        const isRepeated = (entity.isRepeated ?? entity.IsRepeated ?? true) && (channelDuration > 0 || lifespan > 0);
-
-                        if (textureKey) {
-                            this.anims.create({
-                                key: animKey,
-                                frames: this.anims.generateFrameNumbers(textureKey, {
-                                    start: entity[key][0],
-                                    end: entity[key][1]
-                                }),
-                                frameRate: frameRate,
-                                repeat: isRepeated ? -1 : 0
-                            });
-                        }
+                    // >>> NEW: Destroy the old animation cache so it can be rebuilt from hot-reload JSON
+                    if (this.anims.exists(animKey)) {
+                        this.anims.remove(animKey);
                     }
+
+                    const textureKey = entity.vfxTextureKey || entity.VfxTextureKey;
+                    const frameRate = entity.vfxFrameRate || entity.VfxFrameRate || 15;
+
+                    // Check if the skill has a lifespan or channel duration so we know to loop it!
+                    const channelDuration = entity.channelDurationSeconds ?? entity.ChannelDurationSeconds ?? 0;
+                    const lifespan = entity.lifespan ?? entity.Lifespan ?? 0;
+                    const isRepeated = (entity.isRepeated ?? entity.IsRepeated ?? true) && (channelDuration > 0 || lifespan > 0);
+
+                    if (textureKey) {
+                        this.anims.create({
+                            key: animKey,
+                            frames: this.anims.generateFrameNumbers(textureKey, {
+                                start: entity[key][0],
+                                end: entity[key][1]
+                            }),
+                            frameRate: frameRate,
+                            repeat: isRepeated ? -1 : 0
+                        });
+                    }
+
                 }
                 else if (key.toLowerCase().startsWith('anim') && Array.isArray(entity[key]) && entity[key].length === 2) {
                     const actionName = key.toLowerCase().replace('anim', '');
                     const id = entity.id || entity.Id;
                     const animKey = `${id}_${actionName}`;
 
-                    if (!this.anims.exists(animKey)) {
-                        const textureKey = entity.textureKey || entity.TextureKey;
-                        let customFrameRate = entity[`${key}FrameRate`] || 15;
-
-                        if (actionName === 'attack' && (entity.attackDuration || entity.AttackDuration)) {
-                            const duration = entity.attackDuration || entity.AttackDuration;
-                            const totalFrames = (entity[key][1] - entity[key][0]) + 1;
-                            customFrameRate = totalFrames / duration;
-                        }
-
-                        const shouldLoop = (actionName === 'attack' || actionName === 'hit' || actionName === 'death' || actionName === 'skill') ? 0 : -1;
-                        if (textureKey) {
-                            this.anims.create({
-                                key: animKey,
-                                frames: this.anims.generateFrameNumbers(textureKey, {
-                                    start: entity[key][0],
-                                    end: entity[key][1]
-                                }),
-                                frameRate: customFrameRate,
-                                repeat: shouldLoop
-                            });
-                        }
+                    // >>> NEW: Destroy the old animation cache so it can be rebuilt from hot-reload JSON
+                    if (this.anims.exists(animKey)) {
+                        this.anims.remove(animKey);
                     }
+
+                    const textureKey = entity.textureKey || entity.TextureKey;
+                    let customFrameRate = entity[`${key}FrameRate`] || 15;
+
+                    if (actionName === 'attack' && (entity.attackDuration || entity.AttackDuration)) {
+                        const duration = entity.attackDuration || entity.AttackDuration;
+                        const totalFrames = (entity[key][1] - entity[key][0]) + 1;
+                        customFrameRate = totalFrames / duration;
+                    }
+
+                    const shouldLoop = (actionName === 'attack' || actionName === 'hit' || actionName === 'death' || actionName === 'skill') ? 0 : -1;
+                    if (textureKey) {
+                        this.anims.create({
+                            key: animKey,
+                            frames: this.anims.generateFrameNumbers(textureKey, {
+                                start: entity[key][0],
+                                end: entity[key][1]
+                            }),
+                            frameRate: customFrameRate,
+                            repeat: shouldLoop
+                        });
+                    }
+
                 }
             });
         });

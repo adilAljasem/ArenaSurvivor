@@ -1012,9 +1012,11 @@ internal static class TargetingHelper
 {
     public static IEnumerable<BaseActorEntity> GetHostileTargets(GameState state, string casterTeam)
     {
-        return casterTeam == "Player"
-            ? state.Enemies.Values.Where(e => e.Team != "Player").Cast<BaseActorEntity>()
-            : state.Players.Values.Cast<BaseActorEntity>().Concat(state.Enemies.Values.Where(e => e.Team != "Enemy").Cast<BaseActorEntity>());
+        // Return ANY entity (player or enemy) that does NOT share the caster's team
+        var hostilePlayers = state.Players.Values.Where(p => p.ActionState != "Dead" && p.Team != casterTeam).Cast<BaseActorEntity>();
+        var hostileEnemies = state.Enemies.Values.Where(e => e.ActionState != "Dead" && e.Team != casterTeam).Cast<BaseActorEntity>();
+
+        return hostilePlayers.Concat(hostileEnemies);
     }
 
     public static BaseActorEntity? FindClosestTarget(float originX, float originY, float maxRangeSq, params IEnumerable<BaseActorEntity>[] candidateSets)
@@ -1118,9 +1120,12 @@ internal static class SkillStateHelper
         {
             int checkIndex = (skillIndex + i) % skills.Count;
             var skill = skills[checkIndex];
+
+            // >>> FIX: Skip dynamically triggered skills entirely!
+            if (skill.IsDynamic) continue;
+
             if (!configs.Skills.TryGetValue(skill.ConfigId, out var config) || config.TriggerType != SkillTriggerType.Auto) continue;
             if (skill.CurrentCooldown > 0 || skill.CurrentCastTimer > 0 || skill.CurrentChannelTimer > 0) continue;
-
             skillIndex = (checkIndex + 1) % skills.Count;
 
             // Immune skills always run their cooldown/cast time at the full configured
@@ -1145,25 +1150,43 @@ internal static class SkillStateHelper
     // BEHAVIOR NOTE: unified to guard against maxHp == 0 (Math.Max(1f, maxHp)) - the original
     // enemy path divided by GetTotalStat("maxHp") directly with no guard. See caller notes.
     public static void ProcessDynamicSkillTriggers(
-        IEnumerable<DynamicSkillTrigger> triggers, Dictionary<string, float> timers, List<ActiveSkill> skills,
-        float currentHp, float maxHp, string casterId, float x, float y, string team,
-        GameState state, ConfigManager configs, EventBus eventBus, float dt, float hasteMult)
+          IEnumerable<DynamicSkillTrigger> triggers, Dictionary<string, float> timers, List<ActiveSkill> skills,
+          float currentHp, float maxHp, string casterId, float x, float y, string team,
+          GameState state, ConfigManager configs, EventBus eventBus, float dt, float hasteMult)
     {
         foreach (var trigger in triggers)
         {
             if (!timers.ContainsKey(trigger.SkillId)) timers[trigger.SkillId] = 0;
             if (timers[trigger.SkillId] > 0) timers[trigger.SkillId] -= dt;
 
-            if (trigger.ConditionType != "MissingHealthPercent" || timers[trigger.SkillId] > 0) continue;
+            // 1. Wait until the cooldown timer is ready
+            if (timers[trigger.SkillId] > 0) continue;
 
-            float hpPct = currentHp / Math.Max(1f, maxHp);
-            if (hpPct > trigger.ConditionThreshold || !configs.Skills.TryGetValue(trigger.SkillId, out var skillConfig)) continue;
+            if (!configs.Skills.TryGetValue(trigger.SkillId, out var skillConfig)) continue;
+
+            // 2. Evaluate the specific condition required to fire
+            if (trigger.ConditionType == "MissingHealthPercent")
+            {
+                float hpPct = currentHp / Math.Max(1f, maxHp);
+                if (hpPct > trigger.ConditionThreshold) continue;
+            }
+            else if (trigger.ConditionType == "TimerLoop")
+            {
+                // TimerLoop fires strictly on cooldown. We just let it pass through.
+            }
+            else
+            {
+                continue; // Unknown trigger condition, skip.
+            }
 
             var activeSkill = skills.FirstOrDefault(s => s.ConfigId == trigger.SkillId);
             if (activeSkill != null && (activeSkill.CurrentCastTimer > 0 || activeSkill.CurrentChannelTimer > 0)) continue;
 
             float castTime = trigger.OverrideCastTime ?? skillConfig.CastTimeSeconds;
-            if (activeSkill == null) { activeSkill = new ActiveSkill { ConfigId = trigger.SkillId }; skills.Add(activeSkill); }
+
+            // >>> FIX: Flag it as IsDynamic = true so the AI knows to ignore it!
+            if (activeSkill == null) { activeSkill = new ActiveSkill { ConfigId = trigger.SkillId, IsDynamic = true }; skills.Add(activeSkill); }
+            // >>> THIS IS THE FIX: Lock the trigger so it doesn't fire every single frame! <<<
             timers[trigger.SkillId] = trigger.Cooldown;
 
             // Immune skills always run their cooldown/cast time at the full configured

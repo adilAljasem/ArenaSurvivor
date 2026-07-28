@@ -904,6 +904,10 @@ export class StatDisplay extends Phaser.GameObjects.Container {
         scene.add.existing(this);
     }
 
+    public getStatText(key: string): Phaser.GameObjects.Text | undefined {
+        return this.statTexts.get(key);
+    }
+
     public updateStats(statsPayload: any, level: number = 1) {
         if (!statsPayload) return;
 
@@ -1081,8 +1085,19 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                 slotContainer.add(hitbox);
 
                 const iMax = config?.maxLevel ?? config?.MaxLevel ?? 5;
+
+                // --- NEW: Max Level Outglow (Items) ---
+                if (config && iLevel >= iMax) {
+                    if (slotBg.postFX) slotBg.postFX.addGlow(UIHelpers.getTierColorHex(iTier), 4, 0, false, 0.1, 15);
+                }
+
                 const lvlTxt = this.scene.add.text(19, 19, `Lv.${iLevel}/${iMax}`, {
-                    fontFamily: UIHelpers.FONT, fontSize: '10px', color: '#ffffff', stroke: '#000', strokeThickness: 2, resolution: 3
+                    fontFamily: UIHelpers.FONT,
+                    fontSize: '10px',
+                    color: iLevel >= iMax ? '#00ff00' : '#ffffff', // Turn text green at max level
+                    stroke: '#000',
+                    strokeThickness: 2,
+                    resolution: 3
                 }).setOrigin(1, 1);
                 slotContainer.add(lvlTxt);
 
@@ -1285,8 +1300,20 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
                 }
 
                 const wMax = config?.maxLevel ?? config?.MaxLevel ?? 5;
+
+                // --- NEW: Max Level Outglow (Weapons) ---
+                if (config && wLevel >= wMax) {
+                    // Weapons are slightly larger, so we bump the glow strength to 6
+                    if (slotBg.postFX) slotBg.postFX.addGlow(UIHelpers.getTierColorHex(wTier), 6, 0, false, 0.1, 15);
+                }
+
                 const lvlTxt = this.scene.add.text(27.5, 27.5, `Lv.${wLevel}/${wMax}`, {
-                    fontFamily: UIHelpers.FONT, fontSize: '13px', color: '#ffffff', stroke: '#000', strokeThickness: 3, resolution: 3
+                    fontFamily: UIHelpers.FONT,
+                    fontSize: '13px',
+                    color: wLevel >= wMax ? '#00ff00' : '#ffffff', // Turn text green at max level
+                    stroke: '#000',
+                    strokeThickness: 3,
+                    resolution: 3
                 }).setOrigin(1, 1);
                 weaponSlotContainer.add(lvlTxt);
 
@@ -1584,8 +1611,7 @@ export class ShopUI {
     // of gear from the same Weapon/ItemFamily) and insufficient gold. This is a client-side
     // prediction of the server's rule, not a replacement for it - ShopError/ShopSuccess still
     // fire normally and remain the source of truth if this ever disagrees with the server.
-    private getPurchaseBlock(item: any, config: any, isWeapon: boolean, uiData: any, atlasConfigs: any):
-        { reason: 'family' | 'gold' | null, label: string, shortLabel: string } {
+    private getPurchaseBlock(item: any, config: any, isWeapon: boolean, uiData: any, atlasConfigs: any): { reason: 'family' | 'gold' | null, label: string, shortLabel: string } {
         if (!config) return { reason: null, label: '', shortLabel: '' };
 
         const family = isWeapon ? (config.weaponFamily ?? config.WeaponFamily) : (config.itemFamily ?? config.ItemFamily);
@@ -1966,13 +1992,30 @@ export class ShopUI {
                     },
                     onSelect: () => {
                         if (isBlocked) {
-                            // We already know the server would reject this - give instant feedback
-                            // instead of a wasted round trip. ShopError still covers any case this
-                            // client-side check didn't catch.
                             AudioManager.getInstance().playUiSfx('ui_error');
                             this.scene.tweens.add({ targets: buyBtnBg, x: '+=6', duration: 40, yoyo: true, repeat: 3 });
                             return;
                         }
+
+                        // --- NEW: Trigger Phaser Visual Impacts ---
+                        // Combine base and rolled stats so we get all changes
+                        const baseStats = item.totalBaseStats || item.TotalBaseStats || config?.statBonuses || config?.StatBonuses || {};
+                        const rolledStats = item.rolledStats || item.RolledStats || {};
+
+                        const allStats: Record<string, number> = { ...baseStats };
+                        Object.entries(rolledStats).forEach(([k, v]) => {
+                            allStats[k] = (allStats[k] || 0) + (v as number);
+                        });
+
+                        // Fire an orb for every stat this item modifies!
+                        Object.entries(allStats).forEach(([statKey, val]) => {
+                            const amount = val as number;
+                            if (amount !== 0) {
+                                this.animateStatImpact(singleCardContainer, statKey, amount);
+                            }
+                        });
+                        // ------------------------------------------
+
                         this.connection.invoke("BuyItem", configId).catch((err: any) => console.error(err));
                     }
                 };
@@ -2021,6 +2064,64 @@ export class ShopUI {
         } catch (err) {
             console.error("Safely caught UI Update error to prevent game freeze:", err);
         }
+    }
+
+    // --- NEW: Phaser native animation for stat impacts ---
+    private animateStatImpact(cardContainer: Phaser.GameObjects.Container, statKey: string, amount: number) {
+        const statText = this.statDisplay.getStatText(statKey);
+        if (!statText) return;
+
+        // Automatically determine Green (+) or Red (-)
+        const isPositive = amount > 0;
+        const glowColorHex = isPositive ? 0x00ff00 : 0xff0000;
+        const glowColorStr = isPositive ? '#00ff00' : '#ff0000';
+
+        // 1. Get the absolute screen positions regardless of camera/container nesting
+        const startMatrix = cardContainer.getWorldTransformMatrix();
+        const targetMatrix = statText.getWorldTransformMatrix();
+
+        // 2. Create the glowing orb
+        const orb = this.scene.add.circle(startMatrix.tx, startMatrix.ty, 6, glowColorHex);
+        orb.setDepth(9999);
+        orb.setScrollFactor(0); // Keep it locked to the UI
+
+        if (orb.postFX) orb.postFX.addGlow(glowColorHex, 4, 0, false, 0.1, 10);
+
+        // 3. Tween the orb to the stat text
+        this.scene.tweens.add({
+            targets: orb,
+            x: targetMatrix.tx,
+            y: targetMatrix.ty,
+            duration: 500, // Half a second flight time
+            ease: 'Cubic.easeInOut',
+            onComplete: () => {
+                orb.destroy();
+
+                // 4. Impact effect: Change text color, ADD GLOW, and pop its scale
+                const originalColor = statText.style.color;
+
+                statText.setColor(glowColorStr);
+                // Create a heavy glow effect using a blurred shadow centered directly behind the text
+                statText.setShadow(0, 0, glowColorStr, 15, false, true);
+
+                this.scene.tweens.add({
+                    targets: statText,
+                    scale: 1.4,
+                    duration: 100,
+                    yoyo: true,
+                    onComplete: () => {
+                        // 5. Revert color and wipe the shadow after 2 seconds
+                        this.scene.time.delayedCall(2000, () => {
+                            if (statText.active) {
+                                statText.setColor(originalColor);
+                                // Remove the glow completely
+                                statText.setShadow(0, 0, '#000000', 0, false, false);
+                            }
+                        });
+                    }
+                });
+            }
+        });
     }
 
     private safelyReapplyKeyboardFocus() {

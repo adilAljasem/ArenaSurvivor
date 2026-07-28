@@ -82,20 +82,24 @@ public class CombatSystem : IGameSystem
                 {
                     float finalRange = config.Range + player.GetTotalStat("range", _configs);
                     float bestDist = float.MaxValue;
-                    EnemyEntity? target = null;
+                    BaseActorEntity? target = null;
+                    var hostileTargets = TargetingHelper.GetHostileTargets(state, player.Team);
 
-                    foreach (var enemy in enemyTeam)
+                    foreach (var possibleTarget in hostileTargets)
                     {
-                        // Get the enemy's radius and calculate distance to its EDGE
-                        float targetHitRadius = _configs.Enemies.TryGetValue(enemy.ConfigId, out var eCfg) ? eCfg.HitRadius : 15f;
-                        float dist = (float)Math.Sqrt((enemy.X - spawnX) * (enemy.X - spawnX) + (enemy.Y - spawnY) * (enemy.Y - spawnY));
+                        // Get the target's radius and calculate distance to its EDGE
+                        float targetHitRadius = possibleTarget is EnemyEntity e
+                            ? (_configs.Enemies.TryGetValue(e.ConfigId, out var ec) ? ec.HitRadius : 15f)
+                            : (_configs.Characters.TryGetValue(((PlayerEntity)possibleTarget).ConfigId, out var cc) ? cc.HitRadius : 15f);
+
+                        float dist = (float)Math.Sqrt((possibleTarget.X - spawnX) * (possibleTarget.X - spawnX) + (possibleTarget.Y - spawnY) * (possibleTarget.Y - spawnY));
                         float distToEdge = dist - targetHitRadius;
 
                         // Check if the EDGE is within range
                         if (distToEdge <= finalRange && distToEdge < bestDist)
                         {
                             bestDist = distToEdge;
-                            target = enemy;
+                            target = possibleTarget;
                         }
                     }
                     if (target != null) { dirX = target.X - spawnX; dirY = target.Y - spawnY; shouldFire = true; }
@@ -149,7 +153,7 @@ public class CombatSystem : IGameSystem
                             foreach (var (spreadDirX, spreadDirY) in shotDirections)
                             {
                                 allNewBullets.AddRange(ProjectileFactory.Create(
-                                    projConfig, player.ConnectionId, "Player", spawnX, spawnY,
+                                    projConfig, player.ConnectionId, player.Team, spawnX, spawnY, // <<< CHANGED HERE
                                     spreadDirX, spreadDirY,
                                     physDmg, magicDmg, finalSpeed, totalLifeStealPercent, combinedEffects,
                                     1, computedLifespan, isCrit
@@ -172,7 +176,10 @@ public class CombatSystem : IGameSystem
             var opposingPlayers = enemy.Team == "Enemy" ? activePlayers : new List<PlayerEntity>();
             var opposingTeam = enemy.Team == "Enemy" ? nonEnemyTeam : enemyTeam;
 
-            var target = TargetingHelper.FindClosestTarget(enemy.X, enemy.Y, float.MaxValue, opposingPlayers, opposingTeam);
+            // >>> Use our new dynamic targeting helper instead of hardcoded lists!
+            var hostileTargets = TargetingHelper.GetHostileTargets(state, enemy.Team);
+
+            var target = TargetingHelper.FindClosestTarget(enemy.X, enemy.Y, float.MaxValue, hostileTargets);
             if (target == null) return;
             enemy.AimX = target.X; enemy.AimY = target.Y;
 
@@ -286,9 +293,17 @@ public class CombatSystem : IGameSystem
         var pickupsToRemove = new System.Collections.Concurrent.ConcurrentBag<string>();
         var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
 
-        var hostileEnemies = state.Enemies.Values.Where(e => e.Team == "Enemy" && e.ActionState != "Dead").Cast<BaseActorEntity>().ToList();
-        var playerTeam = state.Players.Values.Where(p => p.ActionState != "Dead").Cast<BaseActorEntity>()
+        var hostileEnemies = state.Enemies.Values.Where(e => e.Team == "Enemy" && e.ActionState != "Dead").Cast<BaseActorEntity>()
+                    .Concat(state.Players.Values.Where(p => p.Team == "Enemy" && p.ActionState != "Dead")).ToList(); // <<< ADDED PLAYERS ON ENEMY TEAM
+
+        var playerTeam = state.Players.Values.Where(p => p.Team != "Enemy" && p.ActionState != "Dead").Cast<BaseActorEntity>()
             .Concat(state.Enemies.Values.Where(e => e.Team != "Enemy" && e.ActionState != "Dead")).ToList();
+
+        float mapW = 4000f, mapH = 4000f;
+        if (_configs.Maps != null && _configs.Maps.TryGetValue("map_forest", out var currentMap))
+        {
+            mapW = currentMap.Width; mapH = currentMap.Height;
+        }
 
         System.Threading.Tasks.Parallel.ForEach(state.Projectiles.Values, parallelOptions, proj =>
         {
@@ -308,6 +323,77 @@ public class CombatSystem : IGameSystem
             {
                 proj.X += proj.VelX * dt;
                 proj.Y += proj.VelY * dt;
+
+                if (proj.BounceCount > 0)
+                {
+                    bool bounced = false;
+
+                    // Bounce off left/right walls and bump it slightly inwards to prevent sticking
+                    if (proj.X <= 0 || proj.X >= mapW)
+                    {
+                        proj.VelX = -proj.VelX;
+                        proj.X = Math.Clamp(proj.X, 5, mapW - 5);
+                        bounced = true;
+                    }
+
+                    // Bounce off top/bottom walls
+                    if (proj.Y <= 0 || proj.Y >= mapH)
+                    {
+                        proj.VelY = -proj.VelY;
+                        proj.Y = Math.Clamp(proj.Y, 5, mapH - 5);
+                        bounced = true;
+                    }
+
+                    if (bounced)
+                    {
+                        proj.BounceCount--;
+
+                        // Tell the server to delete the current instance so the client deletes the old sprite
+                        projectilesToRemove.Add(proj.Id);
+
+                        // Spawn an exact clone with the new velocity! 
+                        // The client receives this as a "new" bullet and renders the bounce seamlessly.
+                        var bouncedProj = new ProjectileEntity
+                        {
+                            ConfigId = proj.ConfigId,
+                            OwnerId = proj.OwnerId,
+                            Team = proj.Team,
+                            X = proj.X,
+                            Y = proj.Y,
+                            VelX = proj.VelX,
+                            VelY = proj.VelY,
+                            PhysicalDamage = proj.PhysicalDamage,
+                            MagicDamage = proj.MagicDamage,
+                            LifeStealChance = proj.LifeStealChance,
+                            HitRadius = proj.HitRadius,
+                            Lifespan = proj.Lifespan - dt,
+                            PierceCount = proj.PierceCount,
+                            BounceCount = proj.BounceCount,
+                            SweepAngle = proj.SweepAngle,
+                            MovementBehavior = proj.MovementBehavior,
+                            OrbitRadius = proj.OrbitRadius,
+                            OrbitAngleOffset = proj.OrbitAngleOffset,
+                            OrbitSpeed = proj.OrbitSpeed,
+                            OnDeathSkillId = proj.OnDeathSkillId,
+                            TickRate = proj.TickRate,
+                            TickSkillId = proj.TickSkillId,
+                            TimeSinceLastTick = proj.TimeSinceLastTick + dt,
+
+                            // FIX: Reset the hit memory so it can damage the same enemies on the way back!
+                            HitEnemies = new HashSet<string>(),
+                            ApplyEffectsOnHit = new List<string>(proj.ApplyEffectsOnHit),
+                            IsCritical = proj.IsCritical,
+
+                            // FIX: Also reset the orbital hit cooldowns if this happens to be an orbiting projectile
+                            OrbitHitCooldowns = new Dictionary<string, float>(),
+                            OrbitHitInterval = proj.OrbitHitInterval,
+                            IsFriendlyProjectile = proj.IsFriendlyProjectile
+                        };
+
+                        _eventBus.Publish(new SpawnProjectileEvent { Projectiles = new List<ProjectileEntity> { bouncedProj } });
+                        return; // Skip remaining collision logic for this tick since we replaced it
+                    }
+                }
             }
             proj.Lifespan -= dt;
 
@@ -349,8 +435,9 @@ public class CombatSystem : IGameSystem
             }
 
 
-            bool isPlayerProj = state.Players.ContainsKey(proj.OwnerId) || (state.Enemies.TryGetValue(proj.OwnerId, out var o) && o.Team != "Enemy");
-            var targets = proj.IsFriendlyProjectile ? (isPlayerProj ? playerTeam : hostileEnemies) : (isPlayerProj ? hostileEnemies : playerTeam);
+            // <<< CHANGED: Rely on the bullet's Team, not the Owner's dictionary!
+            bool isPlayerTeamProj = proj.Team != "Enemy";
+            var targets = proj.IsFriendlyProjectile ? (isPlayerTeamProj ? playerTeam : hostileEnemies) : (isPlayerTeamProj ? hostileEnemies : playerTeam);
 
             foreach (var target in targets)
             {

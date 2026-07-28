@@ -31,7 +31,8 @@
       "rangedDamage": 0.5
     },
     "applyEffectsOnHit": [
-      "effect_debuff_poison_dot_t1"
+      "effect_debuff_poison_dot_t1",
+      "effect_debuff_charm_t1"
     ],
     "grantedSkills": [
       "barrier",

@@ -518,26 +518,30 @@
     "WeaponOffset": 320,
     "WeaponScaleOverride": 2.0,
     "AttackRadius": 150,
-    "HitRadius":150,
+    "HitRadius": 150,
     "baseStats": {
       "maxHp": 25500,
-      "movementSpeed": 85,
+      "movementSpeed": 30,
       "armor": 25,
-      "meleeDamage":50
+      "meleeDamage": 50
     },
-    "startingWeapons": [
-    ],
+    "startingWeapons": [],
     "startingItems": [
       "item_boss_insulated_plating"
     ],
-    "startingSkills": [
-    ],
-    "dynamicModifiers": [
+    "startingSkills": [],
+    "dynamicSkills": [
       {
         "conditionType": "MissingHealthPercent",
         "conditionThreshold": 0.50,
-        "targetStat": "attackSpeedPercent",
-        "amount": 0.40
+        "skillId": "skill_trigger_desperation",
+        "cooldown": 9999.0
+      },
+      {
+        "conditionType": "TimerLoop",
+        "conditionThreshold": 0.0,
+        "skillId": "skill_trigger_desperation",
+        "cooldown": 40.0
       }
     ]
   },

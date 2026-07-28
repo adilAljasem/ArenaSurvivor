@@ -71,6 +71,14 @@ public class EffectSystem : IGameSystem
                 int startingStacks = Math.Min(maxStack, ev.StackAmount);
                 float initialShield = shieldToGrant * startingStacks;
 
+                // >>> NEW: Apply Team Switch if configured <<<
+                bool isTeamSwitcher = false;
+                if (!string.IsNullOrEmpty(effectConfig.OverrideTeam))
+                {
+                    target.SetTeam(effectConfig.OverrideTeam);
+                    isTeamSwitcher = true;
+                }
+
                 target.ActiveEffects.Add(new ActiveEffect
                 {
                     ConfigId = ev.EffectConfigId,
@@ -78,12 +86,68 @@ public class EffectSystem : IGameSystem
                     GrantedShieldAmount = initialShield,
                     StackCount = startingStacks,
                     SourceId = casterId,
-                    // ActiveEffect.Caster is a persistent per-entity component (long-lived state,
-                    // not an event), so holding a resolved reference here is fine - it's the same
-                    // kind of reference HealthSystem already reads back via effect.Caster.
-                    Caster = casterEntity
+                    Caster = casterEntity,
+                    IsTeamSwitcher = isTeamSwitcher // <<< ADDED FLAG
                 });
                 target.ModifyShield(initialShield);
+
+                // >>> NEW: Grant temporary gear from the effect!
+                bool gearAdded = false;
+
+                if (effectConfig.GrantedWeapons != null && effectConfig.GrantedWeapons.Count > 0)
+                {
+                    foreach (var wId in effectConfig.GrantedWeapons)
+                    {
+                        if (_configs.Weapons.ContainsKey(wId))
+                        {
+                            // Use appropriate generation based on entity type to match Entities.cs logic
+                            var weapon = target is PlayerEntity p
+                                ? WeaponGenerator.GenerateWeapon(wId, p, _configs, 1)
+                                : WeaponGenerator.GenerateWeapon(wId, 0f, _configs, 1);
+
+                            weapon.SourceEffectId = ev.EffectConfigId;
+                            weapon.SlotIndex = target.Weapons.Count;
+                            target.Weapons.Add(weapon);
+                            gearAdded = true;
+                        }
+                    }
+                }
+
+                if (effectConfig.GrantedItems != null && effectConfig.GrantedItems.Count > 0)
+                {
+                    foreach (var iId in effectConfig.GrantedItems)
+                    {
+                        if (_configs.Items.ContainsKey(iId))
+                        {
+                            var item = target is PlayerEntity p
+                                ? ItemGenerator.GenerateItem(iId, p, _configs, 1)
+                                : ItemGenerator.GenerateItem(iId, 0f, _configs, 1);
+
+                            item.SourceEffectId = ev.EffectConfigId;
+                            item.SlotIndex = target.OwnedItems.Count;
+                            target.OwnedItems.Add(item);
+                            gearAdded = true;
+                        }
+                    }
+                }
+
+                if (effectConfig.GrantedSkills != null && effectConfig.GrantedSkills.Count > 0)
+                {
+                    foreach (var sId in effectConfig.GrantedSkills)
+                    {
+                        if (_configs.Skills.ContainsKey(sId))
+                        {
+                            target.Skills.Add(new ActiveSkill { ConfigId = sId, SourceEffectId = ev.EffectConfigId, CurrentCooldown = 0f });
+                            gearAdded = true;
+                        }
+                    }
+                }
+
+                // If a player got this, merge duplicate items/weapons/skills immediately
+                if (gearAdded && target is PlayerEntity playerTarget)
+                {
+                    playerTarget.RecalculateSynergies(_configs);
+                }
             }
 
             // A stack change can shift a buff's magnitude — force StatSystem to pick it up.
@@ -146,6 +210,40 @@ public class EffectSystem : IGameSystem
                 {
                     entity.ModifyShield(-effect.GrantedShieldAmount);
                     entity.ClampShieldNonNegative();
+                }
+
+                // >>> NEW: Revert Team if this effect was a team switcher <<<
+                if (effect.IsTeamSwitcher)
+                {
+                    entity.RevertTeam();
+                }
+
+                // >>> NEW: Strip Temporary Gear!
+                bool gearRemoved = false;
+
+                if (entity.Weapons.RemoveAll(w => w.SourceEffectId == effect.ConfigId) > 0)
+                {
+                    gearRemoved = true;
+                    // Condense slot indices so we don't leave empty gaps
+                    var sortedW = entity.Weapons.OrderBy(w => w.SlotIndex).ToList();
+                    for (int j = 0; j < sortedW.Count; j++) sortedW[j].SlotIndex = j;
+                }
+
+                if (entity.OwnedItems.RemoveAll(item => item.SourceEffectId == effect.ConfigId) > 0)
+                {
+                    gearRemoved = true;
+                    var sortedI = entity.OwnedItems.OrderBy(item => item.SlotIndex).ToList();
+                    for (int j = 0; j < sortedI.Count; j++) sortedI[j].SlotIndex = j;
+                }
+
+                if (entity.Skills.RemoveAll(s => s.SourceEffectId == effect.ConfigId) > 0)
+                {
+                    gearRemoved = true;
+                }
+
+                if (gearRemoved && entity is PlayerEntity p)
+                {
+                    p.RecalculateSynergies(_configs);
                 }
 
                 entity.ActiveEffects.RemoveAt(i);

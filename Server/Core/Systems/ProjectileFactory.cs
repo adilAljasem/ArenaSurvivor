@@ -60,6 +60,7 @@ public static class ProjectileFactory
                 LifeStealChance = lifeStealChance,
                 HitRadius = projConfig.HitRadius,
                 PierceCount = projConfig.PierceCount,
+                BounceCount = projConfig.BounceCount,
                 Lifespan = lifespan,
                 ApplyEffectsOnHit = combinedEffects,
                 IsCritical = isCritical,

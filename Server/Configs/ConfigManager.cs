@@ -32,35 +32,38 @@ public class ConfigManager
 
     private void StartWatching()
     {
-        // Watch the Configs folder for any .json file changes
         _watcher = new FileSystemWatcher("Configs", "*.json")
         {
-            NotifyFilter = NotifyFilters.LastWrite,
+            // Catch creation and renaming events caused by editor safe-saves
+            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.CreationTime,
             EnableRaisingEvents = true
         };
 
-        _watcher.Changed += (sender, e) =>
+        // Define the event handler once
+        FileSystemEventHandler onFileChanged = (sender, e) =>
         {
-            // Debounce: Prevent the file from loading 5 times if VS Code saves weirdly
             if ((DateTime.Now - _lastRead).TotalMilliseconds < 500) return;
             _lastRead = DateTime.Now;
 
             Console.WriteLine($"\n[HOT RELOAD] Detected change in {e.Name}...");
-
-            // Give the OS a tiny fraction of a second to release the file lock
             Thread.Sleep(100);
 
             try
             {
-                LoadConfigs(); // Re-read all the JSON files
+                LoadConfigs();
                 Console.WriteLine("[HOT RELOAD] Success! Pushing to clients.");
-                OnConfigsReloaded?.Invoke(); // Tell the GameLoop to update the clients!
+                OnConfigsReloaded?.Invoke();
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[HOT RELOAD] Failed to read JSON: {ex.Message}");
             }
         };
+
+        // Bind it to all relevant file system events
+        _watcher.Changed += onFileChanged;
+        _watcher.Created += onFileChanged;
+        _watcher.Renamed += (sender, e) => onFileChanged(sender, e);
     }
 
 
