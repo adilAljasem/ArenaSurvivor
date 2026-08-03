@@ -483,77 +483,13 @@
       "item_variant_gore_tooth"
     ]
   },
-  "boss_volt_overlord": {
-    "id": "boss_volt_overlord",
-    "name": "Baron von Shock (Boss)",
-    "tier": 1,
-    "isBoss": true,
-    "spawnOnWaves": [
-      1
-    ],
-    "textureKey": "bosses",
-    "iconframe": 15,
-    "animIdle": [
-      15,
-      32
-    ],
-    "animIdleFrameRate": 20,
-    "animMove": [
-      33,
-      44
-    ],
-    "animMoveFrameRate": 15,
-    "animAttack": [
-      45,
-      56
-    ],
-    "animAttackFrameRate": 15,
-    "animDeath": [
-      0,
-      14
-    ],
-    "animDeathFrameRate": 15,
-    "scale": 0.5,
-    "VisualHeight": 500,
-    "WeaponOffset": 320,
-    "WeaponScaleOverride": 2.0,
-    "AttackRadius": 150,
-    "HitRadius": 150,
-    "baseStats": {
-      "maxHp": 25500,
-      "movementSpeed": 30,
-      "armor": 25,
-      "meleeDamage": 50
-    },
-    "startingWeapons": [],
-    "startingItems": [
-      "item_boss_insulated_plating"
-    ],
-    "startingSkills": [],
-    "dynamicSkills": [
-      {
-        "conditionType": "MissingHealthPercent",
-        "conditionThreshold": 0.50,
-        "skillId": "skill_trigger_desperation",
-        "cooldown": 9999.0
-      },
-      {
-        "conditionType": "TimerLoop",
-        "conditionThreshold": 0.0,
-        "skillId": "skill_trigger_desperation",
-        "cooldown": 40.0
-      }
-    ]
-  },
   "boss_corrosive_titan": {
     "id": "boss_corrosive_titan",
     "name": "Golem of Rust (Boss)",
     "tier": 2,
     "isBoss": true,
     "spawnOnWaves": [
-      20,
-      60,
-      100
+      10
     ],
     "textureKey": "bosses",
     "iconframe": 72,
@@ -577,28 +513,36 @@
       71
     ],
     "animDeathFrameRate": 15,
-    "scale": 3.2,
-    "AttackRadius": 450,
+    "scale": 0.5,
+    "VisualHeight": 500,
+    "WeaponOffset": 320,
+    "WeaponScaleOverride": 2.0,
+    "AttackRadius": 150,
+    "HitRadius": 100,
     "baseStats": {
-      "maxHp": 9000,
-      "movementSpeed": 55,
-      "armor": 45
+      "maxHp": 15000,
+      "movementSpeed": 150,
+      "armor": 45,
+      "meleeDamage": 25
     },
-    "startingWeapons": [
-      "weapon_boss_acid_mortar"
-    ],
+    "startingWeapons": [],
     "startingItems": [
       "item_boss_catalytic_converter"
+    ],
+    "startingSkills": [
+      "skill_dash_t2",
+      "skill_BuffMovmentSpeed_t3",
+      "skill_boss_lightning_strike_t1"
     ],
     "dynamicSkills": [
       {
         "conditionType": "MissingHealthPercent",
-        "conditionThreshold": 0.30,
-        "skillId": "skill_boss_nanite_reboot_t1",
-        "cooldown": 999.0,
-        "overrideCastTime": 4.0
+        "conditionThreshold": 0.50,
+        "skillId": "skill_clone_boss_corrosive_titan_t1",
+        "cooldown": 35.0
       }
-    ]
+    ],
+    "itemDropChance": 0.20
   },
   "boss_void_weaver": {
     "id": "boss_void_weaver",
@@ -606,9 +550,7 @@
     "tier": 3,
     "isBoss": true,
     "spawnOnWaves": [
-      30,
-      70,
-      110
+      1
     ],
     "textureKey": "bosses",
     "iconframe": 129,
@@ -632,12 +574,16 @@
       128
     ],
     "animDeathFrameRate": 15,
-    "scale": 2.6,
-    "AttackRadius": 600,
+    "scale": 0.5,
+    "VisualHeight": 500,
+    "WeaponOffset": 320,
+    "WeaponScaleOverride": 2.0,
+    "AttackRadius": 50,
+    "HitRadius": 100,
     "baseStats": {
-      "maxHp": 12000,
-      "movementSpeed": 70,
-      "magicDefense": 50
+      "maxHp": 20000,
+      "movementSpeed": 130,
+      "armor": 150
     },
     "startingWeapons": [
       "weapon_boss_void_lens"
@@ -645,12 +591,15 @@
     "startingItems": [
       "item_boss_singularity_matrix"
     ],
+    "startingskills": [
+      "skill_boss_blackhole_night_t1"
+    ],
     "dynamicModifiers": [
       {
         "conditionType": "MissingHealthPercent",
         "conditionThreshold": 0.40,
-        "targetStat": "movementSpeed",
-        "amount": 35
+        "targetStat": "attackSpeedPercent",
+        "amount": 1.0
       }
     ]
   },
@@ -686,8 +635,12 @@
       185
     ],
     "animDeathFrameRate": 15,
-    "scale": 3.0,
+    "scale": 0.5,
+    "VisualHeight": 500,
+    "WeaponOffset": 320,
+    "WeaponScaleOverride": 2.0,
     "AttackRadius": 150,
+    "HitRadius": 100,
     "baseStats": {
       "maxHp": 16000,
       "movementSpeed": 110,
@@ -741,8 +694,12 @@
       242
     ],
     "animDeathFrameRate": 15,
-    "scale": 3.0,
-    "AttackRadius": 200,
+    "scale": 0.5,
+    "VisualHeight": 500,
+    "WeaponOffset": 320,
+    "WeaponScaleOverride": 2.0,
+    "AttackRadius": 150,
+    "HitRadius": 100,
     "baseStats": {
       "maxHp": 15000,
       "movementSpeed": 95,
@@ -760,6 +717,68 @@
         "conditionThreshold": 0.25,
         "targetStat": "movementSpeed",
         "amount": 50
+      }
+    ]
+  },
+  "boss_volt_overlord": {
+    "id": "boss_volt_overlord",
+    "name": "Baron von Shock (Boss)",
+    "tier": 1,
+    "isBoss": true,
+    "spawnOnWaves": [
+      50
+    ],
+    "textureKey": "bosses",
+    "iconframe": 15,
+    "animIdle": [
+      15,
+      32
+    ],
+    "animIdleFrameRate": 20,
+    "animMove": [
+      33,
+      44
+    ],
+    "animMoveFrameRate": 15,
+    "animAttack": [
+      45,
+      56
+    ],
+    "animAttackFrameRate": 15,
+    "animDeath": [
+      0,
+      14
+    ],
+    "animDeathFrameRate": 15,
+    "scale": 0.5,
+    "VisualHeight": 500,
+    "WeaponOffset": 320,
+    "WeaponScaleOverride": 2.0,
+    "AttackRadius": 150,
+    "HitRadius": 100,
+    "baseStats": {
+      "maxHp": 25500,
+      "movementSpeed": 30,
+      "armor": 25,
+      "meleeDamage": 50
+    },
+    "startingWeapons": [],
+    "startingItems": [
+      "item_boss_insulated_plating"
+    ],
+    "startingSkills": [],
+    "dynamicSkills": [
+      {
+        "conditionType": "MissingHealthPercent",
+        "conditionThreshold": 0.50,
+        "skillId": "skill_trigger_desperation",
+        "cooldown": 9999.0
+      },
+      {
+        "conditionType": "TimerLoop",
+        "conditionThreshold": 0.0,
+        "skillId": "skill_trigger_desperation",
+        "cooldown": 40.0
       }
     ]
   }

@@ -32,12 +32,47 @@
         "soundHit": "sfx_stomp_hit",
         "colorTint": "0xff0000"
     },
-    "skill_dash_t1": {
-        "id": "skill_dash_t1",
+    "skill_clone_boss_corrosive_titan_t1": {
+        "id": "skill_shadow_clone_t1",
+        "name": "Shadow Clone",
+        "skillFamily": "skill_shadow_clone",
+        "tier": 1,
+        "cooldownSeconds": 25.0,
+        "castTimeSeconds": 1.5,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "Clone",
+        "summonConfigId": "boss_corrosive_titan",
+        "summonCount": 3,
+        "summonRadius": 350.0,
+        "lifespan": 20.0,
+        "stopMoving": true,
+        "soundCast": "sfx_magic_missile_cast"
+    },
+    "skill_BuffMovmentSpeed_t3": {
+        "id": "skill_BuffMovmentSpeed_t3",
+        "name": "Skill Faster",
+        "skillFamily": "skill_BuffMovmentSpeed",
+        "tier": 1,
+        "cooldownSeconds": 8.0,
+        "castTimeSeconds": 0.0,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "SelfBuff",
+        "stopMoving": true,
+        "applyEffects": [
+            "effect_buff_movmentspeed_t3"
+        ],
+        "Range": 800,
+        "BeamWidth": 200,
+        "soundCast": "sfx_magic_missile_cast"
+    },
+    "skill_dash_t2": {
+        "id": "skill_dash_t2",
         "name": "Skill dash",
         "skillFamily": "skill_dash",
         "tier": 1,
-        "cooldownSeconds": 2.0,
+        "cooldownSeconds": 8.0,
         "castTimeSeconds": 1.0,
         "lifespan": 1.0,
         "triggerType": "Auto",
@@ -45,8 +80,11 @@
         "actionType": "Dash",
         "ProjectileId": "skill_dash_child_t1",
         "projectileCount": 0,
+        "applyEffects": [
+            "effect_debuff_slow_t1"
+        ],
         "Range": 800,
-        "BeamWidth": 80,
+        "BeamWidth": 200,
         "soundCast": "sfx_magic_missile_cast"
     },
     "skill_dash_child_t1": {
@@ -91,8 +129,8 @@
         ],
         "vfxBaseRadius": 64
     },
-    "skill_black_hole": {
-        "id": "skill_black_hole",
+    "skill_black_hole_t2": {
+        "id": "skill_black_hole_t2",
         "name": "Gravity Vortex",
         "actionType": "Vacuum",
         "targetType": "Ground",
@@ -111,6 +149,39 @@
             29
         ],
         "vfxBaseRadius": 150
+    },
+    "skill_black_hole_t1": {
+        "id": "skill_black_hole_t1",
+        "name": "Gravity Vortex",
+        "actionType": "Vacuum",
+        "targetType": "self",
+        "range": 500.0,
+        "radius": 200.0,
+        "beamWidth": 80.0,
+        "baseDamage": 30.0,
+        "cooldownSeconds": 30.0,
+        "castTimeSeconds": 1.0,
+        "lifespan": 15.0,
+        "tickRate": 1.5,
+        "colorTint": "#800080",
+        "vfxTextureKey": "effects6",
+        "vfxAnimFrames": [
+            20,
+            29
+        ],
+        "vfxBaseRadius": 150
+    },
+    "skill_boss_blackhole_night_t1": {
+        "id": "skill_boss_blackhole_night_t1",
+        "name": "Overcharged Burst",
+        "cooldownSeconds": 12.0,
+        "castTimeSeconds": 3,
+        "actionType": "Projectile",
+        "targetType": "ClosestEnemy",
+        "projectileId": "proj_gravity_orb",
+        "projectileCount": 10,
+        "spreadAngle": 360.0,
+        "baseDamage": 15
     },
     "skill_carpet_bomber": {
         "id": "skill_carpet_bomber",
@@ -918,7 +989,8 @@
     "skill_boss_lightning_strike_t1": {
         "id": "skill_boss_lightning_strike_t1",
         "name": "Overcharged Burst",
-        "cooldownSeconds": 3.0,
+        "cooldownSeconds": 8.0,
+        "castTimeSeconds": 1,
         "actionType": "Projectile",
         "targetType": "ClosestEnemy",
         "projectileId": "proj_lightning_spark",

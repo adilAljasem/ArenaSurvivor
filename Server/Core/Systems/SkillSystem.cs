@@ -18,6 +18,7 @@ public class SkillSystem : IGameSystem
         public string UniqueId { get; set; } = Guid.NewGuid().ToString(); // Solves the visual overwrite bug!
         public SkillConfig Config { get; set; } = null!;
         public string CasterId { get; set; } = string.Empty;
+        public string? SourceProjectileId { get; set; }
         public float X { get; set; }
         public float Y { get; set; }
         public string Team { get; set; } = string.Empty;
@@ -27,6 +28,7 @@ public class SkillSystem : IGameSystem
         public float PrecalculatedDamage { get; set; }
     }
     private List<PersistentSkill> _persistentSkills = new();
+    private List<(string EntityId, float TargetX, float TargetY)> _delayedTeleports = new();
 
     public void Initialize(EventBus eventBus, ConfigManager configs)
     {
@@ -540,6 +542,155 @@ public class SkillSystem : IGameSystem
             return;
         }
 
+
+        if (config.ActionType == SkillActionType.Clone)
+        {
+            float mapW = _configs.Maps != null && _configs.Maps.TryGetValue("map_forest", out var currentMap) ? currentMap.Width : 4000f;
+            float mapH = _configs.Maps != null && _configs.Maps.TryGetValue("map_forest", out var currentMapH) ? currentMapH.Height : 4000f;
+
+            int totalEntities = config.SummonCount + 1;
+            var spawnPoints = new List<(float X, float Y)>();
+
+            float baseAngle = (float)(Random.Shared.NextDouble() * Math.PI * 2);
+            float radius = config.SummonRadius > 150f ? config.SummonRadius : 250f;
+
+            for (int i = 0; i < totalEntities; i++)
+            {
+                float angle = baseAngle + (i * (float)(Math.PI * 2) / totalEntities);
+                float px = Math.Clamp(startX + (float)Math.Cos(angle) * radius, 35, mapW - 35);
+                float py = Math.Clamp(startY + (float)Math.Sin(angle) * radius, 35, mapH - 35);
+                spawnPoints.Add((px, py));
+            }
+
+            spawnPoints = spawnPoints.OrderBy(p => Random.Shared.Next()).ToList();
+
+            // Mask the initial spawn overlap with a massive VFX burst at the center!
+            _eventBus.Publish(new AoeVisualEvent
+            {
+                Dto = new AoeEventDto { X = startX, Y = startY, Radius = 80f, IsFriendly = (team == "Player"), ConfigId = config.Id },
+                CasterId = casterId,
+                SkillId = config.Id
+            });
+
+            // 1. Queue the caster to teleport NEXT frame so it slides smoothly
+            if (caster != null)
+            {
+                _delayedTeleports.Add((casterId, spawnPoints[0].X, spawnPoints[0].Y));
+            }
+
+            // 2. SPAWN THE CLONES AT THE CENTER (They will slide out alongside the boss next frame)
+            for (int i = 0; i < config.SummonCount; i++)
+            {
+                var point = spawnPoints[i + 1];
+                var clone = new EnemyEntity();
+
+                if (_configs.Enemies.TryGetValue(config.SummonConfigId, out var cloneConfig))
+                {
+                    clone.Initialize(cloneConfig, startX, startY, _configs);
+                    clone.Skills.Clear();
+                    clone.Weapons.Clear();
+                    clone.OwnedItems.Clear();
+                }
+                else
+                {
+                    clone.SetPosition(startX, startY);
+                }
+
+                clone.SetTeam(team);
+                clone.DespawnTimer = config.Lifespan > 0 ? config.Lifespan : 10f;
+
+                // Queue the clone to teleport to its specific spot next frame
+                _delayedTeleports.Add((clone.Id, point.X, point.Y));
+
+                if (caster != null)
+                {
+                    // >>> ADD THESE LINES: Sync the skill rotation and wipe the spawn delay! <<<
+                    clone.CurrentSkillIndex = caster.CurrentSkillIndex;
+
+                    if (caster is EnemyEntity casterEnemy)
+                    {
+                        clone.SkillWaitTimer = casterEnemy.SkillWaitTimer;
+                        clone.AttackCooldown = casterEnemy.AttackCooldown;
+                    }
+                    else
+                    {
+                        clone.SkillWaitTimer = 0f;
+                    }
+
+                    foreach (var kvp in caster.DynamicSkillTimers)
+                    {
+                        clone.DynamicSkillTimers[kvp.Key] = kvp.Value;
+                    }
+                    // Copy Stats
+                    foreach (var stat in caster.CachedStats)
+                    {
+                        clone.Stats.InitializeStat(stat.Key, stat.Value);
+                        clone.CachedStats[stat.Key] = stat.Value;
+                    }
+                    clone.CurrentMaxHp = caster.CurrentMaxHp;
+                    clone.CurrentHp = caster.CurrentHp;
+
+                    // Manually copy the current shield amount
+                    clone.ModifyShield(caster.CurrentShield);
+
+                    // Copy Active Status Effects (Buffs & Debuffs)
+                    foreach (var effect in caster.ActiveEffects)
+                    {
+                        clone.ActiveEffects.Add(new ActiveEffect
+                        {
+                            ConfigId = effect.ConfigId,
+                            TimeRemaining = effect.TimeRemaining,
+                            TimeSinceLastTick = effect.TimeSinceLastTick,
+                            SourceId = effect.SourceId,
+                            GrantedShieldAmount = effect.GrantedShieldAmount,
+                            StackCount = effect.StackCount,
+                            IsTeamSwitcher = effect.IsTeamSwitcher,
+                            Caster = effect.Caster
+                        });
+                    }
+
+                    // Copy Skills with precise active timers
+                    foreach (var skill in caster.Skills)
+                    {
+                        if (_configs.Skills.TryGetValue(skill.ConfigId, out var sCfg) && sCfg.ActionType == SkillActionType.Clone)
+                            continue;
+
+                        clone.Skills.Add(new ActiveSkill
+                        {
+                            ConfigId = skill.ConfigId,
+                            CurrentCooldown = skill.CurrentCooldown,
+                            CurrentCastTimer = skill.CurrentCastTimer,
+                            CurrentChannelTimer = skill.CurrentChannelTimer,
+                            TimeSinceLastTick = skill.TimeSinceLastTick,
+                            SourceEffectId = skill.SourceEffectId,
+                            IsDynamic = skill.IsDynamic
+                        });
+                    }
+
+                    // Copy Weapons with precise active timers
+                    foreach (var weapon in caster.Weapons)
+                    {
+                        clone.Weapons.Add(new EquippedWeapon
+                        {
+                            ConfigId = weapon.ConfigId,
+                            Level = weapon.Level,
+                            SlotIndex = weapon.SlotIndex,
+                            CurrentCooldown = weapon.CurrentCooldown, // <-- Ensures exact firing sync
+                            TotalBaseStats = weapon.TotalBaseStats != null ? new Dictionary<string, float>(weapon.TotalBaseStats) : new Dictionary<string, float>(),
+                            RolledStats = weapon.RolledStats != null ? new Dictionary<string, float>(weapon.RolledStats) : new Dictionary<string, float>(),
+                            MergedConfigIds = new List<string>(weapon.MergedConfigIds),
+                            SourceEffectId = weapon.SourceEffectId
+                        });
+                    }
+                }
+
+                state.Enemies.TryAdd(clone.Id, clone);
+            }
+            return;
+        }
+
+
+
         if (config.ActionType == SkillActionType.AoE || config.ActionType == SkillActionType.Vacuum)
         {
             float targetX = startX;
@@ -585,11 +736,21 @@ public class SkillSystem : IGameSystem
 
             if (config.Lifespan > 0)
             {
+                // Prevent the projectile from infinitely cloning the skill!
+                if (!string.IsNullOrEmpty(ev.SourceProjectileId) &&
+                    _persistentSkills.Any(p => p.SourceProjectileId == ev.SourceProjectileId && p.Config.Id == config.Id))
+                {
+                    return;
+                }
+
                 // Register as a persistent ground effect / aura
                 var ps = new PersistentSkill
                 {
+                    // >>> NEW: Use the Projectile ID as the UniqueId so the client can link them!
+                    UniqueId = !string.IsNullOrEmpty(ev.SourceProjectileId) ? ev.SourceProjectileId : Guid.NewGuid().ToString(),
                     Config = config,
                     CasterId = casterId,
+                    SourceProjectileId = ev.SourceProjectileId,
                     X = targetX,
                     Y = targetY,
                     Team = team,
@@ -771,6 +932,15 @@ public class SkillSystem : IGameSystem
 
     public void Update(float dt, GameState state)
     {
+        if (_delayedTeleports.Count > 0)
+        {
+            foreach (var tp in _delayedTeleports)
+            {
+                var actor = EntityResolver.ResolveActor(state, tp.EntityId);
+                if (actor != null) actor.SetPosition(tp.TargetX, tp.TargetY);
+            }
+            _delayedTeleports.Clear();
+        }
         ProcessPersistentSkills(dt, state); // <--- Process all ground AoEs and Auras[cite: 6]
         ProcessEnemySkills(dt, state);
         ProcessPlayerSkills(dt, state);
@@ -785,17 +955,38 @@ public class SkillSystem : IGameSystem
             ps.TimeSinceLastTick += dt;
 
             // If it's an aura (TargetType == Self), stick to the caster's movement
+            // If it's an aura (TargetType == Self), stick to the caster's movement
             if (ps.StickToCaster)
             {
-                var caster = EntityResolver.ResolveActor(state, ps.CasterId);
-                if (caster == null || caster.ActionState == "Dead")
+                // <<< NEW: Handle Projectile tracking vs Caster tracking
+                if (!string.IsNullOrEmpty(ps.SourceProjectileId))
                 {
-                    _eventBus.Publish(new BeamEndedEvent { CasterId = ps.UniqueId, SkillId = ps.Config.Id });
-                    _persistentSkills.RemoveAt(i);
-                    continue;
+                    if (state.Projectiles.TryGetValue(ps.SourceProjectileId, out var proj))
+                    {
+                        ps.X = proj.X;
+                        ps.Y = proj.Y;
+                    }
+                    else
+                    {
+                        // Projectile died! End the skill immediately.
+                        _eventBus.Publish(new BeamEndedEvent { CasterId = ps.UniqueId, SkillId = ps.Config.Id });
+                        _persistentSkills.RemoveAt(i);
+                        continue;
+                    }
                 }
-                ps.X = caster.X;
-                ps.Y = caster.Y;
+                else
+                {
+                    // Normal Behavior: Stick to the character
+                    var caster = EntityResolver.ResolveActor(state, ps.CasterId);
+                    if (caster == null || caster.ActionState == "Dead")
+                    {
+                        _eventBus.Publish(new BeamEndedEvent { CasterId = ps.UniqueId, SkillId = ps.Config.Id });
+                        _persistentSkills.RemoveAt(i);
+                        continue;
+                    }
+                    ps.X = caster.X;
+                    ps.Y = caster.Y;
+                }
             }
 
             // 1. PUBLISH VISUAL EVERY FRAME: Prevents the client from destroying the animation between ticks!

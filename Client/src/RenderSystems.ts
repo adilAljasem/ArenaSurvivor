@@ -1447,16 +1447,16 @@ export class VfxRenderer {
                 const sprite = scene.add.sprite(x, y, vfxTex).setDepth(300);
                 sprite.setScale(finalScale);
 
-                // REPLACE this line:
-                // sprite.play(animKey);
-
                 // WITH this line to force infinite looping, ignoring the cache!
                 sprite.play({ key: animKey, repeat: -1 });
 
-                entry = { sprite };
+                // >>> NEW: Store serverX and serverY for 60FPS interpolation
+                entry = { sprite, serverX: x, serverY: y };
                 activeAoeLoops.set(key, entry);
               } else {
-                entry.sprite.setPosition(x, y);
+                // >>> NEW: Update server targets instead of snapping instantly
+                entry.serverX = x;
+                entry.serverY = y;
                 entry.sprite.setScale(finalScale);
               }
               entry.updatedThisTick = true;
@@ -1638,6 +1638,34 @@ export class VfxRenderer {
       entry.core.rotation = angle;
       entry.core.setDisplaySize(length, Math.max(2, currentWidth * 0.25));
       entry.core.alpha = 0.8 + alphaShift;
+    });
+  }
+
+  // >>> NEW: Run this at 60FPS to lock the AOE smoothly to moving targets! <<<
+  static updateAoeLoops60FPS(activeAoeLoops: Map<string, any>, projectileSprites: Map<string, any>, delta: number) {
+    const factor = 1 - Math.pow(2, -delta / 52);
+
+    activeAoeLoops.forEach((entry, key) => {
+      // The key is `${casterId}:${skillId}`. 
+      // Because we linked UniqueId to SourceProjectileId on the server, casterId IS the projectile ID!
+      const casterId = key.split(':')[0];
+      const proj = projectileSprites.get(casterId);
+
+      if (proj) {
+        // >>> PERFECT SYNC: Lock instantly to the projectile's dead-reckoned sprite!
+        entry.sprite.x = proj.x;
+        entry.sprite.y = proj.y;
+      } else if (entry.serverX !== undefined && entry.serverY !== undefined) {
+        // Fallback interpolation for characters/ground effects
+        const dx = entry.serverX - entry.sprite.x;
+        const dy = entry.serverY - entry.sprite.y;
+
+        if (Math.abs(dx) > 0.5) entry.sprite.x += dx * factor;
+        else entry.sprite.x = entry.serverX;
+
+        if (Math.abs(dy) > 0.5) entry.sprite.y += dy * factor;
+        else entry.sprite.y = entry.serverY;
+      }
     });
   }
 

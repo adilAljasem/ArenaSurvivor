@@ -21,6 +21,33 @@ public class HealthSystem : IGameSystem
     public void Update(float dt, GameState state)
     {
         ProcessRegen(dt, state);
+        ProcessDespawns(dt, state);
+    }
+    private void ProcessDespawns(float dt, GameState state)
+    {
+        foreach (var enemy in state.Enemies.Values)
+        {
+            if (enemy.ActionState == "Dead") continue;
+
+            // If the entity has a valid despawn timer running
+            if (enemy.DespawnTimer > 0)
+            {
+                enemy.DespawnTimer -= dt;
+                if (enemy.DespawnTimer <= 0)
+                {
+                    // Deal massive damage to trigger the normal death pipeline
+                    _eventBus.Publish(new DamageAppliedEvent
+                    {
+                        TargetId = enemy.Id,
+                        AttackerId = enemy.Id, // Self-inflicted
+                        Amount = 999999f,
+                        IsCritical = false,
+                        IsDodge = false,
+                        IsBlock = false
+                    });
+                }
+            }
+        }
     }
 
     private void ProcessRegen(float dt, GameState state)

@@ -124,6 +124,21 @@
     },
     "ColorTint": "#00ffff"
   },
+    "effect_buff_movmentspeed_t3": {
+    "Id": "effect_buff_speed_t3",
+    "Name": "Faster",
+    "textureKey": "icons1",
+    "iconFrame": 62,
+    "isBuff": true,
+    "Duration": 5.0,
+    "TickRate": 0.0,
+    "TickDamage": 0.0,
+    "PreventsActions": false,
+    "statModifiers": {
+      "movementSpeed": 125
+    },
+    "ColorTint": "#00ffff"
+  },
   "effect_debuff_stunned_t1": {
     "id": "effect_debuff_stunned_t1",
     "name": "Stunned",

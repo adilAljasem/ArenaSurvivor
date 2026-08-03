@@ -2442,7 +2442,7 @@
     "id": "item_boss_catalytic_converter",
     "name": "Toxic Over-Filter",
     "tier": 3,
-    "canDrop": false,
+    "canDrop": true,
     "availableInShop": false,
     "statBonuses": {
       "maxHp": 400,

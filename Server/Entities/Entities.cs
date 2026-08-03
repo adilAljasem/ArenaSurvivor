@@ -243,7 +243,7 @@ public class EnemyEntity : BaseActorEntity
     public float HitRadius { get; set; }
 
     // Networked state and internal timer for animations
-    public float DespawnTimer { get; set; } = 1.0f;
+    public float DespawnTimer { get; set; } = 0.0f;
     public float AttackCooldown { get; set; } = 0f;
     public float SkillWaitTimer { get; set; } = 0f;
 

@@ -1579,7 +1579,7 @@ class GameScene extends Phaser.Scene {
 
 
         VfxRenderer.updateBeams60FPS(this, this.activeBeams, this.playerSprites, this.enemySprites, delta);
-
+        VfxRenderer.updateAoeLoops60FPS(this.activeAoeLoops, this.projectileSprites, delta); // <<< PASS PROJECTILES HERE
         const dtSeconds = delta / 1000;
 
         this.hpGraphics.clear();

@@ -377,7 +377,7 @@ public class CombatSystem : IGameSystem
                             OnDeathSkillId = proj.OnDeathSkillId,
                             TickRate = proj.TickRate,
                             TickSkillId = proj.TickSkillId,
-                            TimeSinceLastTick = proj.TimeSinceLastTick + dt,
+                            TimeSinceLastTick = 999f,
 
                             // FIX: Reset the hit memory so it can damage the same enemies on the way back!
                             HitEnemies = new HashSet<string>(),
