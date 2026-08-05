@@ -81,6 +81,18 @@ export class World {
     this.actors.delete(id);
   }
 
+  /** Remove actor components that were not present in the latest complete
+   *  player/enemy render pass. Without this, short-lived enemies disappear
+   *  visually but remain in the ECS Map for the rest of a long match. */
+  pruneActors(activeGroups: readonly ReadonlySet<EntityId>[]): void {
+    actorLoop: for (const id of this.actors.keys()) {
+      for (const activeIds of activeGroups) {
+        if (activeIds.has(id)) continue actorLoop;
+      }
+      this.actors.delete(id);
+    }
+  }
+
   upsertPickup(id: EntityId, data: PickupComponent): PickupComponent {
     this.pickups.set(id, data);
     return data;

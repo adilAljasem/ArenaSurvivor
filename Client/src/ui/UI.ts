@@ -1,4 +1,3 @@
-import * as Phaser from 'phaser';
 import { HubConnection } from '@microsoft/signalr';
 import { AudioManager } from '../AudioManager';
 
@@ -713,6 +712,14 @@ export class Tooltip extends Phaser.GameObjects.Container {
         scene.add.existing(this);
     }
 
+    public destroy(fromScene?: boolean): void {
+        if (this.hideTimer) {
+            this.hideTimer.remove();
+            this.hideTimer = undefined;
+        }
+        super.destroy(fromScene);
+    }
+
     // Creates a divider rectangle at the given y (same style everywhere it's used), adds it
     // to the container, and tracks it in dynamicDividers for cleanup on the next show/showSkill.
     private addDivider(y: number) {
@@ -1001,6 +1008,14 @@ export class InventoryDisplay extends Phaser.GameObjects.Container {
         this.weaponGrid = scene.add.container(390, 0);
         this.add([this.itemGrid, this.weaponGrid]);
         scene.add.existing(this);
+    }
+
+    public destroy(fromScene?: boolean): void {
+        // The mask graphics is intentionally outside this container, so Phaser cannot
+        // discover and destroy it when the InventoryDisplay is torn down.
+        this.itemScrollable.clearMask(true);
+        if (this.itemMaskGraphics.active) this.itemMaskGraphics.destroy();
+        super.destroy(fromScene);
     }
 
     public updateLayout(availableWidth: number) {
@@ -1364,6 +1379,45 @@ export class ShopUI {
     private currentWeapons: any[] = [];
     private currentItems: any[] = [];
     private maxItemSlots: number = 5;
+    private isDestroyed: boolean = false;
+
+    private readonly onScenePointerDown = () => this.tooltip?.hide();
+    private readonly onSceneResize = (gameSize: Phaser.Structs.Size) => {
+        if (this.isDestroyed) return;
+        this.overlay.setSize(gameSize.width, gameSize.height);
+        this.updateLayout(gameSize.width, gameSize.height);
+    };
+    private readonly onSceneKeyDown = (e: KeyboardEvent) => {
+        if (document.activeElement?.id === 'chat-input' || document.activeElement?.id === 'lobby-chat-input') return;
+        if (!this._visible) return;
+
+        let dr = 0, dc = 0;
+        if (e.key === 'ArrowUp' || e.key.toLowerCase() === 'w') dr = -1;
+        else if (e.key === 'ArrowDown' || e.key.toLowerCase() === 's') dr = 1;
+        else if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a') dc = -1;
+        else if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd') dc = 1;
+        else if (e.key === ' ' || e.key === 'Enter') {
+            if (this.focusGrid[this.focusRow]?.[this.focusCol]) {
+                this.focusGrid[this.focusRow][this.focusCol].onSelect();
+            }
+            e.preventDefault();
+            return;
+        }
+
+        if (dr !== 0 || dc !== 0) {
+            if (!this.isKeyboardNavActive) {
+                this.isKeyboardNavActive = true;
+                if (this.focusGrid[this.focusRow]?.[this.focusCol]) {
+                    this.focusGrid[this.focusRow][this.focusCol].onFocus();
+                } else {
+                    this.moveFocus(0, 1);
+                }
+            } else {
+                this.moveFocus(dr, dc);
+            }
+            e.preventDefault();
+        }
+    };
 
     constructor(scene: Phaser.Scene, connection: HubConnection) {
         this.scene = scene;
@@ -1421,45 +1475,29 @@ export class ShopUI {
         this._elements.push(this.shopCardsContainer);
         this._elements.push(this.levelUpContainer);
 
-        scene.input.on('pointerdown', () => this.tooltip?.hide());
+        scene.input.on('pointerdown', this.onScenePointerDown);
 
         this.updateLayout(scene.scale.width, scene.scale.height);
-        scene.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
-            this.overlay.setSize(gameSize.width, gameSize.height);
-            this.updateLayout(gameSize.width, gameSize.height);
-        });
+        scene.scale.on('resize', this.onSceneResize);
+        scene.input.keyboard?.on('keydown', this.onSceneKeyDown);
+    }
 
-        scene.input.keyboard?.on('keydown', (e: KeyboardEvent) => {
-            if (document.activeElement?.id === 'chat-input' || document.activeElement?.id === 'lobby-chat-input') return;
-            if (!this._visible) return;
+    public destroy(): void {
+        if (this.isDestroyed) return;
+        this.isDestroyed = true;
+        this._visible = false;
 
-            let dr = 0, dc = 0;
-            if (e.key === 'ArrowUp' || e.key.toLowerCase() === 'w') dr = -1;
-            else if (e.key === 'ArrowDown' || e.key.toLowerCase() === 's') dr = 1;
-            else if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a') dc = -1;
-            else if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd') dc = 1;
-            else if (e.key === ' ' || e.key === 'Enter') {
-                if (this.focusGrid[this.focusRow]?.[this.focusCol]) {
-                    this.focusGrid[this.focusRow][this.focusCol].onSelect();
-                }
-                e.preventDefault();
-                return;
-            }
+        this.scene.input.off('pointerdown', this.onScenePointerDown);
+        this.scene.scale.off('resize', this.onSceneResize);
+        this.scene.input.keyboard?.off('keydown', this.onSceneKeyDown);
 
-            if (dr !== 0 || dc !== 0) {
-                if (!this.isKeyboardNavActive) {
-                    this.isKeyboardNavActive = true;
-                    if (this.focusGrid[this.focusRow]?.[this.focusCol]) {
-                        this.focusGrid[this.focusRow][this.focusCol].onFocus();
-                    } else {
-                        this.moveFocus(0, 1);
-                    }
-                } else {
-                    this.moveFocus(dr, dc);
-                }
-                e.preventDefault();
-            }
-        });
+        for (const element of this._elements) {
+            this.scene.tweens.killTweensOf(element);
+            if ((element as any).active !== false) element.destroy();
+        }
+        this._elements.length = 0;
+        this.focusGrid.length = 0;
+        this.tooltip.destroy();
     }
 
     get visible(): boolean { return this._visible; }

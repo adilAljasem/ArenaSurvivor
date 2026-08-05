@@ -1062,13 +1062,16 @@
     "skill_boss_sanguine_rupture_t1": {
         "id": "skill_boss_sanguine_rupture_t1",
         "name": "Sanguine Rupture",
-        "actionType": "AoE",
-        "targetType": "Self",
-        "radius": 250,
-        "baseDamage": 40,
-        "applyEffects": [
-            "effect_boss_sanguine_bleed"
-        ]
+        "actionType": "Projectile",
+        "projectileId": "proj_orbital_mudball_t1",
+        "castTimeSeconds": 1.5,
+        "channelDurationSeconds": 5.0,
+        "cooldownSeconds": 2.0,
+        "IsIndependent": true,
+        "isRepeated": false,
+        "projectileCount": 15,
+        "baseDamage": 20,
+        "spreadAngle": 360.0
     },
     "skill_boss_frenzy_aura_t1": {
         "id": "skill_boss_frenzy_aura_t1",
@@ -1079,5 +1082,26 @@
         "applyEffects": [
             "effect_buff_adrenaline_t2"
         ]
+    },
+    "skill_boss_loop_shotthem_t1": {
+        "id": "skill_boss_loop_shotthem_t1",
+        "name": "Loop shotthem_",
+        "cooldownSeconds": 20.0,
+        "actionType": "SelfBuff",
+        "targetType": "Self",
+        "applyEffects": [
+            "effect_boss_shoot_phase"
+        ]
+    },
+    "skill_boss_shotthem_t1": {
+        "id": "skill_boss_shotthem_t1",
+        "name": "Shot Them",
+        "cooldownSeconds": 0.0,
+        "castTimeSeconds": 0.2,
+        "actionType": "Projectile",
+        "targetType": "ClosestEnemy",
+        "projectileId": "proj_gravity_orb",
+        "projectileCount": 1,
+        "isIndependent": true
     }
 }

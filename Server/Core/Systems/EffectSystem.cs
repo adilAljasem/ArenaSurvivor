@@ -181,15 +181,19 @@ public class EffectSystem : IGameSystem
 
                 // AttackerId = SourceId links the tick back to the original applier, so
                 // HealthSystem.GetHealerHealPower looks up their healPower for tick heals.
-                _eventBus.Publish(new DamageAppliedEvent
+                // Only broadcast a damage event if the effect actually deals damage!
+                if (Math.Abs(config.TickDamage) > 0)
                 {
-                    TargetId = EntityResolver.GetId(entity),
-                    AttackerId = effect.SourceId,
-                    Amount = config.TickDamage * effect.StackCount,
-                    IsCritical = false,
-                    IsBlock = false,
-                    IsDodge = false
-                });
+                    _eventBus.Publish(new DamageAppliedEvent
+                    {
+                        TargetId = EntityResolver.GetId(entity),
+                        AttackerId = effect.SourceId,
+                        Amount = config.TickDamage * effect.StackCount,
+                        IsCritical = false,
+                        IsBlock = false,
+                        IsDodge = false
+                    });
+                }
 
                 if (!string.IsNullOrEmpty(config.TickSkillId) && _configs.Skills.TryGetValue(config.TickSkillId, out var tickSkill))
                 {

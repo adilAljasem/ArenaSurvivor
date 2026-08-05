@@ -1,4 +1,3 @@
-import * as Phaser from 'phaser';
 import { HubConnectionBuilder, HubConnectionState } from '@microsoft/signalr';
 import { ShopUI, SkillActionBar, Tooltip, LootNotifier } from './ui/UI';
 import { EscMenu } from './ui/EscMenu';
@@ -32,6 +31,16 @@ const workerCode = `
     });
   };
 `;
+
+// Every handler registered by bindWorkerListeners. Keeping this list in one place makes
+// connection handoff and scene shutdown symmetrical, so an old SignalR connection cannot
+// retain the scene (or deliver a stale packet) after a match ends.
+const WORKER_EVENT_NAMES = [
+    "MatchError", "ForceDisconnect", "AllPlayersSynced", "ReceiveHandshake",
+    "ReceiveScoreboard", "MatchOver", "UpdatePlayerUI", "ReceiveRoster",
+    "LootNotification", "AchievementUnlocked", "ShopSuccess", "ShopError",
+    "UpdateStateCompressed", "ReceiveChatMessage"
+] as const;
 
 
 // --- SIGNALR CONNECTIONS ---
@@ -328,6 +337,8 @@ class GameScene extends Phaser.Scene {
 
 
     private handoffTimeout: ReturnType<typeof setTimeout> | null = null;
+    private networkWorker: Worker | null = null;
+    private networkWorkerUrl: string | null = null;
     // All three need to be true before the loading overlay disappears - whichever finishes
     // last is what actually triggers hiding it.
     private playersSynced: boolean = false;
@@ -426,6 +437,8 @@ class GameScene extends Phaser.Scene {
         this.load.spritesheet('effects4', '/assets/Effects/Bullet 24x24 Part 7B Free.png', { frameWidth: 24, frameHeight: 24 });
         this.load.spritesheet('effects5', '/assets/Effects/Bullet 24x24 Free Part 4A.png', { frameWidth: 24, frameHeight: 24 });
         this.load.spritesheet('effects6', '/assets/Effects/56.png', { frameWidth: 64, frameHeight: 96 });
+        this.load.spritesheet('effects7', '/assets/Effects/Bullet 24x24 Part 6B Free.png', { frameWidth: 24, frameHeight: 24 });
+
 
 
         this.load.spritesheet('ui_achievements', '/assets/menu/ui_achievements.png', { frameWidth: 234, frameHeight: 219 });
@@ -561,6 +574,8 @@ class GameScene extends Phaser.Scene {
 
             // FIX: Stop any existing worker connection before creating a new one.
             // Without this, the old connection is orphaned and leaks.
+            this.unbindWorkerListeners(matchConnection);
+            this.disposeNetworkWorker();
             if (matchConnection && matchConnection.state !== HubConnectionState.Disconnected) {
                 matchConnection.stop().catch(() => { });
             }
@@ -586,6 +601,8 @@ class GameScene extends Phaser.Scene {
             if (this.handoffTimeout !== null) clearTimeout(this.handoffTimeout);
             this.handoffTimeout = setTimeout(() => {
                 this.handoffTimeout = null;
+                this.unbindWorkerListeners(matchConnection);
+                this.disposeNetworkWorker();
                 if (matchConnection.state === HubConnectionState.Connected) matchConnection.stop();
                 hideAppLoader();
 
@@ -623,8 +640,6 @@ class GameScene extends Phaser.Scene {
             this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
         }
         this.input.mouse?.disableContextMenu();
-
-        this.groundTooltip = new Tooltip(this);
 
         const renderer = this.game.renderer as any;
         const gl = renderer.gl;
@@ -897,18 +912,32 @@ class GameScene extends Phaser.Scene {
         }
 
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+            if (this.handoffTimeout !== null) {
+                clearTimeout(this.handoffTimeout);
+                this.handoffTimeout = null;
+            }
             if (this.pingIntervalId !== null) {
                 clearInterval(this.pingIntervalId);
                 this.pingIntervalId = null;
             }
-            if (matchConnection) {
-                matchConnection.off('UpdatePlayerUI');
-                matchConnection.off('UpdateStateCompressed');
-            }
+            this.unbindWorkerListeners(matchConnection);
+            this.disposeNetworkWorker();
             lobbyConnection.off('ReceiveHandshake');
             lobbyConnection.off('MatchStarted');
+            lobbyConnection.off('LobbyError');
+            lobbyConnection.off('ForceDisconnect');
+            lobbyConnection.off('UpdateLobbyRoster');
+            if (this.updateCamerasForFairPlay) {
+                this.scale.off('resize', this.updateCamerasForFairPlay);
+            }
             this.game.events.off(Phaser.Core.Events.PRE_RENDER);
             this.game.events.off(Phaser.Core.Events.POST_RENDER);
+
+            if (this.shopUIModule) this.shopUIModule.destroy();
+            playerRosterInfo.clear();
+            world.actors.clear();
+            world.pickups.clear();
+            this.latestGameStatePayload = null;
 
             this.activeBeams.forEach(entry => {
                 entry.beam.destroy();
@@ -1009,16 +1038,43 @@ class GameScene extends Phaser.Scene {
     // ==========================================
     // 2. WORKER NODE (MATCH) LISTENERS
     // ==========================================
+    private unbindWorkerListeners(connection: any): void {
+        if (!connection) return;
+        WORKER_EVENT_NAMES.forEach(eventName => connection.off(eventName));
+    }
+
+    private disposeNetworkWorker(): void {
+        if (this.networkWorker) {
+            this.networkWorker.onmessage = null;
+            this.networkWorker.onerror = null;
+            this.networkWorker.terminate();
+            this.networkWorker = null;
+        }
+        if (this.networkWorkerUrl) {
+            URL.revokeObjectURL(this.networkWorkerUrl);
+            this.networkWorkerUrl = null;
+        }
+    }
+
     private bindWorkerListeners() {
         // .off() before .on() makes this method safe to call multiple times
         // (e.g., if withAutomaticReconnect fires and the connection is reused).
+
+        this.unbindWorkerListeners(matchConnection);
+        this.disposeNetworkWorker();
 
         // 2. Create a Blob from the string and generate a URL
         const blob = new Blob([workerCode], { type: 'application/javascript' });
         const workerUrl = URL.createObjectURL(blob);
 
         const networkWorker = new Worker(workerUrl, { type: 'module' });
+        this.networkWorkerUrl = workerUrl;
+        this.networkWorker = networkWorker;
         networkWorker.onmessage = (e) => {
+            // Ignore any already-queued message from a worker that was replaced during a
+            // rapid match handoff. terminate() prevents future work, but a posted callback
+            // may already be waiting in the browser's task queue.
+            if (this.networkWorker !== networkWorker) return;
             const { rawState, compressedSize, uncompressedSize } = e.data;
 
             // 1. Update Network Statistics
@@ -1341,6 +1397,7 @@ class GameScene extends Phaser.Scene {
             // Pass myTeam into both render calls!
             const activePlayers = ActorRenderer.render(this, state.players, this.playerSprites, masterConfigs, this.targetPositions, true, myTeam, state.enemies, this.hpGraphics);
             const activeEnemies = ActorRenderer.render(this, state.enemies, this.enemySprites, masterConfigs, this.targetPositions, false, myTeam, undefined, this.hpGraphics);
+            world.pruneActors([activePlayers, activeEnemies]);
 
             const dummyMap = new Map(); const { activePickups } = WorldRenderer.render(this, state, dummyMap, this.pickupSprites, masterConfigs, this.targetPositions) as any;
 
@@ -1480,7 +1537,14 @@ class GameScene extends Phaser.Scene {
         matchConnection.on("ReceiveRoster", (roster: Array<{ id: string; name: string; level: number }>) => {
             // Cheap: at most once a second, and just a Map write per player — the renderer
             // reads from this map and only touches Phaser text objects when a value changes.
-            roster.forEach(r => playerRosterInfo.set(r.id, { name: r.name, level: r.level }));
+            const activeRosterIds = new Set<string>();
+            roster.forEach(r => {
+                activeRosterIds.add(r.id);
+                playerRosterInfo.set(r.id, { name: r.name, level: r.level });
+            });
+            playerRosterInfo.forEach((_info, id) => {
+                if (!activeRosterIds.has(id)) playerRosterInfo.delete(id);
+            });
         });
 
         matchConnection.off("LootNotification");
@@ -1551,7 +1615,9 @@ class GameScene extends Phaser.Scene {
 
         matchConnection.on("UpdateStateCompressed", (compressedBase64: string) => {
             // Instead of freezing the main thread, we just hand the string to the worker!
-            networkWorker.postMessage(compressedBase64);
+            if (this.networkWorker === networkWorker) {
+                networkWorker.postMessage(compressedBase64);
+            }
         });
     }
 
@@ -2009,11 +2075,15 @@ class GameScene extends Phaser.Scene {
         this.isReturningToLobby = true;
 
         const leaveAndReturn = () => {
+            const connectionToClose = matchConnection;
+            this.unbindWorkerListeners(connectionToClose);
+            this.disposeNetworkWorker();
+
             // Wait for stop() to actually finish before wiping client state below -
             // otherwise a straggler tick can still land on the old connection right
             // after cleanup runs and silently re-create sprites for entities that
             // no longer exist, with nothing left listening to clean them up again.
-            matchConnection.stop().catch(() => { }).finally(() => {
+            connectionToClose.stop().catch(() => { }).finally(() => {
                 this.returnToLobby();
                 // Only clear the guard once the transition has actually happened, so a
                 // rapid double-fire of the trigger can't sneak a second run in underneath it.
@@ -2067,6 +2137,8 @@ class GameScene extends Phaser.Scene {
         this.enemyCache.clear();
         this.activeEnemiesArray = [];
         this.enemiesDirty = true;
+        playerRosterInfo.clear();
+        this.latestGameStatePayload = null;
 
         // So the next match's ReceiveHandshake actually rebuilds the map/animations instead
         // of no-oping on the isMapInitialized guard, and so the loading overlay can show/hide

@@ -941,7 +941,7 @@ public class SkillSystem : IGameSystem
             }
             _delayedTeleports.Clear();
         }
-        ProcessPersistentSkills(dt, state); // <--- Process all ground AoEs and Auras[cite: 6]
+        ProcessPersistentSkills(dt, state); 
         ProcessEnemySkills(dt, state);
         ProcessPlayerSkills(dt, state);
     }
@@ -954,7 +954,6 @@ public class SkillSystem : IGameSystem
             ps.TimeRemaining -= dt;
             ps.TimeSinceLastTick += dt;
 
-            // If it's an aura (TargetType == Self), stick to the caster's movement
             // If it's an aura (TargetType == Self), stick to the caster's movement
             if (ps.StickToCaster)
             {

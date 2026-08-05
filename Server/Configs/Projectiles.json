@@ -132,6 +132,23 @@
         "orbitRadius": 220,
         "orbitSpeed": 60
     },
+    "proj_orbital_mudball_t1": {
+        "id": "proj_orbital_mudball_t1",
+        "name": "Orbital Mudball",
+        "textureKey": "effects7",
+        "animFly": [
+            248,
+            255
+        ],
+        "animFlyFrameRate": 15,
+        "scale": 1.5,
+        "baseSpeed": 3.0,
+        "hitRadius": 15,
+        "pierceCount": 999,
+        "movementBehavior": "Orbital",
+        "orbitRadius": 200,
+        "orbitSpeed": 60
+    },
     "proj_orbital_fireball_t2": {
         "id": "proj_orbital_fireball_t2",
         "name": "Orbital Fireball",
@@ -244,9 +261,9 @@
         "iconFrame": 6,
         "scale": 1.4,
         "movementBehavior": "Linear",
-        "baseSpeed": 450,
-        "hitRadius": 40,
-        "pierceCount": 4,
+        "baseSpeed": 950,
+        "hitRadius": 20,
+        "pierceCount": 2,
         "applyEffectsOnHit": [
             "effect_boss_sanguine_bleed"
         ]

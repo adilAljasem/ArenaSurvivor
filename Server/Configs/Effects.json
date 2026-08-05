@@ -27,6 +27,21 @@
       ""
     ]
   },
+  "effect_boss_shoot_phase": {
+    "id": "effect_boss_shoot_phase",
+    "name": "Shoot Protocol",
+    "isBuff": true,
+    "duration": 4.0,
+    "colorTint": "0xff0000",
+    "grantedWeapons": [
+      "pistol"
+    ],
+    "grantedItems": [],
+    "tickRate": 0.2,
+    "grantedSkills": [
+      "skill_boss_shotthem_t1"
+    ]
+  },
   "effect_debuff_poison_dot_t1": {
     "id": "effect_debuff_poison_dot_t1",
     "name": "Poisoned",
@@ -124,7 +139,7 @@
     },
     "ColorTint": "#00ffff"
   },
-    "effect_buff_movmentspeed_t3": {
+  "effect_buff_movmentspeed_t3": {
     "Id": "effect_buff_speed_t3",
     "Name": "Faster",
     "textureKey": "icons1",

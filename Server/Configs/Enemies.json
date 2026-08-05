@@ -550,7 +550,7 @@
     "tier": 3,
     "isBoss": true,
     "spawnOnWaves": [
-      1
+      20
     ],
     "textureKey": "bosses",
     "iconframe": 129,
@@ -609,9 +609,7 @@
     "tier": 4,
     "isBoss": true,
     "spawnOnWaves": [
-      40,
-      80,
-      120
+      1
     ],
     "textureKey": "bosses",
     "iconframe": 186,
@@ -642,15 +640,19 @@
     "AttackRadius": 150,
     "HitRadius": 100,
     "baseStats": {
-      "maxHp": 16000,
+      "maxHp": 25000,
       "movementSpeed": 110,
-      "armor": 20
+      "armor": 150,
+      "magicDefense": 150
     },
     "startingWeapons": [
       "weapon_boss_executioner_blades"
     ],
     "startingItems": [
       "item_boss_bloodstained_crest"
+    ],
+    "startingSkills": [
+      "skill_boss_loop_shotthem_t1"
     ],
     "dynamicSkills": [
       {

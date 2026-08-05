@@ -957,7 +957,7 @@
     "range": 500,
     "projectileId": "proj_lightning_spark",
     "textureKey": "weapons_sheet",
-    "scale":0.4,
+    "scale": 0.4,
     "iconFrame": 22,
     "autoShot": true,
     "canDrop": false,
@@ -1004,7 +1004,7 @@
     "id": "weapon_boss_executioner_blades",
     "defaultFacingAngle": -45,
     "name": "Reaver Twinblades",
-    "tier": 4,
+    "tier": 3,
     "cooldownSeconds": 0.8,
     "meleeDamage": 45,
     "range": 180,
@@ -1017,6 +1017,9 @@
     "availableInShop": false,
     "grantedSkills": [
       "skill_boss_sanguine_rupture_t1"
-    ]
+    ],
+    "statBonuses": {
+      "lifeStealPercent": 0.5
+    }
   }
 }
