@@ -8,7 +8,7 @@ using Server.Data;
 
 #nullable disable
 
-namespace Server.Migrations
+namespace Server.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
     partial class ApplicationDbContextModelSnapshot : ModelSnapshot
@@ -22,7 +22,7 @@ namespace Server.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Server.Configs.MatchRecord", b =>
+            modelBuilder.Entity("Server.Data.MatchRecord", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -87,7 +87,7 @@ namespace Server.Migrations
                     b.ToTable("MatchRecords");
                 });
 
-            modelBuilder.Entity("Server.Configs.User", b =>
+            modelBuilder.Entity("Server.Data.User", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -157,7 +157,7 @@ namespace Server.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("Server.Configs.UserAchievement", b =>
+            modelBuilder.Entity("Server.Data.UserAchievement", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -183,7 +183,7 @@ namespace Server.Migrations
                     b.ToTable("UserAchievements");
                 });
 
-            modelBuilder.Entity("Server.Configs.UserLifetimeStats", b =>
+            modelBuilder.Entity("Server.Data.UserLifetimeStats", b =>
                 {
                     b.Property<Guid>("PlayerId")
                         .ValueGeneratedOnAdd()

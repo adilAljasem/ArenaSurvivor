@@ -379,7 +379,7 @@ public class NetworkSystem : IGameSystem
         // FIX: Pre-allocate 1 Megabyte of memory instantly. 
         // This stops the MemoryStream from constantly resizing and creating massive 
         // abandoned byte arrays that cause the 4-second Garbage Collection freezes!
-        using var ms = new MemoryStream(1024 * 1024);
+        using var ms = new MemoryStream(16 * 1024);
 
         using (var gzip = new GZipStream(ms, CompressionLevel.Fastest))
         {

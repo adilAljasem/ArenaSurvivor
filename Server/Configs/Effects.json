@@ -220,6 +220,7 @@
   "holy_barrier": {
     "id": "holy_barrier",
     "name": "Holy Barrier",
+    "Description":"A protective barrier that shields the target from harm.",
     "isBuff": true,
     "grantedShield": 150,
     "duration": 5.0

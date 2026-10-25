@@ -1085,6 +1085,12 @@ export class LobbyUI {
     }
 
     private loadAchievements() {
+        // >>> NEW: Only fetch if we haven't loaded them yet!
+        if (this.cachedAchievements && this.cachedAchievements.length > 0) {
+            this.renderAchievementGrid();
+            return;
+        }
+
         const grid = document.getElementById('achievements-grid')!;
         grid.innerHTML = `<div style="padding: 20px; color: ${LOBBY_ASSETS.colorMuted};">Loading...</div>`;
 
@@ -1294,6 +1300,12 @@ export class LobbyUI {
     // Always re-fetches, unlike the initial handshake — otherwise newly-unlocked achievements
     // earned mid-session (after Collection was first opened) would stay stale until reload.
     private refreshCollectionCatalog() {
+        // >>> NEW: Only fetch if we haven't loaded it yet!
+        if (this.masterConfigs && (this.masterConfigs.weapons || this.masterConfigs.Weapons)) {
+            this.renderCollectionGrid();
+            return;
+        }
+
         const grid = document.getElementById('collection-grid')!;
         grid.innerHTML = `<div class="coll-empty">Loading collection data...</div>`;
 
@@ -2388,8 +2400,18 @@ export class LobbyUI {
             if (vDiv) vDiv.innerText = v;
         }).catch(err => console.error("Failed to fetch version:", err));
 
-        this.connection.off("LobbyError");
-        this.connection.on("LobbyError", (msg: string) => {
+        if ((this.connection as any)._lobbyErrorHandler) this.connection.off("LobbyError", (this.connection as any)._lobbyErrorHandler);
+        (this.connection as any)._lobbyErrorHandler = (msg: string) => {
+            if (msg === "Incorrect password.") {
+                this.showToast("Room Locked", "The host updated the room. A password is now required.", "error");
+                document.getElementById('password-modal-overlay')!.classList.remove('hidden');
+                document.getElementById('join-password-input')!.focus();
+            } else {
+                this.showToast("System Error", msg, "error");
+            }
+        };
+        this.connection.on("LobbyError", (this.connection as any)._lobbyErrorHandler);
+        if (false) this.connection.on("LobbyError", (msg: string) => {
             if (msg === "Incorrect password.") {
                 this.showToast("Room Locked", "The host updated the room. A password is now required.", "error");
                 document.getElementById('password-modal-overlay')!.classList.remove('hidden');
@@ -2400,8 +2422,8 @@ export class LobbyUI {
         });
 
         // >>> NEW: Securely handle ForceDisconnect from the server
-        this.connection.off("ForceDisconnect");
-        this.connection.on("ForceDisconnect", (msg: string) => {
+        // ForceDisconnect is handled centrally in main.ts (GameScene)
+        if (false) this.connection.on("ForceDisconnect", (msg: string) => {
             localStorage.removeItem('arena_jwt');
             localStorage.removeItem('arena_username');
             localStorage.removeItem('arena_playerId');
@@ -2419,8 +2441,10 @@ export class LobbyUI {
             this.playSound(this.audioMessage);
         });
 
-        this.connection.off("ReceiveHandshake");
-        this.connection.on("ReceiveHandshake", (payload: any) => {
+        if ((this.connection as any)._lobbyHandshakeHandler) this.connection.off("ReceiveHandshake", (this.connection as any)._lobbyHandshakeHandler);
+        (this.connection as any)._lobbyHandshakeHandler = (payload: any) => { this.masterConfigs = payload; this.renderCharacterGrid(); };
+        this.connection.on("ReceiveHandshake", (this.connection as any)._lobbyHandshakeHandler);
+        if (false) this.connection.on("ReceiveHandshake", (payload: any) => {
             this.masterConfigs = payload;
             this.renderCharacterGrid();
         });
@@ -2450,6 +2474,10 @@ export class LobbyUI {
             });
 
             this.renderCharacterGrid();
+
+            // >>> NEW: Wipe the achievement cache so it forces a fresh server fetch next time
+            this.cachedAchievements = [];
+
             if (!document.getElementById('screen-achievements')!.classList.contains('hidden')) {
                 this.loadAchievements();
             }

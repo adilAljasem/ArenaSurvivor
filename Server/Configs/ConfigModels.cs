@@ -424,7 +424,7 @@ public class SkillConfig
         set => _channelDurationSeconds = value;
     }
     // --- Payload: Summon Specific ---
-    public string SummonConfigId { get; set; } = string.Empty;
+    public List<string> SummonConfigIds { get; set; } = new();
     public int SummonCount { get; set; } = 1;
     public float SummonRadius { get; set; } = 50f;
 

@@ -1,6 +1,87 @@
 {
-  "spring_enemy": {
-    "id": "spring_enemy",
+  "enemy_gate_blue_t1": {
+    "id": "enemy_gate_blue_t1",
+    "name": "Blue Gate",
+    "tier": 1,
+    "isBoss": false,
+    "HitRadius":50,
+    "isSummonOnly": true,
+    "textureKey": "gates",
+    "VisualHeight": 25.0,
+    "WeaponScaleOverride": 0.9,
+    "scale": 0.7,
+    "iconFrame": 1,
+    "animIdle": [
+      0,
+      9
+    ],
+    "animIdleFrameRate": 10,
+    "baseStats": {
+      "maxHp": 500,
+      "movementSpeed": 0,
+      "meleeDamage": 0,
+      "magicDefense": 25,
+      "armor": 25
+    },
+    "dynamicModifiers": [],
+    "StartingSkills": [
+      "skill_summon_enemies_t1"
+    ]
+  },
+  "enemy_gate_red_t2": {
+    "id": "enemy_gate_red_t2",
+    "name": "Red Gate",
+    "tier": 2,
+    "isBoss": false,
+    "isSummonOnly": true,
+    "textureKey": "gates",
+    "VisualHeight": 25.0,
+    "WeaponScaleOverride": 0.9,
+    "scale": 0.7,
+    "iconFrame": 1,
+    "animIdle": [
+      10,
+      19
+    ],
+    "animIdleFrameRate": 10,
+    "baseStats": {
+      "maxHp": 800,
+      "movementSpeed": 0,
+      "meleeDamage": 0,
+      "magicDefense": 35,
+      "armor": 35
+    },
+    "dynamicModifiers": [],
+    "StartingSkills": []
+  },
+  "enemy_gate_purple_t3": {
+    "id": "enemy_gate_purple_t3",
+    "name": "Purple Gate",
+    "tier": 3,
+    "isBoss": false,
+    "isSummonOnly": true,
+    "textureKey": "gates",
+    "VisualHeight": 25.0,
+    "WeaponScaleOverride": 0.9,
+    "scale": 0.7,
+    "iconFrame": 1,
+    "animIdle": [
+      20,
+      29
+    ],
+    "animIdleFrameRate": 10,
+    "baseStats": {
+      "maxHp": 1500,
+      "movementSpeed": 0,
+      "meleeDamage": 0,
+      "magicDefense": 50,
+      "armor": 50
+    },
+    "dynamicModifiers": [],
+    "StartingSkills": []
+  },
+  "enemy_spring_t1": {
+    "id": "enemy_spring_t1",
     "name": "Spring Enemy",
     "WeaponOffset": 30.0,
     "AttackRadius": 50,
@@ -104,8 +185,8 @@
       }
     ]
   },
-  "cave_bat": {
-    "id": "cave_bat",
+  "enemy_cave_bat_t1": {
+    "id": "enemy_cave_bat_t1",
     "name": "Cave Bat",
     "tier": 1,
     "isBoss": false,
@@ -143,8 +224,8 @@
     },
     "dynamicModifiers": []
   },
-  "spike": {
-    "id": "spike",
+  "enemy_spike_t2": {
+    "id": "enemy_spike_t2",
     "name": "Spike",
     "tier": 2,
     "defaultFacingRight": false,
@@ -184,8 +265,8 @@
     },
     "dynamicModifiers": []
   },
-  "mushroom": {
-    "id": "mushroom",
+  "enemy_mushroom_t1": {
+    "id": "enemy_mushroom_t1",
     "name": "Mushroom",
     "tier": 1,
     "VisualHeight": 20.0,
@@ -228,8 +309,8 @@
     "startingSkills": [],
     "dynamicModifiers": []
   },
-  "troll_runt": {
-    "id": "troll_runt",
+  "enemy_troll_runt_t1": {
+    "id": "enemy_troll_runt_t1",
     "name": "Troll Runt",
     "tier": 1,
     "isBoss": false,
@@ -295,8 +376,8 @@
       }
     ]
   },
-  "flying_forest": {
-    "id": "flying_forest",
+  "enemy_flying_forest_t1": {
+    "id": "enemy_flying_forest_t1",
     "name": "Flying Forest",
     "tier": 1,
     "VisualHeight": 50.0,
@@ -351,8 +432,8 @@
       "summon_trees"
     ]
   },
-  "tree_obstacle": {
-    "id": "tree_obstacle",
+  "enemy_tree_obstacle_t1": {
+    "id": "enemy_tree_obstacle_t1",
     "name": "Healing Tree",
     "tier": 1,
     "isBoss": false,
@@ -395,8 +476,8 @@
       "meleeDamage": 0
     }
   },
-  "enemy_lightning_wisp": {
-    "id": "enemy_lightning_wisp",
+  "enemy_lightning_wisp_t1": {
+    "id": "enemy_lightning_wisp_t1",
     "name": "Voltaic Spark",
     "tier": 1,
     "minWave": 3,
@@ -417,8 +498,8 @@
     ],
     "weaponDropChance": 0.0
   },
-  "enemy_acid_ooze": {
-    "id": "enemy_acid_ooze",
+  "enemy_acid_ooze_t2": {
+    "id": "enemy_acid_ooze_t2",
     "name": "Corrosive Slime",
     "tier": 2,
     "minWave": 13,
@@ -441,8 +522,8 @@
       "skill_variant_acid_pool_t1"
     ]
   },
-  "enemy_void_specter": {
-    "id": "enemy_void_specter",
+  "enemy_void_specter_t2": {
+    "id": "enemy_void_specter_t2",
     "name": "Singularity Anchor",
     "tier": 2,
     "minWave": 23,
@@ -462,8 +543,8 @@
       "item_variant_void_fragment"
     ]
   },
-  "enemy_sanguine_hound": {
-    "id": "enemy_sanguine_hound",
+  "enemy_sanguine_hound_t3": {
+    "id": "enemy_sanguine_hound_t3",
     "name": "Gore Hound",
     "tier": 3,
     "minWave": 33,
@@ -483,10 +564,10 @@
       "item_variant_gore_tooth"
     ]
   },
-  "boss_corrosive_titan": {
-    "id": "boss_corrosive_titan",
+  "boss_corrosive_titan_t1": {
+    "id": "boss_corrosive_titan_t1",
     "name": "Golem of Rust (Boss)",
-    "tier": 2,
+    "tier": 1,
     "isBoss": true,
     "spawnOnWaves": [
       10
@@ -544,10 +625,10 @@
     ],
     "itemDropChance": 0.20
   },
-  "boss_void_weaver": {
-    "id": "boss_void_weaver",
+  "boss_void_weaver_t2": {
+    "id": "boss_void_weaver_t2",
     "name": "The Singularity Construct (Boss)",
-    "tier": 3,
+    "tier": 2,
     "isBoss": true,
     "spawnOnWaves": [
       20
@@ -603,10 +684,10 @@
       }
     ]
   },
-  "boss_bloodreave_gladiator": {
-    "id": "boss_bloodreave_gladiator",
+  "boss_bloodreave_gladiator_t3": {
+    "id": "boss_bloodreave_gladiator_t3",
     "name": "Sanguine Butcher (Boss)",
-    "tier": 4,
+    "tier": 3,
     "isBoss": true,
     "spawnOnWaves": [
       1
@@ -652,7 +733,7 @@
       "item_boss_bloodstained_crest"
     ],
     "startingSkills": [
-      "skill_boss_loop_shotthem_t1"
+      "skill_boss_summon_bluegate_t1_"
     ],
     "dynamicSkills": [
       {
@@ -664,8 +745,8 @@
       }
     ]
   },
-  "boss_plague_bringer": {
-    "id": "boss_plague_bringer",
+  "boss_plague_bringer_t4": {
+    "id": "boss_plague_bringer_t4",
     "name": "Plague Bringer (Boss)",
     "tier": 4,
     "isBoss": true,
@@ -722,8 +803,8 @@
       }
     ]
   },
-  "boss_volt_overlord": {
-    "id": "boss_volt_overlord",
+  "boss_volt_overlord_t4": {
+    "id": "boss_volt_overlord_t4",
     "name": "Baron von Shock (Boss)",
     "tier": 1,
     "isBoss": true,

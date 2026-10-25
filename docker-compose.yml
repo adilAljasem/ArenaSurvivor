@@ -5,8 +5,8 @@ networks:
     driver: overlay
 
 volumes:
-  # Persistent volume for safe PostgreSQL data storage
-  postgres_data:
+  # Persistent volume for safe YugabyteDB data storage
+  yugabyte_data:
   # Persistent volume for the Let's Encrypt certificate (must survive redeploys, or you'll
   # hit Let's Encrypt's rate limit re-issuing a fresh cert every time). Safe as a local Docker
   # volume here because Traefik is pinned to a single manager-node replica below — if you ever
@@ -66,16 +66,18 @@ services:
           - node.role == manager 
 
   # ==========================================
-  # 3. POSTGRESQL (The Persistent Account Database)
+  # 3. YUGABYTEDB (The Persistent Account Database)
   # ==========================================
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      - POSTGRES_DB=arena_survivor
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=aa123456
+  yugabytedb:
+    image: yugabytedb/yugabyte:latest
+    command: ["bin/yugabyted", "start", "--background=false"]
+    ports:
+      - "5433:5433"
+      - "7000:7000"
+      - "9000:9000"
+      - "15433:15433"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - yugabyte_data:/root/var
     networks:
       - arena_network
     deploy:
@@ -92,8 +94,8 @@ services:
     environment:
       - ServerConfig__Role=Master
       - RedisConfig__ConnectionString=redis:6379,abortConnect=false
-      # Database string pointing to our internal container name "postgres"
-      - ConnectionStrings__DefaultConnection=Host=postgres;Database=arena_survivor;Username=postgres;Password=aa123456
+      # Database string pointing to our internal container name "yugabytedb"
+      - ConnectionStrings__DefaultConnection=Host=yugabytedb;Port=5433;Database=yugabyte;Username=yugabyte;Password=yugabyte
       # Set up public access rules matching production
       - ServerConfig__FrontendUrl=https://adel.giize.com
       - ServerConfig__AllowedCorsOrigins__0=https://adel.giize.com
@@ -101,7 +103,7 @@ services:
       - arena_network
     depends_on:
       - redis
-      - postgres
+      - yugabytedb
     deploy:
       replicas: 1
       placement:
@@ -132,7 +134,7 @@ services:
     environment:
       - ServerConfig__Role=Worker
       - RedisConfig__ConnectionString=redis:6379,abortConnect=false
-      - ConnectionStrings__DefaultConnection=Host=postgres;Database=arena_survivor;Username=postgres;Password=aa123456
+      - ConnectionStrings__DefaultConnection=Host=yugabytedb;Port=5433;Database=yugabyte;Username=yugabyte;Password=yugabyte
       # Redis registers THIS specific path for Worker 1
       - ServerConfig__PublicUrl=https://adel.giize.com/w1/matchHub
       - ServerConfig__FrontendUrl=https://adel.giize.com
@@ -141,7 +143,7 @@ services:
       - arena_network
     depends_on:
       - redis
-      - postgres
+      - yugabytedb
     deploy:
       replicas: 1
       placement:
@@ -165,7 +167,7 @@ services:
     environment:
       - ServerConfig__Role=Worker
       - RedisConfig__ConnectionString=redis:6379,abortConnect=false
-      - ConnectionStrings__DefaultConnection=Host=postgres;Database=arena_survivor;Username=postgres;Password=aa123456
+      - ConnectionStrings__DefaultConnection=Host=yugabytedb;Port=5433;Database=yugabyte;Username=yugabyte;Password=yugabyte
       # Redis registers THIS specific path for Worker 2
       - ServerConfig__PublicUrl=https://adel.giize.com/w2/matchHub
       - ServerConfig__FrontendUrl=https://adel.giize.com
@@ -174,7 +176,7 @@ services:
       - arena_network
     depends_on:
       - redis
-      - postgres
+      - yugabytedb
     deploy:
       replicas: 1
       placement:

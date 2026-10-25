@@ -87,7 +87,19 @@ public class LobbyHub : Hub
     {
         var since = DateTime.UtcNow.AddDays(-7);
         var recentMatches = await _db.MatchRecords
+            .AsNoTracking()
             .Where(m => m.MatchDate >= since)
+            .Select(m => new MatchRecord
+            {
+                PlayerId = m.PlayerId,
+                Username = m.Username,
+                MatchDate = m.MatchDate,
+                HighestWave = m.HighestWave,
+                TotalHealingDone = m.TotalHealingDone,
+                TotalDamageDealt = m.TotalDamageDealt,
+                TotalDamageTaken = m.TotalDamageTaken,
+                TotalShieldingDone = m.TotalShieldingDone
+            })
             .ToListAsync();
 
         var byPlayer = recentMatches.GroupBy(m => m.PlayerId).ToList();
@@ -128,11 +140,22 @@ public class LobbyHub : Hub
         string playerId = GetPlayerId();
         string? jwtSessionId = Context.User?.FindFirst("SessionId")?.Value;
         string? activeSessionId = await _redisService.GetActiveSession(playerId);
+        if (string.IsNullOrEmpty(activeSessionId) && !string.IsNullOrEmpty(jwtSessionId) && Guid.TryParse(playerId, out var pid))
+        {
+            var userExists = await _db.Users.AsNoTracking().AnyAsync(u => u.PlayerId == pid && !u.IsBanned);
+            if (userExists)
+            {
+                await _redisService.SetActiveSession(playerId, jwtSessionId);
+                activeSessionId = jwtSessionId;
+            }
+        }
 
         // If the JWT's session doesn't match the database, kill the connection immediately.
         if (string.IsNullOrEmpty(jwtSessionId) || jwtSessionId != activeSessionId)
         {
-            await Clients.Caller.SendAsync("ForceDisconnect", "Logged in from another location.");
+            string reason = string.IsNullOrEmpty(activeSessionId) ? "Session expired. Please log in again." : "Logged in from another location.";
+            await Clients.Caller.SendAsync("ForceDisconnect", reason);
+            await Task.Delay(100);
             Context.Abort();
             return;
         }

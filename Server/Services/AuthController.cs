@@ -40,6 +40,32 @@ public class AuthController : ControllerBase
         return Ok(new { version = _serverConfig.GameVersion });
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize]
+    [HttpGet("validate")]
+    public async Task<IActionResult> ValidateSession([FromServices] RedisService redisService)
+    {
+        var playerIdStr = User.FindFirst("PlayerId")?.Value;
+        var jwtSessionId = User.FindFirst("SessionId")?.Value;
+        if (!Guid.TryParse(playerIdStr, out var playerId) || string.IsNullOrEmpty(jwtSessionId))
+            return Unauthorized(new { error = "Invalid session token." });
+
+        var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.PlayerId == playerId);
+        if (user == null || user.IsBanned)
+            return Unauthorized(new { error = user?.IsBanned == true ? "Account is banned." : "Account not found." });
+
+        var activeSessionId = await redisService.GetActiveSession(playerIdStr);
+        if (string.IsNullOrEmpty(activeSessionId))
+        {
+            await redisService.SetActiveSession(playerIdStr, jwtSessionId);
+        }
+        else if (activeSessionId != jwtSessionId)
+        {
+            return Unauthorized(new { error = "Logged in from another location." });
+        }
+
+        return Ok(new { valid = true, username = user.Username, playerId = user.PlayerId });
+    }
+
     // ─── REGISTER ────────────────────────────────────────────────────────────
     [EnableRateLimiting("auth")]
     [HttpPost("register")]

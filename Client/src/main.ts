@@ -75,6 +75,12 @@ export const playerId = (() => {
     return id;
 })();
 
+const infiniteRetryPolicy = {
+    nextRetryDelayInMilliseconds: () => {
+        return 3000; // Always return 3000ms (3 seconds). Never return null (which means stop).
+    }
+};
+
 
 // 1. Master Node
 export const lobbyConnection = new HubConnectionBuilder()
@@ -82,12 +88,13 @@ export const lobbyConnection = new HubConnectionBuilder()
         // JWT is read lazily from localStorage each time a connection is made
         accessTokenFactory: () => localStorage.getItem('arena_jwt') ?? ''
     })
-    .withAutomaticReconnect()
+    .withAutomaticReconnect(infiniteRetryPolicy)
     .build();
+
 // 2. Worker Node (Starts with fallback, overwritten dynamically during Handoff!)
 export let matchConnection: any = new HubConnectionBuilder()
     .withUrl("http://localhost:5000/matchHub")
-    .withAutomaticReconnect()
+    .withAutomaticReconnect(infiniteRetryPolicy)
     .build();
 
 // --- SHARED APP LOADER ---
@@ -130,6 +137,17 @@ function hideAppLoader() {
     if (appLoaderEl) appLoaderEl.style.display = 'none';
 }
 
+// >>> NEW: Hook into SignalR's built-in automatic reconnect events for the Lobby
+lobbyConnection.onreconnecting((error) => {
+    if (isForceDisconnected) return;
+    console.warn("Lobby connection lost. Reconnecting...", error);
+    showAppLoader("Connection lost. Reconnecting…");
+});
+lobbyConnection.onreconnected((connectionId) => {
+    console.log("Lobby connection restored!");
+    hideAppLoader();
+});
+
 // Was copy-pasted identically at 5 call sites (LobbyError, MatchError, both branches of
 // quit_to_main_menu, and the returnToLobby reconnect-failure fallback). Centralizing this
 // also means a full page navigation is the one and only way this file drops Fullscreen -
@@ -142,6 +160,35 @@ function redirectToCleanUrl(): void {
 }
 
 // Was copy-pasted identically in the LobbyError and MatchError handlers.
+let isForceDisconnected = false;
+
+function isJwtValid(token: string | null): boolean {
+    if (!token) return false;
+    try {
+        const parts = token.split('.');
+        if (parts.length !== 3) return false;
+        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+        if (!payload.SessionId || !payload.PlayerId) return false;
+        if (payload.exp && payload.exp * 1000 <= Date.now()) return false;
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function openAuthScreen(): void {
+    isForceDisconnected = true;
+    lobbyConnection.stop().catch(() => {});
+    if (matchConnection) matchConnection.stop().catch(() => {});
+    wipeStoredCredentials();
+    localStorage.removeItem('currentRoomId');
+    hideAppLoader();
+    removeAllLobbyWrappers();
+    if (!document.getElementById('auth-ui-wrapper')) {
+        new AuthUI(() => window.location.reload());
+    }
+}
+
 function wipeStoredCredentials(): void {
     localStorage.removeItem('arena_jwt');
     localStorage.removeItem('arena_username');
@@ -149,6 +196,16 @@ function wipeStoredCredentials(): void {
 }
 
 export function showDisconnectScreen(msg: string) {
+    isForceDisconnected = true;
+    lobbyConnection.stop().catch(() => {});
+    if (matchConnection) matchConnection.stop().catch(() => {});
+    wipeStoredCredentials();
+    localStorage.removeItem('currentRoomId');
+
+    if (msg.includes("expired") || msg.includes("Account not found") || msg.includes("Invalid session")) {
+        openAuthScreen();
+        return;
+    }
     // Hide the loading spinner if it's active
     hideAppLoader();
 
@@ -410,6 +467,15 @@ class GameScene extends Phaser.Scene {
     constructor() { super('GameScene'); }
 
     preload() {
+        const hasValidJwt = isJwtValid(localStorage.getItem('arena_jwt'));
+        if (!hasValidJwt) {
+            openAuthScreen();
+        } else {
+            showAppLoader("Loading game assets… 0%");
+            this.load.on('progress', (val: number) => {
+                updateAppLoaderText(`Loading game assets… ${Math.round(val * 100)}%`);
+            });
+        }
         this.load.spritesheet('mushroomEnemy', '/assets/Enemies/mushroom.png', { frameWidth: 80, frameHeight: 64 });
         this.load.spritesheet('weapons_sheet', '/assets/Weapons/weapons3.png', { frameWidth: 170, frameHeight: 204 });
         this.load.spritesheet('tree', 'assets/obstacles/Tree Lights 02-Sheet.png', { frameWidth: 32, frameHeight: 64 });
@@ -417,11 +483,11 @@ class GameScene extends Phaser.Scene {
         this.load.spritesheet('characters_sheet1', 'assets/Characters/char1.png', { frameWidth: 32, frameHeight: 32 });
         this.load.spritesheet('characters', 'assets/Characters/charaters.png', { frameWidth: 450, frameHeight: 450 });
         this.load.spritesheet('items_sheet', 'assets/Weapons/items.png', { frameWidth: 200, frameHeight: 187 });
-        this.load.spritesheet('bosses', 'assets/Enemies/bosses.png', { frameWidth: 900, frameHeight: 900 });
+        // Deferred 29.5 MB bosses.png to load asynchronously in the background after lobby starts
 
 
-        this.load.spritesheet('shaman', 'assets/Characters/shaman.png', { frameWidth: 61, frameHeight: 61 });
-        this.load.spritesheet('rock', 'assets/Characters/Rock.png', { frameWidth: 61, frameHeight: 61 });
+        // Removed non-existent shaman.png (404)
+        // Removed non-existent Rock.png (404)
 
         this.load.spritesheet('ammo_sheet2', '/assets/Weapons/ammo2.png', { frameWidth: 60, frameHeight: 54 });
         this.load.spritesheet('goblinCavebat_sheet', '/assets/Enemies/goblin-cavbat.png', { frameWidth: 83, frameHeight: 55.8 });
@@ -439,6 +505,7 @@ class GameScene extends Phaser.Scene {
         this.load.spritesheet('effects6', '/assets/Effects/56.png', { frameWidth: 64, frameHeight: 96 });
         this.load.spritesheet('effects7', '/assets/Effects/Bullet 24x24 Part 6B Free.png', { frameWidth: 24, frameHeight: 24 });
 
+        this.load.spritesheet('gates', '/assets/obstacles/gates.png', { frameWidth: 256, frameHeight: 256 });
 
 
         this.load.spritesheet('ui_achievements', '/assets/menu/ui_achievements.png', { frameWidth: 234, frameHeight: 219 });
@@ -455,10 +522,10 @@ class GameScene extends Phaser.Scene {
 
         this.load.audio('ui_hover', '/assets/Audio/ui_hover.mp3');
         this.load.audio('ui_buy', '/assets/Audio/ui_buy.mp3');
-        this.load.audio('ui_recycle', '/assets/Audio/ui_recycle.wav');
-        this.load.audio('ui_levelup', '/assets/audio/ui_levelup.wav');
+        // Removed non-existent ui_recycle.wav (404)
+        // Removed non-existent ui_levelup.wav (404)
         this.load.audio('ui_click', '/assets/Audio/UI/btnclick.mp3');
-        this.load.audio('ui_error', '/assets/Audio/ui_error.mp3');
+        // Removed non-existent ui_error.mp3 (404)
 
         this.load.spritesheet('tex_gold', '/assets/obstacles/spinning coin.png', { frameWidth: 20.6, frameHeight: 18 });
 
@@ -472,11 +539,20 @@ class GameScene extends Phaser.Scene {
         // 2. Create a dedicated UI Camera that stays perfectly crisp and unzoomed
         this.uiCamera = this.cameras.add(0, 0, this.scale.width, this.scale.height);
         const jwt = localStorage.getItem('arena_jwt');
-        if (!jwt) {
-            new AuthUI(() => window.location.reload());
+        if (!isJwtValid(jwt)) {
+            openAuthScreen();
+        // openAuthScreen() creates AuthUI if not already mounted
             return; // Nothing else runs until the player logs in
         }
 
+        // Stream the heavy 29.5 MB boss spritesheet asynchronously in the background after lobby starts
+        if (!this.textures.exists('bosses')) {
+            this.load.spritesheet('bosses', 'assets/Enemies/bosses.png', { frameWidth: 900, frameHeight: 900 });
+            this.load.once('complete', () => {
+                if (masterConfigs) this.createAnimations(masterConfigs);
+            });
+            this.load.start();
+        }
         this.groundTooltip = new Tooltip(this);
         this.skillActionBar = new SkillActionBar(this);
         this.skillActionBar.updateLayout(this.scale.width, this.scale.height);
@@ -584,8 +660,30 @@ class GameScene extends Phaser.Scene {
                 .withUrl(activeWorkerUrl, {
                     accessTokenFactory: () => localStorage.getItem('arena_jwt') ?? ''
                 })
-                .withAutomaticReconnect()
+                .withAutomaticReconnect(infiniteRetryPolicy)
                 .build();
+
+
+
+            // >>> NEW: Hook into SignalR's built-in automatic reconnect events for the Match
+            matchConnection.onreconnecting((error: any) => {
+                if (isForceDisconnected) return;
+                console.warn("Match connection lost. Reconnecting...", error);
+                showAppLoader("Connection lost. Reconnecting…");
+            });
+
+            matchConnection.onreconnected((connectionId: any) => {
+                console.log("Match connection restored!");
+                hideAppLoader();
+            });
+
+            matchConnection.onclose((error: any) => {
+                // With the infinite retry policy, this will realistically only fire if 
+                // the connection was manually stopped by the client (e.g., clicking "Leave Match").
+                if (error) {
+                    showDisconnectScreen("Connection dropped permanently. Please return to login.");
+                }
+            });
 
 
             // FIX: Register ALL worker listeners here (including MatchError and
@@ -816,7 +914,7 @@ class GameScene extends Phaser.Scene {
 
             if (msg.includes("expired") || msg.includes("not exist")) {
                 localStorage.removeItem('currentRoomId');
-                redirectToCleanUrl();
+                this.returnToLobby();
             }
         });
 
@@ -826,7 +924,28 @@ class GameScene extends Phaser.Scene {
         });
 
         // Initial Boot Sequence (Start the Master Node!)
-        if (lobbyConnection.state === HubConnectionState.Disconnected) {
+        const startMasterConnection = async () => {
+            if (isForceDisconnected || lobbyConnection.state !== HubConnectionState.Disconnected) return;
+            const currentJwt = localStorage.getItem('arena_jwt');
+            if (!isJwtValid(currentJwt)) {
+                openAuthScreen();
+                return;
+            }
+            try {
+                const validateUrl = isDev ? "http://localhost:5000/api/auth/validate" : "/api/auth/validate";
+                const authRes = await fetch(validateUrl, { headers: { 'Authorization': `Bearer ${currentJwt}` } });
+                if (authRes.status === 401 || authRes.status === 403) {
+                    const errData = await authRes.json().catch(() => ({}));
+                    if (errData?.error?.includes("another location")) {
+                        showDisconnectScreen(errData.error);
+                    } else {
+                        openAuthScreen();
+                    }
+                    return;
+                }
+            } catch { }
+            if (lobbyConnection.state !== HubConnectionState.Disconnected) return;
+
             showAppLoader("Connecting…");
             lobbyConnection.start()
                 .then(() => {
@@ -907,9 +1026,21 @@ class GameScene extends Phaser.Scene {
                 })
                 .catch((err: any) => {
                     console.error("SignalR Master Connection Error:", err);
-                    showAppLoader("Connection failed — check your network and refresh.");
+                    if (isForceDisconnected) return;
+                    const errStr = String(err || '');
+                    if (errStr.includes('401') || errStr.includes('Unauthorized') || !isJwtValid(localStorage.getItem('arena_jwt'))) {
+                        openAuthScreen();
+                        return;
+                    }
+                    showAppLoader("Connection failed — retrying in 3 seconds...");
+
+                    // >>> NEW: Automatically retry instead of throwing a hard error and asking for a refresh
+                    setTimeout(startMasterConnection, 3000);
                 });
-        }
+        };
+
+        // Trigger the initial connection loop
+        startMasterConnection();
 
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
             if (this.handoffTimeout !== null) {
@@ -1420,7 +1551,7 @@ class GameScene extends Phaser.Scene {
             console.warn("[MatchHub] MatchError:", msg);
             localStorage.removeItem('currentRoomId');
             hideAppLoader();
-            redirectToCleanUrl();
+            this.returnToLobby(); // <-- REPLACED: redirectToCleanUrl()
         });
 
         matchConnection.off("ForceDisconnect");
@@ -2218,7 +2349,7 @@ class GameScene extends Phaser.Scene {
                     const lifespan = entity.lifespan ?? entity.Lifespan ?? 0;
                     const isRepeated = (entity.isRepeated ?? entity.IsRepeated ?? true) && (channelDuration > 0 || lifespan > 0);
 
-                    if (textureKey) {
+                    if (textureKey && this.textures.exists(textureKey)) {
                         this.anims.create({
                             key: animKey,
                             frames: this.anims.generateFrameNumbers(textureKey, {
@@ -2251,7 +2382,7 @@ class GameScene extends Phaser.Scene {
                     }
 
                     const shouldLoop = (actionName === 'attack' || actionName === 'hit' || actionName === 'death' || actionName === 'skill') ? 0 : -1;
-                    if (textureKey) {
+                    if (textureKey && this.textures.exists(textureKey)) {
                         this.anims.create({
                             key: animKey,
                             frames: this.anims.generateFrameNumbers(textureKey, {

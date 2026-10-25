@@ -94,7 +94,7 @@ public class RedisService
     {
         var db = _redis.GetDatabase();
         // Expires in 7 days (matching your JWT expiration)
-        await db.StringSetAsync($"session:{playerId}", sessionId, TimeSpan.FromDays(7));
+        await db.StringSetAsync($"session:{playerId}", sessionId, TimeSpan.FromDays(30));
     }
 
     public async Task<string?> GetActiveSession(string playerId)

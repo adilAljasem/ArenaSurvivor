@@ -42,7 +42,9 @@
         "triggerType": "Auto",
         "targetType": "Self",
         "actionType": "Clone",
-        "summonConfigId": "boss_corrosive_titan",
+        "summonConfigIds": [
+            "boss_corrosive_titan_t1"
+        ],
         "summonCount": 3,
         "summonRadius": 350.0,
         "lifespan": 20.0,
@@ -281,7 +283,11 @@
         "triggerType": "Auto",
         "targetType": "Self",
         "actionType": "Summon",
-        "summonConfigId": "spring_enemy",
+        "summonConfigIds": [
+            "spring_enemy",
+            "goblin_archer",
+            "goblin_brute"
+        ],
         "summonCount": 10,
         "summonRadius": 120.0,
         "soundCast": "sfx_ambush_cast"
@@ -306,7 +312,9 @@
         "triggerType": "Auto",
         "targetType": "Self",
         "actionType": "Summon",
-        "summonConfigId": "tree_obstacle",
+        "summonConfigIds": [
+            "tree_obstacle"
+        ],
         "summonCount": 3,
         "summonRadius": 200.0,
         "soundCast": "sfx_summon_trees_cast"
@@ -321,7 +329,9 @@
         "triggerType": "Auto",
         "targetType": "Self",
         "actionType": "Summon",
-        "summonConfigId": "tree_obstacle",
+        "summonConfigIds": [
+            "tree_obstacle"
+        ],
         "summonCount": 6,
         "summonRadius": 250.0,
         "soundCast": "sfx_summon_trees_cast"
@@ -336,7 +346,9 @@
         "triggerType": "Auto",
         "targetType": "Self",
         "actionType": "Summon",
-        "summonConfigId": "tree_obstacle",
+        "summonConfigIds": [
+            "tree_obstacle"
+        ],
         "summonCount": 4,
         "summonRadius": 250.0,
         "soundCast": "sfx_summon_trees_cast"
@@ -351,7 +363,9 @@
         "triggerType": "Auto",
         "targetType": "Self",
         "actionType": "Summon",
-        "summonConfigId": "tree_obstacle",
+        "summonConfigIds": [
+            "tree_obstacle"
+        ],
         "summonCount": 4,
         "summonRadius": 250.0,
         "soundCast": "sfx_summon_trees_cast"
@@ -781,6 +795,7 @@
     "barrier": {
         "id": "barrier",
         "name": "Barrier",
+        "Description": "A protective barrier that absorbs damage.",
         "actionType": "SelfBuff",
         "triggerType": "Auto",
         "targetType": "Self",
@@ -1004,7 +1019,9 @@
         "cooldownSeconds": 12.0,
         "actionType": "Summon",
         "targetType": "Self",
-        "summonConfigId": "enemy_lightning_node",
+        "summonConfigIds": [
+            "enemy_lightning_node"
+        ],
         "summonCount": 2,
         "summonRadius": 300.0
     },
@@ -1103,5 +1120,43 @@
         "projectileId": "proj_gravity_orb",
         "projectileCount": 1,
         "isIndependent": true
+    },
+    "skill_boss_summon_bluegate_t1_": {
+        "id": "skill_boss_summon_bluegate_t1_",
+        "name": "Summon Blue Gate",
+        "cooldownSeconds": 15.0,
+        "castTimeSeconds": 1.0,
+        "channelDurationSeconds": 1.0,
+        "tickRate": 1.0,
+        "isRepeated": true,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "Summon",
+        "summonConfigIds": [
+            "enemy_gate_blue_t1"
+        ],
+        "summonCount": 1,
+        "summonRadius": 120.0,
+        "soundCast": "sfx_ambush_cast"
+    },
+    "skill_summon_enemies_t1": {
+        "id": "skill_summon_enemies_t1",
+        "name": "Summon easy Enemies",
+        "cooldownSeconds": 0.0,
+        "castTimeSeconds": 0.0,
+        "channelDurationSeconds": 500.0,
+        "tickRate": 2.0,
+        "isRepeated": true,
+        "triggerType": "Auto",
+        "targetType": "Self",
+        "actionType": "Summon",
+        "summonConfigIds": [
+            "enemy_spring_t1",
+            "enemy_cave_bat_t1",
+            "enemy_mushroom_t1"
+        ],
+        "summonCount": 1,
+        "summonRadius": 5.0,
+        "soundCast": "sfx_ambush_cast"
     }
 }

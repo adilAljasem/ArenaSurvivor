@@ -185,7 +185,16 @@ Console.WriteLine($"[BOOT] Role: {serverRole}");
 if (serverRole == "Master" || serverRole == "Dev")
 {
     app.UseDefaultFiles();
-    app.UseStaticFiles();
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        OnPrepareResponse = ctx =>
+        {
+            if (ctx.Context.Request.Path.StartsWithSegments("/assets"))
+            {
+                ctx.Context.Response.Headers["Cache-Control"] = "public, max-age=604800";
+            }
+        }
+    });
     app.MapHub<LobbyHub>("/lobbyHub");
     app.MapControllers();
 

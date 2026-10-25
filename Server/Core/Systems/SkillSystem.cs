@@ -29,6 +29,7 @@ public class SkillSystem : IGameSystem
     }
     private List<PersistentSkill> _persistentSkills = new();
     private List<(string EntityId, float TargetX, float TargetY)> _delayedTeleports = new();
+    private Dictionary<string, int> _summonSequence = new();
 
     public void Initialize(EventBus eventBus, ConfigManager configs)
     {
@@ -38,6 +39,13 @@ public class SkillSystem : IGameSystem
         _eventBus.Subscribe<RequestSkillCastEvent>(OnRequestSkillCast);
         _eventBus.Subscribe<TriggerDeathSkillsEvent>(OnTriggerDeathSkills);
         _eventBus.Subscribe<ResetPlayerSkillsEvent>(OnResetPlayerSkills);
+        _eventBus.Subscribe<BeamEndedEvent>(OnBeamEnded);
+    }
+
+    private void OnBeamEnded(BeamEndedEvent ev, GameState state)
+    {
+        // Resets the spawn cycle when the channel finishes
+        _summonSequence.Remove($"{ev.CasterId}_{ev.SkillId}");
     }
 
     private void OnRequestSkillCast(RequestSkillCastEvent ev, GameState state)
@@ -522,16 +530,35 @@ public class SkillSystem : IGameSystem
 
         if (config.ActionType == SkillActionType.Summon)
         {
-            if (_configs.Enemies.TryGetValue(config.SummonConfigId, out var summonConfig))
+            if (config.SummonConfigIds == null || config.SummonConfigIds.Count == 0) return;
+
+            float mapW = _configs.Maps != null && _configs.Maps.TryGetValue("map_forest", out var currentMap) ? currentMap.Width : 4000f;
+            float mapH = _configs.Maps != null && _configs.Maps.TryGetValue("map_forest", out var currentMapH) ? currentMapH.Height : 4000f;
+
+            // Retrieve the current sequence index for this specific caster and skill
+            string seqKey = $"{casterId}_{config.Id}";
+            if (!_summonSequence.TryGetValue(seqKey, out int spawnIndex)) spawnIndex = 0;
+
+            // Increment by how many we are spawning this tick
+            _summonSequence[seqKey] = spawnIndex + config.SummonCount;
+
+            for (int i = 0; i < config.SummonCount; i++)
             {
-                float mapW = _configs.Maps != null && _configs.Maps.TryGetValue("map_forest", out var currentMap) ? currentMap.Width : 4000f;
-                float mapH = _configs.Maps != null && _configs.Maps.TryGetValue("map_forest", out var currentMapH) ? currentMapH.Height : 4000f;
-                for (int i = 0; i < config.SummonCount; i++)
+                // Always pick the sequential index
+                int currentIndex = spawnIndex + i;
+                string chosenId = config.SummonConfigIds[currentIndex % config.SummonConfigIds.Count];
+
+                if (!string.IsNullOrEmpty(chosenId) && _configs.Enemies.TryGetValue(chosenId, out var summonConfig))
                 {
-                    float angle = (float)(Random.Shared.NextDouble() * Math.PI * 2);
-                    float dist = (float)(Random.Shared.NextDouble() * config.SummonRadius);
+                    // Space them out mathematically in a circle based on the total array size
+                    float angle = currentIndex * ((float)Math.PI * 2) / Math.Max(1, config.SummonConfigIds.Count);
+
+                    // Always push them exactly to the edge of the radius
+                    float dist = config.SummonRadius;
+
                     float spawnX = Math.Clamp(startX + (float)Math.Cos(angle) * dist, 35, mapW - 35);
                     float spawnY = Math.Clamp(startY + (float)Math.Sin(angle) * dist, 35, mapH - 35);
+
                     var newSummon = new EnemyEntity();
                     newSummon.Initialize(summonConfig, spawnX, spawnY, _configs);
                     newSummon.CurrentHp = newSummon.GetTotalStat("maxHp", _configs);
@@ -541,7 +568,6 @@ public class SkillSystem : IGameSystem
             }
             return;
         }
-
 
         if (config.ActionType == SkillActionType.Clone)
         {
@@ -584,7 +610,11 @@ public class SkillSystem : IGameSystem
                 var point = spawnPoints[i + 1];
                 var clone = new EnemyEntity();
 
-                if (_configs.Enemies.TryGetValue(config.SummonConfigId, out var cloneConfig))
+                string cloneConfigId = (config.SummonConfigIds != null && config.SummonConfigIds.Count > 0)
+                             ? config.SummonConfigIds[Random.Shared.Next(config.SummonConfigIds.Count)]
+                             : string.Empty;
+
+                if (!string.IsNullOrEmpty(cloneConfigId) && _configs.Enemies.TryGetValue(cloneConfigId, out var cloneConfig))
                 {
                     clone.Initialize(cloneConfig, startX, startY, _configs);
                     clone.Skills.Clear();
@@ -941,7 +971,7 @@ public class SkillSystem : IGameSystem
             }
             _delayedTeleports.Clear();
         }
-        ProcessPersistentSkills(dt, state); 
+        ProcessPersistentSkills(dt, state);
         ProcessEnemySkills(dt, state);
         ProcessPlayerSkills(dt, state);
     }
