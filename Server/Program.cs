@@ -33,10 +33,12 @@ var serverConfig = builder.Configuration.GetSection("ServerConfig").Get<ServerCo
 var redisConfig = builder.Configuration.GetSection("RedisConfig").Get<RedisConfig>() ?? new RedisConfig();
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>() ?? new JwtSettings();
 
-// ─── DATABASE (PostgreSQL) ────────────────────────────────────────────────────
+// ─── DATABASE (YugabyteDB YSQL) ───────────────────────────────────────────────
 // NuGet: dotnet add package Npgsql.EntityFrameworkCore.PostgreSQL
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        npgsql => npgsql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(3), null)));
 
 // ─── JWT AUTHENTICATION ───────────────────────────────────────────────────────
 // NuGet: dotnet add package Microsoft.AspNetCore.Authentication.JwtBearer
