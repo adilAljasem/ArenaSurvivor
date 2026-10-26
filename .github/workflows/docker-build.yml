@@ -4,6 +4,11 @@ on:
   push:
     branches: [ "master" ]
 
+# Prevent overlapping deployments from racing on Docker Swarm Raft state ("update out of sequence")
+concurrency:
+  group: deploy-arena-stack
+  cancel-in-progress: true
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -59,6 +64,11 @@ jobs:
             # Explicitly pull the latest images so Swarm gets the newest digest
             docker pull ghcr.io/adilaljasem/arenasurvivor:latest
             
-            # Deploy the whole stack (Applies YAML changes AND updates images)
-            docker stack deploy -c arena-stack.yml arena_stack --with-registry-auth
-            docker stack deploy -c arena-stack.yml arena_stack --with-registry-auth
+            # Deploy the stack with retry in case Swarm Raft state between managers is mid-sync ("update out of sequence")
+            for i in 1 2 3; do
+              if docker stack deploy -c arena-stack.yml arena_stack --with-registry-auth; then
+                break
+              fi
+              echo "Swarm update out of sequence, retrying in 5s (attempt $i/3)..."
+              sleep 5
+            done
