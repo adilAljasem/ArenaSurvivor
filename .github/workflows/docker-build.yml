@@ -29,15 +29,15 @@ jobs:
           push: true
           tags: ghcr.io/adilaljasem/arenasurvivor:latest
 
-      # 1. Copy the updated docker-compose.yml to the server
-      - name: Copy Compose File to Server
+      # 1. Copy the updated arena-stack.yml to the server
+      - name: Copy Stack File to Server
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.SERVER_IP }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: 2222
-          source: "docker-compose.yml"
+          source: "arena-stack.yml"
           target: "/home/adil/"
 
       # 2. SSH in, pull the latest images, and redeploy the entire stack
@@ -49,11 +49,15 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: 2222
           script: |
-            # Navigate to where the compose file was copied
+            # Navigate to where the stack file was copied
             cd /home/adil/
+            
+            # Ensure external overlay networks exist before deploying
+            docker network inspect traefik_public >/dev/null 2>&1 || docker network create --driver=overlay --attachable traefik_public
+            docker network inspect yb_network >/dev/null 2>&1 || docker network create --driver=overlay --attachable yb_network
             
             # Explicitly pull the latest images so Swarm gets the newest digest
             docker pull ghcr.io/adilaljasem/arenasurvivor:latest
             
             # Deploy the whole stack (Applies YAML changes AND updates images)
-            docker stack deploy -c docker-compose.yml arena_stack --with-registry-auth
+            docker stack deploy -c arena-stack.yml arena_stack --with-registry-auth
