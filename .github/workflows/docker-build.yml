@@ -61,3 +61,4 @@ jobs:
             
             # Deploy the whole stack (Applies YAML changes AND updates images)
             docker stack deploy -c arena-stack.yml arena_stack --with-registry-auth
+            docker stack deploy -c arena-stack.yml arena_stack --with-registry-auth

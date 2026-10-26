@@ -89,3 +89,4 @@ services:
       placement:
         constraints:
           - node.hostname == armbian
+
