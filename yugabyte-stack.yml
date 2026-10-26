@@ -1,0 +1,91 @@
+version: "3.8"
+
+networks:
+  yb_network:
+    external: true
+
+volumes:
+  yb_node1_data:
+  yb_node2_data:
+  yb_node3_data:
+
+services:
+  # ==========================================
+  # NODE 1 (Seed Node on linux1)
+  # ==========================================
+  yb-node-1:
+    image: yugabytedb/yugabyte:2025.2.3.2-b1
+    hostname: yb-node-1
+    command:
+      - "bin/yugabyted"
+      - "start"
+      - "--background=false"
+      - "--advertise_address=yb-node-1"
+      - "--base_dir=/home/yugabyte/yb_data"
+    volumes:
+      - yb_node1_data:/home/yugabyte/yb_data
+    networks:
+      yb_network:
+        aliases:
+          - yb-node-1
+    deploy:
+      mode: replicated
+      replicas: 1
+      endpoint_mode: dnsrr
+      placement:
+        constraints:
+          - node.hostname == linux1
+
+  # ==========================================
+  # NODE 2 (Joins Node 1 on adel)
+  # ==========================================
+  yb-node-2:
+    image: yugabytedb/yugabyte:2025.2.3.2-b1
+    hostname: yb-node-2
+    command:
+      - "bin/yugabyted"
+      - "start"
+      - "--background=false"
+      - "--advertise_address=yb-node-2"
+      - "--join=yb-node-1"
+      - "--base_dir=/home/yugabyte/yb_data"
+    volumes:
+      - yb_node2_data:/home/yugabyte/yb_data
+    networks:
+      yb_network:
+        aliases:
+          - yb-node-2
+    deploy:
+      mode: replicated
+      replicas: 1
+      endpoint_mode: dnsrr
+      placement:
+        constraints:
+          - node.hostname == adel
+
+  # ==========================================
+  # NODE 3 (Joins Node 1 on armbian)
+  # ==========================================
+  yb-node-3:
+    image: yugabytedb/yugabyte:2025.2.3.2-b1
+    hostname: yb-node-3
+    command:
+      - "bin/yugabyted"
+      - "start"
+      - "--background=false"
+      - "--advertise_address=yb-node-3"
+      - "--join=yb-node-1"
+      - "--base_dir=/home/yugabyte/yb_data"
+    volumes:
+      - yb_node3_data:/home/yugabyte/yb_data
+    networks:
+      yb_network:
+        aliases:
+          - yb-node-3
+    deploy:
+      mode: replicated
+      replicas: 1
+      endpoint_mode: dnsrr
+      placement:
+        constraints:
+          - node.hostname == armbian

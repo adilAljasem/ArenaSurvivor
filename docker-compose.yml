@@ -1,59 +1,19 @@
 version: '3.8'
 
 networks:
+  # Private internal network for ArenaSurvivor (Redis <-> Master <-> Workers)
   arena_network:
     driver: overlay
-
-volumes:
-  # Persistent volume for safe YugabyteDB data storage
-  yugabyte_data:
-  # Persistent volume for the Let's Encrypt certificate (must survive redeploys, or you'll
-  # hit Let's Encrypt's rate limit re-issuing a fresh cert every time). Safe as a local Docker
-  # volume here because Traefik is pinned to a single manager-node replica below — if you ever
-  # scale Traefik to multiple replicas, this needs to move to shared storage instead.
-  traefik_certs:
+  # Shared external network for Traefik reverse proxy
+  traefik_public:
+    external: true
+  # Shared external network for the 3-node YugabyteDB cluster
+  yb_network:
+    external: true
 
 services:
   # ==========================================
-  # 1. TRAEFIK (The Load Balancer / Proxy)
-  # ==========================================
-  traefik:
-   image: traefik:v3.6.1
-   command:
-    - "--api.insecure=true"
-    - "--providers.swarm=true"
-    - "--providers.swarm.endpoint=unix:///var/run/docker.sock"
-    - "--providers.swarm.exposedByDefault=false"
-    - "--providers.swarm.network=arena_network"
-    - "--entrypoints.web.address=:80"
-    - "--entrypoints.websecure.address=:443"
-    # Every plain-HTTP request gets redirected to HTTPS before it ever reaches a router —
-    # nothing in the app itself needs to know or care about this.
-    - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
-    - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
-    # Let's Encrypt via HTTP-01 challenge — reuses the "web" entrypoint (port 80) purely for
-    # the challenge handshake, then issues/renews the cert automatically. No manual renewal ever.
-    - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
-    - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
-    - "--certificatesresolvers.letsencrypt.acme.email=adilaldmlhe@gmail.com"
-    - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
-   ports:
-    - "80:80"
-    - "443:443"
-    - "8080:8080"
-   volumes:
-    - /var/run/docker.sock:/var/run/docker.sock:ro
-    - traefik_certs:/letsencrypt
-   networks:
-    - arena_network
-   deploy:
-    replicas: 1
-    placement:
-      constraints:
-        - node.role == manager
-
-  # ==========================================
-  # 2. REDIS (The Central Bulletin Board)
+  # 1. REDIS (The Central Bulletin Board)
   # ==========================================
   redis:
     image: redis:7-alpine
@@ -63,47 +23,27 @@ services:
       replicas: 1
       placement:
         constraints:
-          - node.role == manager 
+          - node.role == manager
 
   # ==========================================
-  # 3. YUGABYTEDB (The Persistent Account Database)
-  # ==========================================
-  yugabytedb:
-    image: yugabytedb/yugabyte:latest
-    command: ["bin/yugabyted", "start", "--background=false"]
-    ports:
-      - "5433:5433"
-      - "7000:7000"
-      - "9000:9000"
-      - "15433:15433"
-    volumes:
-      - yugabyte_data:/root/var
-    networks:
-      - arena_network
-    deploy:
-      replicas: 1
-      placement:
-        constraints:
-          - node.hostname == linux1
-
-  # ==========================================
-  # 4. MASTER NODE (Lobby, Matchmaking, UI)
+  # 2. MASTER NODE (Lobby, Matchmaking, UI)
   # ==========================================
   master:
     image: ghcr.io/adilaljasem/arenasurvivor:latest
     environment:
       - ServerConfig__Role=Master
       - RedisConfig__ConnectionString=redis:6379,abortConnect=false
-      # Database string pointing to our internal container name "yugabytedb"
-      - ConnectionStrings__DefaultConnection=Host=yugabytedb;Port=5433;Database=yugabyte;Username=yugabyte;Password=yugabyte
+      # Multi-host YugabyteDB cluster connection string with automatic load-balancing & failover
+      - ConnectionStrings__DefaultConnection=Host=yb-node-1,yb-node-2,yb-node-3;Port=5433;Database=yugabyte;Username=yugabyte;Password=yugabyte;Load Balance Hosts=true
       # Set up public access rules matching production
       - ServerConfig__FrontendUrl=https://adel.giize.com
       - ServerConfig__AllowedCorsOrigins__0=https://adel.giize.com
     networks:
       - arena_network
+      - traefik_public
+      - yb_network
     depends_on:
       - redis
-      - yugabytedb
     deploy:
       replicas: 1
       placement:
@@ -111,39 +51,36 @@ services:
           - node.role == manager
       labels:
         - "traefik.enable=true"
-        - "traefik.http.routers.master.rule=Host(`adel.giize.com`)" 
+        - "traefik.swarm.network=traefik_public"
+        - "traefik.http.routers.master.rule=Host(`adel.giize.com`)"
         - "traefik.http.routers.master.entrypoints=websecure"
         - "traefik.http.routers.master.tls.certresolver=letsencrypt"
         - "traefik.http.services.master.loadbalancer.server.port=8080"
-        # Edge rate limit — the first, cheapest line of defense against raw request flooding,
-        # before it even reaches the .NET app. 50 req/s average per client IP, allowing short
-        # bursts up to 100 before throttling kicks in. Defined once here; referenced by all
-        # three routers below (Traefik's Docker/Swarm provider aggregates labels from every
-        # service into one shared dynamic config, so a middleware declared on one service is
-        # usable by any router in the stack).
+        # Edge rate limit — 50 req/s average per client IP, allowing short bursts up to 100
         - "traefik.http.middlewares.rl-default.ratelimit.average=50"
         - "traefik.http.middlewares.rl-default.ratelimit.burst=100"
         - "traefik.http.middlewares.rl-default.ratelimit.period=1s"
         - "traefik.http.routers.master.middlewares=rl-default"
 
   # ==========================================
-  # 5A. WORKER NODE 1 (/w1)
+  # 3A. WORKER NODE 1 (/w1)
   # ==========================================
   worker-1:
     image: ghcr.io/adilaljasem/arenasurvivor:latest
     environment:
       - ServerConfig__Role=Worker
       - RedisConfig__ConnectionString=redis:6379,abortConnect=false
-      - ConnectionStrings__DefaultConnection=Host=yugabytedb;Port=5433;Database=yugabyte;Username=yugabyte;Password=yugabyte
+      - ConnectionStrings__DefaultConnection=Host=yb-node-1,yb-node-2,yb-node-3;Port=5433;Database=yugabyte;Username=yugabyte;Password=yugabyte;Load Balance Hosts=true
       # Redis registers THIS specific path for Worker 1
       - ServerConfig__PublicUrl=https://adel.giize.com/w1/matchHub
       - ServerConfig__FrontendUrl=https://adel.giize.com
       - ServerConfig__AllowedCorsOrigins__0=https://adel.giize.com
     networks:
       - arena_network
+      - traefik_public
+      - yb_network
     depends_on:
       - redis
-      - yugabytedb
     deploy:
       replicas: 1
       placement:
@@ -151,6 +88,7 @@ services:
           - node.hostname == linux1 # Pin to first machine
       labels:
         - "traefik.enable=true"
+        - "traefik.swarm.network=traefik_public"
         - "traefik.http.routers.w1.rule=Host(`adel.giize.com`) && PathPrefix(`/w1`)"
         - "traefik.http.routers.w1.entrypoints=websecure"
         - "traefik.http.routers.w1.tls.certresolver=letsencrypt"
@@ -160,23 +98,24 @@ services:
         - "traefik.http.services.w1.loadbalancer.server.port=8080"
 
   # ==========================================
-  # 5B. WORKER NODE 2 (/w2)
+  # 3B. WORKER NODE 2 (/w2)
   # ==========================================
   worker-2:
     image: ghcr.io/adilaljasem/arenasurvivor:latest
     environment:
       - ServerConfig__Role=Worker
       - RedisConfig__ConnectionString=redis:6379,abortConnect=false
-      - ConnectionStrings__DefaultConnection=Host=yugabytedb;Port=5433;Database=yugabyte;Username=yugabyte;Password=yugabyte
+      - ConnectionStrings__DefaultConnection=Host=yb-node-1,yb-node-2,yb-node-3;Port=5433;Database=yugabyte;Username=yugabyte;Password=yugabyte;Load Balance Hosts=true
       # Redis registers THIS specific path for Worker 2
       - ServerConfig__PublicUrl=https://adel.giize.com/w2/matchHub
       - ServerConfig__FrontendUrl=https://adel.giize.com
       - ServerConfig__AllowedCorsOrigins__0=https://adel.giize.com
     networks:
       - arena_network
+      - traefik_public
+      - yb_network
     depends_on:
       - redis
-      - yugabytedb
     deploy:
       replicas: 1
       placement:
@@ -184,6 +123,7 @@ services:
           - node.hostname == adel # Pin to second machine
       labels:
         - "traefik.enable=true"
+        - "traefik.swarm.network=traefik_public"
         - "traefik.http.routers.w2.rule=Host(`adel.giize.com`) && PathPrefix(`/w2`)"
         - "traefik.http.routers.w2.entrypoints=websecure"
         - "traefik.http.routers.w2.tls.certresolver=letsencrypt"
