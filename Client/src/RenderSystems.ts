@@ -1035,8 +1035,11 @@ export class WorldRenderer {
     const MAX_PARTICLE_BURSTS_PER_TICK = 40;
     let particleBurstsThisTick = 0;
     dmgList.forEach((de: any) => {
-      const startX = (de.x || de.X) + Phaser.Math.Between(-10, 10);
-      const startY = (de.y || de.Y) - 16 + Phaser.Math.Between(-10, 10);
+      // Keep impact effects at the server-reported hit; only the label scatters.
+      const impactX = de.x ?? de.X ?? 0;
+      const impactY = de.y ?? de.Y ?? 0;
+      const startX = impactX + Phaser.Math.Between(-10, 10);
+      const startY = impactY - 16 + Phaser.Math.Between(-10, 10);
       const amt = de.amount ?? de.Amount ?? 0;
       const isHeal = amt < 0;
       const isCrit = de.isCritical ?? false;
@@ -1060,7 +1063,7 @@ export class WorldRenderer {
           const p = playerList[pi];
           const px = p.x ?? p.X;
           const py = p.y ?? p.Y;
-          if ((px - startX) * (px - startX) + (py - startY) * (py - startY) < 1600) {
+          if ((px - impactX) * (px - impactX) + (py - impactY) * (py - impactY) < 1600) {
             isFriendlyHit = true;
             break;
           }
@@ -1078,7 +1081,7 @@ export class WorldRenderer {
             const team = e.team ?? e.Team ?? "Enemy";
             const ex = e.x ?? e.X ?? 0;
             const ey = e.y ?? e.Y ?? 0;
-            const distSq = (ex - startX) * (ex - startX) + (ey - startY) * (ey - startY);
+            const distSq = (ex - impactX) * (ex - impactX) + (ey - impactY) * (ey - impactY);
 
             if (team !== "Enemy" && distSq < 1600) {
               isFriendlyHit = true;
@@ -1124,14 +1127,14 @@ export class WorldRenderer {
 
           for (let i = 0; i < numParticles; i++) {
             // GET a particle from the pool
-            const p = particlePool.get(startX, startY, 'white_pixel') as Phaser.GameObjects.Sprite;
+            const p = particlePool.get(impactX, impactY, 'white_pixel') as Phaser.GameObjects.Sprite;
 
             if (!p) continue; // If we hit the 300 cap, just skip spawning this particle
 
             // WAKE IT UP and reset its properties
             const pSize = Phaser.Math.Between(20, 32);
             p.setActive(true).setVisible(true);
-            p.setPosition(startX, startY);
+            p.setPosition(impactX, impactY);
             p.setScale(1); // Reset any lingering shrink from a previous tween FIRST...
             p.setDisplaySize(pSize, pSize); // ...then size it, so this is the value that actually sticks
             p.setTint(hitColor);
@@ -1148,8 +1151,8 @@ export class WorldRenderer {
 
             scene.tweens.add({
               targets: p,
-              x: startX + Math.cos(angle) * speed,
-              y: startY + Math.sin(angle) * speed,
+              x: impactX + Math.cos(angle) * speed,
+              y: impactY + Math.sin(angle) * speed,
               scale: 0,
               alpha: 1,
               duration: Math.random() * 300 + 200,
